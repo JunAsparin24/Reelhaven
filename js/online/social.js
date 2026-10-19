@@ -28,6 +28,17 @@ export class Social {
     net.on('pos', m => {
       if (this.room) this.room.handlers.onMove?.(m.user, m);
     });
+    // Co-op building (host's game is the authority for its island).
+    net.on('coop_edit', m => this.room?.handlers.onCoopEdit?.(m));
+    net.on('coop_layout', m => { if (this.room && m.host === this.room.host && m.island === this.room.island) this.room.handlers.onCoopLayout?.(m); });
+    net.on('coop_result', m => {
+      const p = this.coopPending.get(m.req);
+      if (!p) return;
+      this.coopPending.delete(m.req);
+      clearTimeout(p.timer);
+      p.resolve(m);
+    });
+    this.coopPending = new Map();
   }
 
   get net() { return this.auth.net; }
@@ -57,6 +68,21 @@ export class Social {
   resync() { this.setStatus(this.status); }
 
   clear() { this.online = new Map(); this.room = null; this.emit(); }
+
+  // ------------------------------------------------------------ co-op
+  /** Visitor → host: ask to place / move something. Resolves { ok, error }. */
+  async coopEdit(edit) {
+    const req = Math.random().toString(36).slice(2, 10);
+    const reply = new Promise(resolve => {
+      const timer = setTimeout(() => { this.coopPending.delete(req); resolve({ ok: false, error: 'The host didn’t answer — try again.' }); }, 8000);
+      this.coopPending.set(req, { resolve, timer });
+    });
+    try { await this.net.request('coop_edit', { ...edit, req }); }
+    catch (err) { const p = this.coopPending.get(req); if (p) { clearTimeout(p.timer); this.coopPending.delete(req); } return { ok: false, error: err.server ? err.message : 'You seem to be offline.' }; }
+    return reply;
+  }
+  coopResult(to, req, ok, error = '') { this.net.send('coop_result', { to, req, ok, error }); }
+  shareLayout(flags, placements) { this.net.send('coop_layout', { flags, placements }); }
 
   // ------------------------------------------------------------ islands
   /**

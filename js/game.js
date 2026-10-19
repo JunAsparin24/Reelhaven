@@ -23,6 +23,13 @@ import { markTalked } from './dialogue.js';
 import { pendingSettings } from './ui/panels/settings.js';
 import { FootstepSystem } from './footsteps.js';
 import { buildCharacter } from './art/characters.js';
+import { PLACEABLES } from '../data/building-data.js';
+import { fullCost, checkCost, spend } from './economy.js';
+import { countBuilt } from './building-count.js';
+import { hasBlueprint } from './shop.js';
+import { reasonText } from './building.js';
+import { addXp } from './progression.js';
+import { commit } from './state.js';
 
 export class Game {
   constructor({ canvas, ui }) {
@@ -149,6 +156,22 @@ export class Game {
     }, ISLANDS[id].name);
   }
 
+  /** Save and go back to the title screen (Continue resumes right here). */
+  returnToTitle() {
+    if (this.mode !== 'play') return;
+    if (this.fishing) this.stopFishing();
+    if (this.build.active) this.ui.closeBuild();
+    this.persistNow();
+    this.leaveChannel();
+    this.visit = null;
+    this.ui.online?.social.setStatus({ status: 'home' });
+    this.ui.closeAll();
+    this.mode = 'title';
+    this.ui.refreshVisit();
+    this.ui.app.classList.remove('playing', 'fishing', 'building', 'talking');
+    this.ui.title.show();
+  }
+
   persistNow() {
     const s = getState();
     if (!s || this.mode !== 'play') return;
@@ -169,7 +192,7 @@ export class Game {
    * built from the snapshot; the visitor's own state (save, island, position,
    * inventory) is never modified and saving continues as normal.
    */
-  startVisit({ hostId, hostName, snapshot, islandId }) {
+  startVisit({ hostId, hostName, snapshot, islandId, coop = false }) {
     if (this.fishing) this.stopFishing();
     if (this.build.active) this.ui.closeBuild();
     const isl = snapshot.islands.find(i => i.id === islandId) || snapshot.islands[0];
@@ -181,7 +204,7 @@ export class Game {
         unlocked: true, visited: true, nodes: {}, gardens: {}, flags: { ...(isl.flags || {}) },
         placements: isl.placements.filter(p => p && typeof p.type === 'string').map((p, i) => ({ ...p, uid: 'visit' + i })),
       };
-      this.visit = { hostId, hostName, islandId: isl.id, islandName: isl.name || ISLANDS[isl.id].name, hostHere: false };
+      this.visit = { hostId, hostName, islandId: isl.id, islandName: isl.name || ISLANDS[isl.id].name, hostHere: false, coop };
       this.world = new World(isl.id, temp);
       this.renderer.setWorld(this.world);
       this.revealedSpots = new Set();
@@ -231,7 +254,10 @@ export class Game {
           this.remotes.set(p.id, r);
         }
         if (this.visit) { this.visit.hostHere = list.some(p => p.host); this.ui.refreshVisit(); }
+        else this.shareLayout();   // newcomers get the host's live layout
       },
+      onCoopEdit: m => this.hostCoopEdit(m),
+      onCoopLayout: m => this.applyCoopLayout(m),
       onMove: (id, pos) => {
         const r = this.remotes.get(id);
         if (!r) return;
@@ -298,6 +324,8 @@ export class Game {
     });
     on('phase', ({ phase }) => setMood(phase === 'night' || phase === 'evening' ? 'night' : 'day'));
     on('settings', () => { const s = getState(); setVolumes(s.settings); });
+    // Friends on my island see my building changes live.
+    on('change', e => { if (e && ['build', 'move', 'store', 'bridge'].includes(e.reason)) this.shareLayout(); });
   }
 
   // ---------------------------------------------------------------- input
@@ -403,8 +431,116 @@ export class Game {
     if (mx || my) { this.build.nudge(mx, my); this.dragAcc.x -= mx * TILE; this.dragAcc.y -= my * TILE; }
   }
 
-  /** While visiting a friend, only harmless interactions are allowed. */
-  canUse(it) { return !this.visit || it.kind === 'npc'; }
+  /**
+   * While visiting: guests can talk to NPCs; with building-together on they
+   * can also fish, gather and shop (all progress goes to their own save).
+   * Things that would change the host's island directly stay off.
+   */
+  canUse(it) {
+    if (!this.visit) return true;
+    if (it.kind === 'npc') return true;
+    return this.visit.coop && ['spot', 'gather', 'shop', 'board'].includes(it.kind);
+  }
+
+  // ---------------------------------------------------------------- co-op
+  /** Host: send the island's live layout to everyone on it. */
+  shareLayout() {
+    const online = this.ui.online;
+    if (this.visit || !this.channel || !online?.auth.signedIn) return;
+    const isl = getState().islands[this.world.id];
+    online.social.shareLayout({ bridgeRepaired: !!isl.flags.bridgeRepaired },
+      isl.placements.map(({ uid, type, x, y, rot }) => ({ uid, type, x, y, rot })));
+  }
+
+  /** Host: a visiting friend wants to place or move something. */
+  hostCoopEdit(m) {
+    const social = this.ui.online?.social;
+    const reply = (ok, error = '') => social?.coopResult(m.from, m.req, ok, error);
+    const s = getState();
+    const def = PLACEABLES[m.type];
+    if (this.visit || this.mode !== 'play' || !def) return reply(false, 'The host isn’t on this island right now.');
+    const isl = s.islands[this.world.id];
+    const tile = { x: this.player.tileX, y: this.player.tileY };
+    if (m.op === 'move') {
+      const pl = isl.placements.find(p => p.uid === m.uid);
+      if (!pl) return reply(false, 'That has already been moved — try again.');
+      const res = this.world.canPlace(pl.type, m.x, m.y, m.rot, pl.uid, tile);
+      if (!res.ok) return reply(false, reasonText(res.reasons));
+      Object.assign(pl, { x: m.x, y: m.y, rot: m.rot });
+    } else {
+      if (def.buildable === false) return reply(false, 'That can’t be built.');
+      if (def.maxCount && countBuilt(m.type) >= def.maxCount) return reply(false, `This island already has ${def.maxCount === 1 ? 'one' : 'the most it can hold'}.`);
+      const res = this.world.canPlace(m.type, m.x, m.y, m.rot, null, tile);
+      if (!res.ok) return reply(false, reasonText(res.reasons));
+      const pl = { uid: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), type: m.type, x: m.x, y: m.y, rot: m.rot, by: m.name };
+      isl.placements.push(pl);
+      if (def.produce) isl.gardens[pl.uid] = Date.now();
+      emit('built', { id: m.type, kind: def.kind, x: m.x, y: m.y, fw: res.fw, fh: res.fh });
+      toast(`${m.name} built a ${def.name} on your island!`, 'build', 'good');
+    }
+    this.world.rebuild();
+    if (this.build.active && this.build.ghost) this.build.setGhost(this.build.ghost.x, this.build.ghost.y);
+    commit('coop');
+    reply(true);
+    this.shareLayout();
+  }
+
+  /** Visitor: the host's island changed (their build or someone else's). */
+  applyCoopLayout(m) {
+    if (!this.visit || m.island !== this.world.id) return;
+    const st = this.world.islandState;
+    st.placements = (m.placements || []).map((p, i) => ({ ...p, uid: p.uid || 'visit' + i }));
+    const bridge = !!m.flags?.bridgeRepaired;
+    if (bridge !== !!st.flags.bridgeRepaired) {
+      st.flags.bridgeRepaired = bridge;
+      this.world.applyFlags();
+      this.renderer.buildLand();
+    }
+    this.world.rebuild();
+    if (this.build.active && this.build.ghost) this.build.setGhost(this.build.ghost.x, this.build.ghost.y);
+  }
+
+  /** Visitor: confirm in build mode → ask the host; pay only if accepted. */
+  coopConfirm(b) {
+    const g = b.ghost, v = this.visit;
+    if (!b.type || !g) return { ok: false, message: 'Choose something to build first.' };
+    if (!v.coop) return { ok: false, message: `${v.hostName} hasn’t turned on building together.` };
+    if (!v.hostHere) return { ok: false, message: `${v.hostName} needs to be on this island for you to build.` };
+    if (!g.ok) return { ok: false, message: reasonText(g.reasons) };
+    const s = getState();
+    const def = PLACEABLES[b.type];
+    const moving = b.moving;
+    let cost = {};
+    if (!moving) {
+      if (def.minLevel && s.player.level > 0 && s.player.level < def.minLevel) return { ok: false, message: `Reach level ${def.minLevel} first.` };
+      if (def.kind === 'building' && !hasBlueprint(b.type)) return { ok: false, message: 'Buy that blueprint at Nori’s first.' };
+      if (b.fromStore) { if (!s.inventory.storedDecor[b.type]) return { ok: false, message: 'None left in storage.' }; }
+      else {
+        cost = fullCost(def);
+        const check = checkCost(cost);
+        if (!check.ok) return { ok: false, message: 'You can’t afford that yet.' };
+      }
+    }
+    if (this.coopBusy) return { ok: false, message: 'Hang on — still waiting for the host.' };
+    this.coopBusy = true;
+    const type = b.type, x = g.x, y = g.y, rot = b.rot, fromStore = b.fromStore, fw = g.fw;
+    this.ui.online.social.coopEdit(moving ? { op: 'move', uid: moving.uid, type, x, y, rot } : { op: 'place', type, x, y, rot })
+      .then(r => {
+        this.coopBusy = false;
+        if (!r.ok) { sfx('error'); toast(r.error || 'The host couldn’t place that.', null, 'error'); return; }
+        if (!moving) {
+          if (fromStore) { s.inventory.storedDecor[type] -= 1; if (s.inventory.storedDecor[type] <= 0) delete s.inventory.storedDecor[type]; }
+          else spend(cost);
+          if (def.kind === 'building') { s.stats.buildingsBuilt += 1; addXp(40); } else { s.stats.decorPlaced += 1; addXp(3); }
+          commit('coopBuild');
+        }
+        sfx('build');
+        toast(moving ? `${def.name} moved.` : `${def.name} built on ${v.hostName}’s island!`, 'build', 'good');
+        if (moving || def.kind === 'building') { b.cancelPlacement(); }
+        else if (b.type === type) b.setGhost(x + fw, y);
+      });
+    return { ok: true, message: `Asking ${v.hostName}…` };
+  }
 
   interact(it) {
     if (!it || this.inputBlocked()) return;

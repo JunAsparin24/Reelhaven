@@ -109,6 +109,7 @@ export class BuildMode {
 
   /** Confirm placement. Returns { ok, message }. */
   confirm() {
+    if (this.game.visit) return this.game.coopConfirm(this);   // building on a friend's island
     const g = this.ghost;
     if (!this.type || !g) return { ok: false, message: 'Choose something to build first.' };
     if (!g.ok) { sfx('error'); return { ok: false, message: reasonText(g.reasons) }; }

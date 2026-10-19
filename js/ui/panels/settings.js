@@ -35,6 +35,9 @@ export const settingsPanel = {
       h('span', label, help ? h('small', help) : null),
       h('input', { type: 'checkbox', checked: !!set[key], on: { change: e => { set[key] = e.target.checked; apply(); } } }));
 
+    if (!ctx.opts?.fromTitle && s && ctx.game.mode === 'play') {
+      body.append(button('Return to main menu', () => ctx.game.returnToTitle(), { cls: 'wide', iconName: 'home' }));
+    }
     body.append(h('h4.section', 'Audio'), slider('Master', 'master'), slider('Music', 'music'), slider('Sound effects', 'sfx'), slider('Footsteps', 'footsteps'), slider('Ambience', 'ambience'));
     body.append(h('h4.section', 'Accessibility & controls'),
       toggle('Reduced motion', 'reducedMotion', 'Calmer water, no screen flashes or bouncing.'),

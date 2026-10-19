@@ -72,7 +72,7 @@ export class BuildUI {
         h('div.build-actions',
           button('Back', () => { b.selected = null; this.render(); }, { cls: 'ghost' }),
           button('Move', () => b.startMove(p), { iconName: 'move' }),
-          def.kind === 'decor' ? button('Store', () => { const r = b.store(p); toast(r.message, 'bag'); }, { iconName: 'bag' }) : null));
+          def.kind === 'decor' && !this.ui.game.visit ? button('Store', () => { const r = b.store(p); toast(r.message, 'bag'); }, { iconName: 'bag' }) : null));
     } else {
       this.root.replaceChildren(
         h('div.build-info', icon('build'), h('b', 'Edit mode'), h('span', 'Tap anything you built to move it.')),

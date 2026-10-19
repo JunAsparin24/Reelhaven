@@ -206,13 +206,13 @@ class Server:
 
     def account_view(self, user):
         a = self.store.accounts[user]
-        return {"username": user, "name": a["name"], "code": a["code"], "allowVisits": a.get("allowVisits", True),
+        return {"username": user, "name": a["name"], "code": a["code"], "allowVisits": a.get("allowVisits", True), "allowCoop": a.get("allowCoop", False),
                 "level": a.get("level", 1), "look": a.get("look", {})}
 
     def card(self, user):
         a = self.store.accounts[user]
         return {"user": user, "name": a["name"], "code": a["code"], "level": a.get("level", 1), "look": a.get("look", {}),
-                "allowVisits": a.get("allowVisits", True)}
+                "allowVisits": a.get("allowVisits", True), "allowCoop": a.get("allowCoop", False)}
 
     def friends_of(self, user):
         out = []
@@ -362,6 +362,8 @@ class Server:
             a["name"] = name
         if "allowVisits" in m:
             a["allowVisits"] = bool(m["allowVisits"])
+        if "allowCoop" in m:
+            a["allowCoop"] = bool(m["allowCoop"])
         self.store.mark()
         self.notify_friends_changed(*self.friends_of(c.user))
         return {"account": self.account_view(c.user)}
@@ -438,6 +440,7 @@ class Server:
             rel = "none" if not f else "friend" if f["status"] == "accepted" else "outgoing" if f["a"] == c.user else "incoming"
         card = self.card(user)
         card.pop("allowVisits", None)
+        card.pop("allowCoop", None)
         return {"player": {**card, "relation": rel}}
 
     def on_friend_request(self, c, m):
@@ -559,6 +562,69 @@ class Server:
         for other in self.rooms.get(c.room, ()):
             if other is not c:
                 other.ws.send(msg)
+        return None
+
+    # ------------------------------------------------------------ co-op building
+    # The host's game is the authority for their island (like Stardew's host):
+    # visitors send build requests, the server checks permissions and relays
+    # them to the host, the host applies them to its save and shares the
+    # updated layout with everyone on the island.
+    def room_host(self, c):
+        if not c.room:
+            return None
+        host = c.room[0]
+        for o in self.rooms.get(c.room, ()):
+            if o.user == host:
+                return o
+        return None
+
+    def on_coop_edit(self, c, m):
+        self.require(c)
+        if not c.room or c.room[0] == c.user:
+            raise ApiError("You're not visiting anyone.", "bad")
+        host = c.room[0]
+        a = self.store.accounts.get(host)
+        if not a or not self.store.are_friends(c.user, host):
+            raise ApiError("You can only build on your friends' islands.", "forbidden")
+        if not a.get("allowCoop", False):
+            raise ApiError(f"{a['name']} hasn't turned on building together.", "forbidden")
+        hc = self.room_host(c)
+        if not hc:
+            raise ApiError(f"{a['name']} needs to be on this island for you to build here.", "host_away")
+        op = m.get("op")
+        if op not in ("place", "move"):
+            raise ApiError("Unknown building action.", "bad")
+        edit = {"op": op, "type": clean_text(m.get("type"), 32), "uid": clean_text(m.get("uid"), 40),
+                "x": int(m.get("x", 0)), "y": int(m.get("y", 0)), "rot": int(m.get("rot", 0)) % 4}
+        hc.ws.send({"t": "coop_edit", "from": c.user, "name": self.store.accounts[c.user]["name"], "req": clean_text(m.get("req"), 40), **edit})
+        return {}
+
+    def on_coop_result(self, c, m):
+        """Host answers a visitor's build request (relayed only within the host's own island)."""
+        self.require(c)
+        if not c.room or c.room[0] != c.user:
+            return None
+        to = clean_text(m.get("to"), 16)
+        for o in self.rooms.get(c.room, ()):
+            if o.user == to:
+                o.ws.send({"t": "coop_result", "req": clean_text(m.get("req"), 40), "ok": bool(m.get("ok")), "error": clean_text(m.get("error"), 160)})
+        return None
+
+    def on_coop_layout(self, c, m):
+        """Host shares the live layout of their island with everyone on it."""
+        if not c.user or not c.room or c.room[0] != c.user:
+            return None
+        isl = clean_snapshot({"islands": [{"id": c.room[1], "flags": m.get("flags") or {}, "placements": m.get("placements") or []}]})["islands"]
+        if not isl:
+            return None
+        # keep host uids so visitors can ask to move things
+        uids = [clean_text(p.get("uid"), 40) for p in (m.get("placements") or [])[:600] if isinstance(p, dict) and isinstance(p.get("type"), str)]
+        for p, u in zip(isl[0]["placements"], uids):
+            p["uid"] = u
+        msg = {"t": "coop_layout", "host": c.user, "island": c.room[1], **isl[0]}
+        for o in self.rooms.get(c.room, ()):
+            if o is not c:
+                o.ws.send(msg)
         return None
 
     def push_peers(self, key):

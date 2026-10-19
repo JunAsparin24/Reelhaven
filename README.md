@@ -197,6 +197,7 @@ one WebSocket at `/ws`) — no third-party services.
 | Friend codes; send / accept / decline / cancel requests; remove friends | Implemented |
 | Online status of friends (online / visiting) | Implemented |
 | Visit a friend's island (read-only) and see each other move live | Implemented |
+| Building together (co-op): with the host's permission and while the host is on the island, visitors can fish, gather, and place or move buildings/decor (paid from their own coins); the host's game applies and shares every change live | Implemented |
 | Trading, competitions, community goals | Planned — not built yet |
 
 **Testing with two accounts:** run `python server.py`, open

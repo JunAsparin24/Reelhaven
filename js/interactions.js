@@ -90,7 +90,7 @@ export function gather(game, o) {
   const w = game.world;
   if (!w.nodeReady(o)) return;
   const res = o.def.resource;
-  const isl = s.islands[w.id];
+  const isl = w.islandState;   // the island being played (a friend's when visiting)
   let respawn = res.respawn;
   if (w.id === 'coral' && (o.type === 'shells' || o.type === 'seaglass')) respawn *= 0.6;
   isl.nodes[o.id] = Date.now() + respawn;
