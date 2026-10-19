@@ -297,6 +297,15 @@ export class UI {
 
   /** Load a friend's public island snapshot and go visit. */
   async visitFriend(fr) {
+    // From the title screen: load your own game first, then sail over.
+    if (this.game.mode !== 'play') {
+      const st = this.title.loaded?.state;
+      if (!st) { toast('Start a game first, then you can visit friends.', 'island'); return; }
+      closeSheet(true);
+      await this.title.continueGame();
+      setTimeout(() => this.visitFriend(fr), 900);
+      return;
+    }
     try {
       const snap = await this.online.social.snapshotOf(fr.user);
       if (!snap?.data?.islands?.length) { toast(`${fr.name} hasn’t synced an island yet.`, 'island'); return; }

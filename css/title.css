@@ -100,3 +100,7 @@
 }
 @keyframes tap-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.55; transform: scale(0.97); } }
 #title-screen.awaiting-tap .title-menu, #title-screen.awaiting-tap .title-foot { visibility: hidden; animation: none; }
+
+/* Menus opened from the title (e.g. Friends) sit above it. */
+#app.on-title #sheet-layer { z-index: 35; }
+#app.on-title .sheet { top: calc(14px + var(--safe-top)); }

@@ -145,6 +145,7 @@ export const friendsPanel = {
 };
 
 function profileCard(body, ctx, s) {
+  if (!s) return;   // opened from the title screen before a game is loaded
   const snap = islandSnapshot(s);
   body.append(h('h4.section', 'Your island'));
   body.append(h('article.profile-card',
