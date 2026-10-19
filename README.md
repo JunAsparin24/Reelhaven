@@ -36,16 +36,16 @@ accounts and friends need `server.py`.
    open it on any phone or computer. Accounts, cloud saves, friends and island
    visits all work through that link.
 
-**Keeping accounts on Render (important):** free web services have no
-persistent disk, so `reelhaven.json` is wiped whenever the service restarts,
-redeploys, or sleeps after ~15 minutes without visitors. Islands stay safe on
-each player's own device and re-upload when they sign in, but **accounts and
-friend lists would reset**. To keep them permanently, set the service to the
-*Starter* plan and add a **Disk** mounted at `/data` (uncomment the `disk:`
-lines in `render.yaml`). The server stores everything at `/data/reelhaven.json`.
+**Where accounts are kept:** the service runs on a paid instance with a
+persistent **Disk** mounted at `/data`, and the server stores everything in
+`/data/reelhaven.json`. Accounts, friend lists and cloud saves survive restarts
+and redeploys. (On Render's free plan there is no disk: that file would be wiped
+on every restart, so don't move it back to free.) `render.yaml` matches this
+setup (`plan: starter`, disk at `/data`).
 
-Free services also take ~30–50 seconds to wake up after sleeping; the game
-shows "Can't reach the server" until it's up and then reconnects by itself.
+**Backups:** download a copy of the data file now and then — Render's dashboard
+offers disk snapshots, or open the service's *Shell* and copy
+`/data/reelhaven.json`.
 
 ## Building for production
 

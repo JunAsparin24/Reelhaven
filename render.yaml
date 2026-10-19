@@ -2,22 +2,20 @@
 # service, the same way FriendZone runs. In Render: New + → Blueprint → pick
 # this repository → Apply.
 #
-# IMPORTANT — keeping accounts and saves:
-#   Render's free instances have no persistent disk, so the data file is wiped
-#   whenever the service restarts, redeploys or sleeps after ~15 minutes idle.
-#   Players' islands are still safe on their own devices (and re-upload when
-#   they sign in), but *accounts and friend lists* reset. To keep them, switch
-#   the plan to "starter" and uncomment the disk below (Render charges for both).
+# Accounts, friends and cloud saves live in /data/reelhaven.json on a
+# persistent disk, so they survive restarts and redeploys. (Disks need a paid
+# instance type; keep `plan` and `disk` in sync with the Render dashboard so a
+# Blueprint sync never downgrades the service or detaches the disk.)
 services:
   - type: web
     name: reelhaven
     runtime: docker
-    plan: free
+    plan: starter
     healthCheckPath: /api/health
     envVars:
       - key: RH_DATA
         value: /data/reelhaven.json
-    # disk:
-    #   name: reelhaven-data
-    #   mountPath: /data
-    #   sizeGB: 1
+    disk:
+      name: reelhaven-data
+      mountPath: /data
+      sizeGB: 1
