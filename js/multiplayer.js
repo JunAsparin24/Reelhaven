@@ -1,11 +1,8 @@
-// Online services boundary. No backend is configured in this release, so this
-// module reports an honest offline status — there are no fake friends or
-// simulated players. It also defines the public island snapshot format that a
-// future backend (e.g. Supabase: auth + Postgres + Realtime) would store, so
-// cloud saves and island visits can be added without changing game code.
+// Offline status text, planned features, and the public island snapshot
+// format friends load when they visit (see js/online/ and server.py).
 //
-// When a backend is added, anything that creates value (coins, items, trades,
-// rewards) must be validated server-side; the client is never trusted.
+// The server never trusts the client with anything that creates value for
+// other players; trading (planned) must be validated by server.py.
 import { GAME_VERSION } from './state.js';
 import { FISH } from '../data/fish-data.js';
 import { ISLANDS } from '../data/island-data.js';

@@ -219,7 +219,7 @@ export class Game {
     this.remotes = new Map();
     this.channelKey = key;
     this.channel = online.social.joinIsland(hostId, islandId, {
-      name: online.auth.profile?.display_name || s.player.name, look: s.player.look,
+      name: online.auth.profile?.name || s.player.name, look: s.player.look,
       host: hostId === online.auth.user.id, x: this.player.x, y: this.player.y, f: this.player.facing,
     }, {
       onPeers: list => {

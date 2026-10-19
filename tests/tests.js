@@ -276,7 +276,7 @@ test('gardens produce over time and cap their output', () => {
 
 // ---------------------------------------------------------------- cloud sync
 // These run the real CloudSync logic against an in-memory stand-in for the
-// Supabase `saves` table (same optimistic-revision rules as the SQL trigger).
+// server's save store (same revision rules as server.py).
 // They do NOT talk to a real server.
 class MemoryBackend {
   constructor(row = null) { this.row = row; this.offline = false; }

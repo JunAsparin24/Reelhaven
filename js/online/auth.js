@@ -1,15 +1,21 @@
-// Accounts (Supabase Auth): email + password, email magic link, password
-// reset, optional Google sign-in, and the player's public profile.
+// Accounts on the Reelhaven server (server.py): username + password. A device
+// keeps a sign-in token (never the password) so it reconnects automatically.
 //
-// status: 'disabled'  online services not configured for this build
-//         'loading'   starting up
-//         'offline'   configured, but the service couldn't be reached
+// status: 'disabled'  no server behind this page (e.g. a plain static host)
+//         'loading'   connecting
+//         'offline'   the server was reachable before but isn't right now
 //         'signedOut' / 'signedIn'
-import { loadOnlineConfig } from './config.js';
-import { getSupabase } from './supabase.js';
+import { Net } from './net.js';
 
+const SESSION_KEY = 'reelhaven.session';
+const SEEN_SERVER_KEY = 'reelhaven.server';
+
+const USERNAME_RE = /^[a-z0-9_-]{3,16}$/;
 const NAME_RE = /^[\p{L}\p{N} _.'-]{2,20}$/u;
 
+export function validUsername(u) {
+  return USERNAME_RE.test((u || '').trim().toLowerCase()) ? null : 'Usernames are 3–16 letters, numbers, _ or -.';
+}
 export function validDisplayName(name) {
   const n = (name || '').trim();
   if (n.length < 2) return 'Names need at least 2 characters.';
@@ -17,39 +23,23 @@ export function validDisplayName(name) {
   if (!NAME_RE.test(n)) return 'Use letters, numbers, spaces, and . _ \' - only.';
   return null;
 }
-
-export function validEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test((email || '').trim()) ? null : 'Please enter a valid email address.';
-}
-
 export function validPassword(pw) {
-  return (pw || '').length >= 8 ? null : 'Passwords need at least 8 characters.';
+  return (pw || '').length >= 6 ? null : 'Passwords need at least 6 characters.';
 }
 
-/** Turn library / network errors into friendly sentences (no raw internals). */
+/** Server errors are already player-friendly; network errors get a kind message. */
 export function friendlyError(err) {
-  const msg = String(err?.message || err || '');
-  if (/failed to fetch|networkerror|load failed|network request failed/i.test(msg) || err?.name === 'TypeError') return 'You seem to be offline. Your island is still saved on this device.';
-  if (/invalid login credentials/i.test(msg)) return "That email and password don't match.";
-  if (/already registered|already been registered|user already exists/i.test(msg)) return 'An account with that email already exists — try signing in instead.';
-  if (/email not confirmed/i.test(msg)) return 'Please confirm your email first — check your inbox for the link.';
-  if (/rate limit|too many|429/i.test(msg)) return 'Too many attempts. Please wait a minute and try again.';
-  if (/password should be|weak password|at least/i.test(msg)) return 'Please choose a stronger password (at least 8 characters).';
-  if (/no player has that friend code/i.test(msg)) return 'No islander has that friend code.';
-  if (/your own friend code/i.test(msg)) return "That's your own friend code!";
-  if (/too many pending/i.test(msg)) return 'You have too many pending requests. Cancel some first.';
-  if (/request not found/i.test(msg)) return 'That request is no longer available.';
-  if (/jwt|not signed in|session/i.test(msg)) return 'Your session expired. Please sign in again.';
+  if (err?.server) return err.message;
+  if (err?.code === 'offline' || /failed to fetch|network|connection/i.test(String(err?.message || ''))) return 'You seem to be offline. Your island is still saved on this device.';
   return 'Something went wrong. Please try again.';
 }
 
 export class AuthService {
   constructor() {
+    this.net = new Net();
     this.status = 'loading';
-    this.user = null;
-    this.profile = null;
-    this.config = null;
-    this.sb = null;
+    this.user = null;          // { id: username }
+    this.profile = null;       // { username, name, code, allowVisits, level, look }
     this.error = null;
     this.listeners = new Set();
   }
@@ -61,111 +51,84 @@ export class AuthService {
   get enabled() { return this.status !== 'disabled'; }
   get signedIn() { return this.status === 'signedIn' && !!this.user; }
 
-  async init() {
-    this.config = await loadOnlineConfig();
-    if (!this.config) { this.set({ status: 'disabled' }); return; }
-    try {
-      this.sb = await getSupabase(this.config);
-    } catch (err) {
-      console.warn('Online services unavailable', err);
-      this.set({ status: 'offline', error: 'Online services could not be reached. You can keep playing offline.' });
-      return;
-    }
-    // Supabase recommends not awaiting other calls inside this callback.
-    this.sb.auth.onAuthStateChange((event, session) => { setTimeout(() => this.handle(event, session), 0); });
-    try {
-      const { data } = await this.sb.auth.getSession();
-      await this.handle('INITIAL', data.session);
-    } catch (err) {
-      this.set({ status: 'offline', error: friendlyError(err) });
-    }
-  }
+  session() { try { return JSON.parse(localStorage.getItem(SESSION_KEY)) || null; } catch { return null; } }
+  storeSession(s) { try { s ? localStorage.setItem(SESSION_KEY, JSON.stringify(s)) : localStorage.removeItem(SESSION_KEY); } catch { /* private mode */ } }
 
-  async handle(event, session) {
-    if (event === 'PASSWORD_RECOVERY') this.emit('recovery');
-    const user = session?.user || null;
-    if (!user) {
-      const was = this.user;
-      this.set({ status: 'signedOut', user: null, profile: null });
-      if (was) this.emit('signedOut', was);
-      return;
-    }
-    const changed = this.user?.id !== user.id;
-    this.user = user;
-    if (changed || !this.profile) await this.loadProfile();
-    this.set({ status: 'signedIn', error: null });
-    if (changed) this.emit('signedIn', user);
-  }
-
-  async loadProfile() {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const { data, error } = await this.sb.from('profiles').select('*').eq('id', this.user.id).maybeSingle();
-      if (!error && data) { this.profile = data; return data; }
-      // The profile is created by a database trigger right after sign-up.
-      await new Promise(r => setTimeout(r, 600));
-    }
-    this.profile = null;
-    return null;
-  }
-
-  redirectUrl() { return location.origin + location.pathname; }
-
-  // ------------------------------------------------------------ auth actions
-  async signUp(email, password, displayName) {
-    const { data, error } = await this.sb.auth.signUp({
-      email: email.trim(), password,
-      options: { data: { display_name: displayName.trim() }, emailRedirectTo: this.redirectUrl() },
+  init() {
+    return new Promise(resolve => {
+      let settled = false;
+      const done = () => { if (!settled) { settled = true; resolve(); } };
+      this.net.onUnavailable = () => {
+        // No server: either this copy is hosted as plain files, or it's down.
+        const seen = localStorage.getItem(SEEN_SERVER_KEY);
+        this.set({ status: seen ? 'offline' : 'disabled', error: seen ? 'The Reelhaven server can’t be reached right now.' : null });
+        done();
+        if (seen) setTimeout(() => this.net.connect(), 5000);
+      };
+      this.net.onOpen = async () => {
+        try { localStorage.setItem(SEEN_SERVER_KEY, '1'); } catch { /* ignore */ }
+        await this.resume();
+        done();
+      };
+      this.net.onClose = () => { if (this.signedIn) this.set({ status: 'offline', error: 'Lost connection — reconnecting…' }); };
+      this.net.connect();
     });
-    if (error) throw error;
-    // With email confirmation on, there is no session until the link is used.
-    // Supabase also returns a user with no identities for an existing email.
-    if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
-      throw new Error('User already registered');
+  }
+
+  /** Re-use this device's sign-in token after (re)connecting. */
+  async resume() {
+    const s = this.session();
+    if (!s) { this.set({ status: 'signedOut', error: null }); return; }
+    try {
+      const res = await this.net.request('resume', { username: s.username, token: s.token });
+      this.applySignIn(res, false);
+    } catch (err) {
+      if (err.server) { this.storeSession(null); const was = this.user; this.set({ status: 'signedOut', user: null, profile: null }); if (was) this.emit('signedOut', was); }
+      else this.set({ status: 'offline', error: friendlyError(err) });
     }
-    return { needsConfirmation: !data.session };
   }
 
-  async signIn(email, password) {
-    const { error } = await this.sb.auth.signInWithPassword({ email: email.trim(), password });
-    if (error) throw error;
+  applySignIn(res, fresh) {
+    const changed = this.user?.id !== res.account.username;
+    this.storeSession({ username: res.account.username, token: res.token });
+    this.user = { id: res.account.username };
+    this.set({ status: 'signedIn', profile: res.account, error: null });
+    if (changed || fresh) this.emit('signedIn', this.user);
+    else this.emit('reconnected', this.user);
   }
 
-  async sendMagicLink(email) {
-    const { error } = await this.sb.auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: this.redirectUrl(), shouldCreateUser: true } });
-    if (error) throw error;
+  async signUp(username, password, name) {
+    const res = await this.net.request('signup', { username: username.trim().toLowerCase(), password, name: name.trim() });
+    this.applySignIn(res, true);
   }
 
-  async resetPassword(email) {
-    const { error } = await this.sb.auth.resetPasswordForEmail(email.trim(), { redirectTo: this.redirectUrl() });
-    if (error) throw error;
+  async signIn(username, password) {
+    const res = await this.net.request('login', { username: username.trim().toLowerCase(), password });
+    this.applySignIn(res, true);
   }
 
-  async updatePassword(password) {
-    const { error } = await this.sb.auth.updateUser({ password });
-    if (error) throw error;
-  }
-
-  async signInWithGoogle() {
-    const { error } = await this.sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: this.redirectUrl() } });
-    if (error) throw error;
+  async changePassword(oldPw, newPw) {
+    const res = await this.net.request('password', { old: oldPw, new: newPw });
+    this.applySignIn(res, false);
   }
 
   async signOut() {
-    const { error } = await this.sb.auth.signOut({ scope: 'local' });
-    if (error) throw error;
+    const s = this.session();
+    try { await this.net.request('logout', { token: s?.token }); } catch { /* offline: forget locally anyway */ }
+    this.storeSession(null);
+    const was = this.user;
+    this.set({ status: this.net.connected ? 'signedOut' : 'offline', user: null, profile: null });
+    if (was) this.emit('signedOut', was);
   }
 
-  // ------------------------------------------------------------ profile
-  /** fields: { display_name?, island_name?, look?, level?, allow_visits? } */
+  /** fields: { name?, allowVisits? } */
   async updateProfile(fields) {
-    if (fields.display_name !== undefined) {
-      const bad = validDisplayName(fields.display_name);
-      if (bad) throw new Error(bad);
-      fields.display_name = fields.display_name.trim();
+    if (fields.name !== undefined) {
+      const bad = validDisplayName(fields.name);
+      if (bad) { const e = new Error(bad); e.server = true; throw e; }
     }
-    const { data, error } = await this.sb.from('profiles').update(fields).eq('id', this.user.id).select().single();
-    if (error) throw error;
-    this.set({ profile: data });
-    return data;
+    const res = await this.net.request('profile', fields);
+    this.set({ profile: res.account });
+    return res.account;
   }
 }

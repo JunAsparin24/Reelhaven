@@ -2,7 +2,7 @@
 // the signed-in account card, and the save-choice prompts used by cloud sync.
 import { h, button, modal, icon, spriteImg, fmt } from './dom.js';
 import { toast } from '../events.js';
-import { friendlyError, validEmail, validPassword, validDisplayName } from '../online/auth.js';
+import { friendlyError, validUsername, validPassword, validDisplayName } from '../online/auth.js';
 import { summarize } from '../online/cloud-sync.js';
 import { getState } from '../state.js';
 import * as Save from '../save.js';
@@ -39,7 +39,6 @@ export class AccountUI {
     this.ui = ui;
     this.online = online;
     online.auth.on(type => {
-      if (type === 'recovery') this.passwordRecovery();
       if (type === 'change') this.ui.refreshSync?.();
     });
   }
@@ -60,20 +59,20 @@ export class AccountUI {
     let close;
     close = modal(h('div.confirm',
       h('h3', 'Playing offline'),
-      h('p', 'Online accounts aren’t switched on for this copy of Reelhaven yet, so your island is saved on this device only.'),
-      h('p.muted', 'For the game’s owner: connect a Supabase project as described in the README (“Online setup”) and accounts, cloud saves and friends turn on automatically.'),
+      h('p', 'This copy of Reelhaven is running without its game server, so accounts and friends aren’t available. Your island is saved on this device.'),
+      h('p.muted', 'For the game’s owner: run server.py (or deploy it to Render as described in the README) and online play turns on automatically.'),
       h('div.row.end', button('OK', () => close(), { cls: 'primary' }))));
   }
 
   offline() {
     let close;
     close = modal(h('div.confirm',
-      h('h3', 'Can’t reach the island network'),
+      h('h3', 'Can’t reach the Reelhaven server'),
       h('p', this.auth.error || 'Online services are unavailable right now.'),
       h('p.muted', 'You can keep playing — everything is saved on this device and will sync once you’re back online and signed in.'),
       h('div.row.end',
         button('Keep playing', () => close(), { cls: 'ghost' }),
-        button('Try again', async () => { close(); await this.auth.init(); this.open(); }, { cls: 'primary' }))));
+        button('Try again', () => { close(); this.auth.net.connect(); setTimeout(() => this.open(), 1500); }, { cls: 'primary' }))));
   }
 
   // ------------------------------------------------------------ sign in / up
@@ -83,81 +82,59 @@ export class AccountUI {
     const body = h('div.auth-body');
     const tabsEl = h('div.tabs.auth-tabs');
     const render = m => {
-      mode = m;
-      tabsEl.replaceChildren(...[['signin', 'Sign in'], ['signup', 'Create account'], ['link', 'Email link']].map(([id, label]) =>
+      tabsEl.replaceChildren(...[['signin', 'Sign in'], ['signup', 'Create account']].map(([id, label]) =>
         h('button.tab' + (id === m ? '.active' : ''), { type: 'button', on: { click: () => render(id) } }, label)));
       msg.textContent = ''; msg.className = 'form-msg';
       body.replaceChildren(...this.form(m, msg, () => close()));
       setTimeout(() => body.querySelector('input')?.focus(), 30);
     };
-    const google = this.auth.config?.googleAuth
-      ? button('Continue with Google', () => busy(google, msg, () => this.auth.signInWithGoogle()), { cls: 'ghost wide', iconName: 'friends' })
-      : null;
     close = modal(h('div.auth',
       h('h3', 'Your Reelhaven account'),
-      h('p.muted', 'Sign in to keep your island safe in the cloud, play on any device, and visit friends.'),
+      h('p.muted', 'Sign in to keep your island safe on the server, play on any device, and visit friends.'),
       tabsEl, body, msg,
-      this.auth.config?.googleAuth ? h('div.or', h('span', 'or')) : null,
-      google,
       h('div.row.end', button('Not now', () => close(), { cls: 'ghost' }))), { cls: 'auth-modal' });
     render(mode);
   }
 
   form(mode, msg, close) {
-    const email = field('Email', { type: 'email', inputmode: 'email', autocomplete: 'email', placeholder: 'you@example.com' });
-    if (mode === 'link') {
-      const go = button('Email me a sign-in link', () => busy(go, msg, async () => {
-        const bad = validEmail(email.input.value);
-        if (bad) throw userError(bad);
-        await this.auth.sendMagicLink(email.input.value);
-        msg.className = 'form-msg ok';
-        msg.textContent = 'Check your inbox! Open the link on this device to sign in.';
-      }), { cls: 'primary wide', sound: null });
-      return [email.el, go];
-    }
-    const pw = field('Password', { type: 'password', autocomplete: mode === 'signup' ? 'new-password' : 'current-password', placeholder: mode === 'signup' ? 'At least 8 characters' : '' });
+    const user = field('Username', { type: 'text', autocomplete: 'username', autocapitalize: 'none', spellcheck: 'false', maxlength: '16', placeholder: '3–16 letters or numbers' });
+    const pw = field('Password', { type: 'password', autocomplete: mode === 'signup' ? 'new-password' : 'current-password', placeholder: mode === 'signup' ? 'At least 6 characters' : '' });
     if (mode === 'signup') {
       const name = field('Display name', { type: 'text', maxlength: '20', placeholder: 'What friends will see', value: getState()?.player.name || this.ui.title?.loaded?.state?.player.name || '' });
       const go = button('Create account', () => busy(go, msg, async () => {
-        const bad = validDisplayName(name.input.value) || validEmail(email.input.value) || validPassword(pw.input.value);
+        const bad = validUsername(user.input.value) || validPassword(pw.input.value) || validDisplayName(name.input.value);
         if (bad) throw userError(bad);
-        const res = await this.auth.signUp(email.input.value, pw.input.value, name.input.value);
-        msg.className = 'form-msg ok';
-        if (res.needsConfirmation) msg.textContent = 'Almost there! We sent a confirmation link to your email. Open it, then sign in here.';
-        else { msg.textContent = 'Welcome to Reelhaven!'; setTimeout(close, 700); }
+        await this.auth.signUp(user.input.value, pw.input.value, name.input.value);
+        toast('Welcome to Reelhaven!', 'check', 'good');
+        close();
       }), { cls: 'primary wide', sound: null });
-      return [name.el, email.el, pw.el, go];
+      pw.input.addEventListener('keydown', e => { if (e.key === 'Enter') go.click(); });
+      return [user.el, pw.el, name.el, h('p.muted.small-note', 'Remember your password — there’s no email reset. You can change it later in your account.'), go];
     }
     const go = button('Sign in', () => busy(go, msg, async () => {
-      const bad = validEmail(email.input.value) || (pw.input.value ? null : 'Please enter your password.');
+      const bad = validUsername(user.input.value) || (pw.input.value ? null : 'Please enter your password.');
       if (bad) throw userError(bad);
-      await this.auth.signIn(email.input.value, pw.input.value);
+      await this.auth.signIn(user.input.value, pw.input.value);
       toast('Signed in!', 'check', 'good');
       close();
     }), { cls: 'primary wide', sound: null });
     pw.input.addEventListener('keydown', e => { if (e.key === 'Enter') go.click(); });
-    const forgot = h('button.linkish', { type: 'button', on: { click: () => busy(forgot, msg, async () => {
-      const bad = validEmail(email.input.value);
-      if (bad) throw userError('Enter your email above first, then tap “Forgot password”.');
-      await this.auth.resetPassword(email.input.value);
-      msg.className = 'form-msg ok';
-      msg.textContent = 'If that email has an account, a reset link is on its way.';
-    }) } }, 'Forgot password?');
-    return [email.el, pw.el, go, forgot];
+    return [user.el, pw.el, go];
   }
 
-  passwordRecovery() {
+  changePassword() {
     let close;
     const msg = h('p.form-msg');
-    const pw = field('New password', { type: 'password', autocomplete: 'new-password', placeholder: 'At least 8 characters' });
-    const go = button('Save new password', () => busy(go, msg, async () => {
+    const old = field('Current password', { type: 'password', autocomplete: 'current-password' });
+    const pw = field('New password', { type: 'password', autocomplete: 'new-password', placeholder: 'At least 6 characters' });
+    const go = button('Change password', () => busy(go, msg, async () => {
       const bad = validPassword(pw.input.value);
       if (bad) throw userError(bad);
-      await this.auth.updatePassword(pw.input.value);
-      toast('Password updated.', 'check', 'good');
+      await this.auth.changePassword(old.input.value, pw.input.value);
+      toast('Password changed. Other devices were signed out.', 'check', 'good');
       close();
     }), { cls: 'primary wide', sound: null });
-    close = modal(h('div.auth', h('h3', 'Choose a new password'), pw.el, go, msg), { dismissable: false });
+    close = modal(h('div.auth', h('h3', 'Change password'), old.el, pw.el, go, msg, h('div.row.end', button('Cancel', () => close(), { cls: 'ghost' }))));
   }
 
   // ------------------------------------------------------------ account card
@@ -167,15 +144,15 @@ export class AccountUI {
     const msg = h('p.form-msg');
     const look = getState()?.player.look || p.look;
     const avatar = look && look.skin ? h('img.acct-avatar', { src: scaleUp(buildPortrait(look), 4).toDataURL(), alt: '' }) : spriteImg('icon_friends', 3, 'acct-avatar');
-    const name = field('Display name', { type: 'text', maxlength: '20', value: p.display_name || '' });
+    const name = field('Display name', { type: 'text', maxlength: '20', value: p.name || '' });
     const saveName = button('Save', () => busy(saveName, msg, async () => {
       const bad = validDisplayName(name.input.value);
       if (bad) throw userError(bad);
-      await a.updateProfile({ display_name: name.input.value });
+      await a.updateProfile({ name: name.input.value });
       msg.className = 'form-msg ok'; msg.textContent = 'Name saved.';
     }), { cls: 'small', sound: null });
-    const visits = h('input', { type: 'checkbox', checked: p.allow_visits !== false, on: { change: async e => {
-      try { await a.updateProfile({ allow_visits: e.target.checked }); toast(e.target.checked ? 'Friends can visit your island.' : 'Island visits turned off.', 'island'); }
+    const visits = h('input', { type: 'checkbox', checked: p.allowVisits !== false, on: { change: async e => {
+      try { await a.updateProfile({ allowVisits: e.target.checked }); toast(e.target.checked ? 'Friends can visit your island.' : 'Island visits turned off.', 'island'); }
       catch (err) { e.target.checked = !e.target.checked; toast(friendlyError(err), null, 'error'); }
     } } });
     const syncBtn = button('Sync now', () => busy(syncBtn, msg, async () => {
@@ -187,12 +164,12 @@ export class AccountUI {
     const synced = this.cloud.lastSyncedAt || this.cloud.meta.syncedAt;
     close = modal(h('div.account',
       h('div.acct-head', avatar, h('div',
-        h('h3', p.display_name || 'Islander'),
-        h('p.muted', a.user?.email || ''))),
-      h('div.acct-code', h('span', 'Friend code'), h('b', p.friend_code || '—'),
+        h('h3', p.name || 'Islander'),
+        h('p.muted', '@' + (p.username || '')))),
+      h('div.acct-code', h('span', 'Friend code'), h('b', p.code || '—'),
         button('Copy', async () => {
-          try { await navigator.clipboard.writeText(p.friend_code); toast('Friend code copied!', 'check', 'good'); }
-          catch { toast('Copy not available — your code is ' + p.friend_code, 'friends'); }
+          try { await navigator.clipboard.writeText(p.code); toast('Friend code copied!', 'check', 'good'); }
+          catch { toast('Copy not available — your code is ' + p.code, 'friends'); }
         }, { cls: 'small ghost' })),
       h('div.form-inline', name.el, saveName),
       h('label.setting.toggle', h('span', 'Let friends visit my island', h('small', 'They can walk around a read-only copy of your island.')), visits),
@@ -200,6 +177,7 @@ export class AccountUI {
       msg,
       h('div.row.wrap.end',
         syncBtn,
+        button('Change password', () => { close(); this.changePassword(); }, { cls: 'ghost' }),
         button('Sign out', () => { close(); this.signOutFlow(); }, { cls: 'danger' }),
         button('Close', () => close(), { cls: 'primary' }))), { cls: 'account-modal' });
   }
@@ -208,7 +186,7 @@ export class AccountUI {
     const synced = await this.cloud.flush();
     const local = Save.load().state;
     const finish = async keep => {
-      try { await this.auth.signOut(); } catch (err) { toast(friendlyError(err), null, 'error'); return; }
+      await this.auth.signOut();
       this.cloud.afterSignOut(keep);
       toast('Signed out.', 'friends');
       if (!keep && this.ui.game.mode === 'play') location.reload();
@@ -219,8 +197,8 @@ export class AccountUI {
     close = modal(h('div.confirm',
       h('h3', 'Sign out'),
       h('p', synced
-        ? 'Your island is safely in the cloud. Keep a copy on this device so you can keep playing as a guest, or remove it (handy on shared devices).'
-        : 'Some recent progress hasn’t reached the cloud yet (you may be offline). It will stay on this device so nothing is lost.'),
+        ? 'Your island is safely saved to your account. Keep a copy on this device so you can keep playing as a guest, or remove it (handy on shared devices).'
+        : 'Some recent progress hasn’t reached the server yet (you may be offline). It will stay on this device so nothing is lost.'),
       h('div.row.end',
         button('Cancel', () => close(), { cls: 'ghost' }),
         synced ? button('Remove from device', () => { close(); finish(false); }, { cls: 'ghost' }) : null,

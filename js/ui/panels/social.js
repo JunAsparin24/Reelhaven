@@ -1,6 +1,6 @@
 // Friends hub (real friends when online; an honest offline state otherwise),
 // island postcards, and the player profile / wardrobe.
-import { h, icon, spriteImg, button, refreshSheet, fmt, confirmModal } from '../dom.js';
+import { h, icon, spriteImg, button, refreshSheet, fmt, confirmModal, sheetOpen } from '../dom.js';
 import { friendlyError } from '../../online/auth.js';
 import { scaleUp } from '../../art/pixel.js';
 import { buildPortrait } from '../../art/characters.js';
@@ -16,7 +16,17 @@ import { xpToNext, speciesDiscovered } from '../../progression.js';
 // Friends data is fetched from the server and cached here between renders.
 const social = { list: null, loading: false, error: null, loadedAt: 0, found: null, finding: false, code: '' };
 
+let watching = false;
 function loadFriends(online, force = false) {
+  if (!watching) {
+    // Requests and presence are pushed by the server: refresh while the panel is open.
+    watching = true;
+    online.social.on(what => {
+      if (sheetOpen() !== 'friends') return;
+      if (what === 'friends') loadFriends(online, true);
+      else refreshSheet();
+    });
+  }
   if (social.loading) return;
   if (!force && social.list && Date.now() - social.loadedAt < 15000) return;
   social.loading = true;
@@ -41,7 +51,7 @@ export const friendsPanel = {
     if (!auth || auth.status === 'disabled' || auth.status === 'offline' || !auth.signedIn) {
       const st = !auth || auth.status === 'disabled' ? onlineStatus()
         : auth.status === 'offline' ? { message: auth.error || 'Online services are unreachable right now.' }
-        : { message: 'Sign in to add friends, see who is online and visit their islands.' };
+        : { message: 'Sign in to save your island to your account, add friends, see who is online and visit their islands.' };
       body.append(h('div.offline-card',
         h('div.status-dot'),
         h('div', h('b', auth?.status === 'signedOut' ? 'Not signed in' : 'Offline mode'), h('p', st.message),
@@ -55,10 +65,10 @@ export const friendsPanel = {
     loadFriends(online);
     const me = auth.profile || {};
     body.append(h('div.my-code',
-      h('div', h('small', 'Your friend code'), h('b', me.friend_code || '—')),
+      h('div', h('small', 'Your friend code'), h('b', me.code || '—')),
       button('Copy', async () => {
-        try { await navigator.clipboard.writeText(me.friend_code); toast('Friend code copied!', 'check', 'good'); }
-        catch { toast('Your code is ' + me.friend_code, 'friends'); }
+        try { await navigator.clipboard.writeText(me.code); toast('Friend code copied!', 'check', 'good'); }
+        catch { toast('Your code is ' + me.code, 'friends'); }
       }, { cls: 'small' }),
       button('Account', () => ctx.ui.openAccount(), { cls: 'small ghost' })));
 
@@ -83,12 +93,12 @@ export const friendsPanel = {
     else if (f) {
       const rel = { self: 'This is you!', friend: 'Already friends', outgoing: 'Request sent', incoming: 'They asked to be your friend' }[f.relation];
       body.append(h('div.item-row.found', lookMini(f.look),
-        h('div.item-main', h('div.item-name', f.display_name), h('div.item-sub', `Level ${f.level}${rel ? ' · ' + rel : ''}`)),
+        h('div.item-main', h('div.item-name', f.name), h('div.item-sub', `Level ${f.level}${rel ? ' · ' + rel : ''}`)),
         f.relation === 'none' || f.relation === 'incoming'
           ? button(f.relation === 'incoming' ? 'Accept' : 'Add friend', async () => {
             try {
-              const r = await online.social.request(f.friend_code);
-              toast(r === 'accepted' ? `You and ${f.display_name} are now friends!` : r === 'sent' ? 'Friend request sent!' : r === 'already_friends' ? 'You are already friends.' : 'Request already sent.', 'friends', 'good');
+              const r = await online.social.request(f.code);
+              toast(r === 'accepted' ? `You and ${f.name} are now friends!` : r === 'sent' ? 'Friend request sent!' : r === 'already_friends' ? 'You are already friends.' : 'Request already sent.', 'friends', 'good');
               social.found = null; social.code = '';
               loadFriends(online, true);
             } catch (err) { toast(friendlyError(err), null, 'error'); }
@@ -101,34 +111,34 @@ export const friendsPanel = {
     const incoming = social.list.filter(x => x.direction === 'incoming');
     const outgoing = social.list.filter(x => x.direction === 'outgoing');
     const friends = social.list.filter(x => x.direction === 'friend')
-      .sort((a, b) => (online.social.isOnline(b.other_id) - online.social.isOnline(a.other_id)) || a.display_name.localeCompare(b.display_name));
+      .sort((a, b) => (online.social.isOnline(b.user) - online.social.isOnline(a.user)) || a.name.localeCompare(b.name));
     const act = (fn, okMsg) => async () => { try { await fn(); if (okMsg) toast(okMsg, 'friends', 'good'); loadFriends(online, true); } catch (err) { toast(friendlyError(err), null, 'error'); } };
 
     if (incoming.length) {
       body.append(h('h4.section', `Friend requests (${incoming.length})`));
       body.append(h('div.list', incoming.map(r => h('div.item-row', lookMini(r.look),
-        h('div.item-main', h('div.item-name', r.display_name), h('div.item-sub', 'Level ' + r.level)),
-        button('Accept', act(() => online.social.respond(r.friendship_id, true), `You and ${r.display_name} are now friends!`), { cls: 'small primary' }),
-        button('Decline', act(() => online.social.respond(r.friendship_id, false)), { cls: 'small ghost' })))));
+        h('div.item-main', h('div.item-name', r.name), h('div.item-sub', 'Level ' + r.level)),
+        button('Accept', act(() => online.social.respond(r.id, true), `You and ${r.name} are now friends!`), { cls: 'small primary' }),
+        button('Decline', act(() => online.social.respond(r.id, false)), { cls: 'small ghost' })))));
     }
     body.append(h('h4.section', `Friends (${friends.length})`));
     if (!friends.length) body.append(h('div.empty', icon('friends', 'big'), h('p', 'No friends yet. Share your friend code, or enter someone else’s above.')));
     else body.append(h('div.list', friends.map(fr => {
-      const on = online.social.isOnline(fr.other_id);
-      const pres = online.social.online.get(fr.other_id);
+      const on = online.social.isOnline(fr.user);
+      const pres = online.social.online.get(fr.user);
       const where = !on ? 'Offline' : pres?.status === 'visiting' ? 'Online · visiting an island' : 'Online';
       return h('div.item-row.friend', h('span.presence' + (on ? '.on' : ''), { title: where }), lookMini(fr.look),
-        h('div.item-main', h('div.item-name', fr.display_name), h('div.item-sub', `${where} · Level ${fr.level}`)),
-        button('Visit', () => ctx.ui.visitFriend(fr), { cls: 'small primary', iconName: 'boat', disabled: !fr.allow_visits, title: fr.allow_visits ? 'Visit their island' : 'They have island visits turned off' }),
+        h('div.item-main', h('div.item-name', fr.name), h('div.item-sub', `${where} · Level ${fr.level}`)),
+        button('Visit', () => ctx.ui.visitFriend(fr), { cls: 'small primary', iconName: 'boat', disabled: !fr.allowVisits, title: fr.allowVisits ? 'Visit their island' : 'They have island visits turned off' }),
         button('Remove', () => {
-          confirmModal('Remove friend?', `Remove ${fr.display_name} from your friends?`, 'Remove', act(() => online.social.remove(fr.friendship_id), 'Friend removed.'), { danger: true });
+          confirmModal('Remove friend?', `Remove ${fr.name} from your friends?`, 'Remove', act(() => online.social.remove(fr.id), 'Friend removed.'), { danger: true });
         }, { cls: 'small ghost' }));
     })));
     if (outgoing.length) {
       body.append(h('h4.section', 'Sent requests'));
       body.append(h('div.list', outgoing.map(r => h('div.item-row', lookMini(r.look),
-        h('div.item-main', h('div.item-name', r.display_name), h('div.item-sub', 'Waiting for them to accept')),
-        button('Cancel', act(() => online.social.remove(r.friendship_id), 'Request cancelled.'), { cls: 'small ghost' })))));
+        h('div.item-main', h('div.item-name', r.name), h('div.item-sub', 'Waiting for them to accept')),
+        button('Cancel', act(() => online.social.remove(r.id), 'Request cancelled.'), { cls: 'small ghost' })))));
     }
     profileCard(body, ctx, s);
   },

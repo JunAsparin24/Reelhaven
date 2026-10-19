@@ -1,8 +1,8 @@
 // Online coordinator: owns the auth service, cloud sync and social services
-// and connects them to the game. Everything here is optional — when no
-// backend is configured the game simply plays offline with local saves.
+// and connects them to the game. Everything here is optional — when the page
+// isn't served by server.py the game simply plays offline with local saves.
 import { AuthService } from './auth.js';
-import { CloudSync, SupabaseSaveBackend } from './cloud-sync.js';
+import { CloudSync, ServerSaveBackend } from './cloud-sync.js';
 import { Social } from './social.js';
 import { on } from '../events.js';
 
@@ -21,21 +21,27 @@ export class Online {
     this.ui = ui;
     this.cloud = new CloudSync({
       auth: this.auth,
-      makeBackend: auth => new SupabaseSaveBackend(auth.sb, auth.user.id),
+      makeBackend: auth => new ServerSaveBackend(auth.net),
       prompt,
       onStateReplaced: state => this.applyState(state),
     });
     on('saved', () => this.cloud.noteLocalSave());
     this.cloud.on(() => ui.refreshSync?.());
     this.auth.on(async (type) => {
+      if (type === 'reconnected') {
+        // The server forgot our status and island channel when we dropped.
+        this.social.resync();
+        this.game.leaveChannel?.();
+        if (this.cloud.meta.dirty) this.cloud.schedulePush(1000);
+      }
       if (type === 'signedIn') {
-        this.social.joinPresence();
+        this.social.resync();
         // Work out which copy of the island to use (may ask the player).
         const res = await this.cloud.reconcile();
         if (this.game.mode === 'play') { if (res.state) this.applyState(res.state); }
         else this.ui.title?.refresh();
       }
-      if (type === 'signedOut') this.social.leavePresence();
+      if (type === 'signedOut') { this.social.clear(); this.game.leaveChannel?.(); }
     });
     await this.auth.init();
   }

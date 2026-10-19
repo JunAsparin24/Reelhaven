@@ -10,48 +10,48 @@ are generated in code, so the game loads instantly.
 
 ## Running it locally
 
-ES modules need to be served over HTTP (opening `index.html` as a file won't work).
-Use any static server from the project folder:
+Needs Python 3.9+ and nothing else (no `pip install`, no npm):
 
-| Option | Command / steps |
-| --- | --- |
-| VS Code Live Server | Right-click `index.html` → **Open with Live Server** |
-| Python 3 | `python -m http.server 5173` (Windows: `py -m http.server 5173`) |
-| Node.js | `npm start` (runs `npx serve` on port 5173) |
+```sh
+python server.py          # or: py server.py   on Windows
+```
 
-Then open <http://localhost:5173>.
+Open <http://localhost:8000>. The server also prints a LAN address you can open
+on your phone (same Wi-Fi). Set `PORT=3000` to change the port. Accounts and
+cloud saves are stored in `server-data/reelhaven.json` (never served to players).
 
-**Playing on your phone:** run the server on your computer, make sure the phone
-is on the same Wi-Fi, and open `http://<your-computer's-LAN-IP>:5173`.
-Tip: in the phone browser use "Add to Home Screen" to install it as an app (PWA).
-Installed or offline play needs HTTPS or localhost for the service worker.
+You can also open the game with any plain static server (VS Code Live Server,
+`py -m http.server`) — it then simply runs offline with local saves, because
+accounts and friends need `server.py`.
 
-Add `?nosw` to the URL to skip the service worker while developing.
+## Play anywhere: Render (same setup as FriendZone)
 
-## Play anywhere: free hosting on Render
+`server.py` runs as a Render **web service** using the included `Dockerfile`
+(`render.yaml` is ready to use).
 
-The game is a static site, so it runs on Render's **free Static Site** plan
-(no server, no sleeping, HTTPS included). `render.yaml` is already set up.
+1. Push this project to GitHub (linked to `JunAsparin24/Tide-Town`).
+2. In Render: **New +** → **Blueprint** → pick `Tide-Town` → **Apply**.
+   (Or **New +** → **Web Service** → this repo → Runtime **Docker**.)
+3. When it's live you get a link like `https://reelhaven.onrender.com` —
+   open it on any phone or computer. Accounts, cloud saves, friends and island
+   visits all work through that link.
 
-1. Push this project to GitHub (it's linked to `JunAsparin24/Tide-Town`).
-2. Sign in at <https://render.com> with GitHub.
-3. Click **New +** → **Blueprint**, pick the `Tide-Town` repository, and click **Apply**.
-   (Or use **New +** → **Static Site** with build command
-   `mkdir -p dist && cp -r index.html manifest.json service-worker.js css js data assets dist/`
-   and publish directory `dist`.)
-4. When the deploy finishes you get a link like `https://tide-and-town.onrender.com`.
-   Open it on any phone or computer. On your phone, use **Add to Home Screen**
-   to install it like an app. After the first visit it also works offline.
+**Keeping accounts on Render (important):** free web services have no
+persistent disk, so `reelhaven.json` is wiped whenever the service restarts,
+redeploys, or sleeps after ~15 minutes without visitors. Islands stay safe on
+each player's own device and re-upload when they sign in, but **accounts and
+friend lists would reset**. To keep them permanently, set the service to the
+*Starter* plan and add a **Disk** mounted at `/data` (uncomment the `disk:`
+lines in `render.yaml`). The server stores everything at `/data/reelhaven.json`.
 
-Every push to `main` redeploys automatically. Progress is saved in each
-browser, so a phone and a laptop keep separate saves. Use **Settings → Export /
-Import save** to move a save between devices.
+Free services also take ~30–50 seconds to wake up after sleeping; the game
+shows "Can't reach the server" until it's up and then reconnects by itself.
 
 ## Building for production
 
-There is nothing to compile. The Render build just copies the game files into
-`dist/`. Any other static host works too (GitHub Pages, Netlify, Cloudflare
-Pages, itch.io HTML5 upload).
+There is nothing to compile. The `Dockerfile` copies the game and `server.py`
+into a small Python image. The game files alone also work on any static host
+(GitHub Pages, Netlify, itch.io) — online features are then simply off.
 
 ## Tests
 
@@ -108,12 +108,15 @@ js/
   weather.js          clock, weather, lighting
   world-events.js     local calendar events
   dialogue.js, interactions.js, audio.js, events.js
-  multiplayer.js      online-service boundary (offline in this release)
+  multiplayer.js      island snapshot format, offline status text
+  online/             net.js (WebSocket), auth.js, cloud-sync.js, social.js, index.js
   art/                procedural pixel-art sprites, tiles, icons, palette
   ui/                 HUD, panels, fishing UI, dialogue box, build bar, title
 assets/               icons + place for hand-made art and audio (see assets/README.md)
+server.py             game server: accounts, cloud saves, friends, presence, visits
+Dockerfile            container for Render (or any Docker host)
 tests/                browser test page
-tools/                icon generator
+tools/                icon generator, footstep sound generator
 ```
 
 The simulation modules (`state`, `economy`, `inventory`, `fishing`, `quests`…)
@@ -182,65 +185,47 @@ in `measure()` in `js/quests.js`. Add a case there for a new type.
 - **Settings → Save data** has Save now, Export (download a `.json`), Import, and
   a two-step Reset.
 
-## Online setup (accounts, cloud saves, friends, island visits)
+## Online features (accounts, cloud saves, friends, island visits)
 
-Online features use **Supabase** (free tier is fine). Without it the game runs
-fully offline with local saves — nothing breaks.
-
-1. Create a project at <https://supabase.com>.
-2. **Database:** open *SQL Editor*, paste the contents of
-   `supabase/migrations/20261019000000_reelhaven_init.sql`, and run it
-   (or `supabase db push` with the Supabase CLI). This creates the tables,
-   row-level security policies and server-side friend functions.
-3. **Auth:** *Authentication → URL Configuration* — set *Site URL* to your game
-   URL (e.g. `https://tide-and-town.onrender.com`) and add it (and
-   `http://localhost:5173`) to *Redirect URLs*. Email sign-in is on by default.
-   Optional: enable *Google* under *Providers*, then set `GOOGLE_AUTH_ENABLED=true`.
-4. **Keys:** *Project Settings → API* — copy the **Project URL** and the
-   **anon public** key. (Never use the `service_role` key in the game.)
-5. **Render:** in your static site → *Environment*, add `SUPABASE_URL` and
-   `SUPABASE_ANON_KEY`, then redeploy. The build writes them into `config.json`.
-6. **Local development:** copy `config.example.json` to `config.json` and fill in
-   the two values (`config.json` is git-ignored).
-
-**Testing with two accounts:** open the game in a normal window and a private
-window (or two browsers/devices), create an account in each, copy one friend
-code (Friends tab or Account), add it from the other account, accept, then tap
-**Visit**. Each player sees the other walking around in real time.
-
-### What's implemented vs planned
+Everything runs on the game's own server, `server.py` (Python standard library,
+one WebSocket at `/ws`) — no third-party services.
 
 | Feature | Status |
 | --- | --- |
-| Email + password accounts, email sign-in link, password reset | Implemented |
-| Google sign-in | Implemented, off until you enable the provider |
-| Cloud saves with revision-checked sync, conflict choice, offline retry | Implemented |
-| Profiles, friend codes, requests (send / accept / decline / cancel), remove | Implemented (server-validated functions) |
-| Online presence for friends | Implemented (Supabase Realtime presence) |
-| Visiting a friend's island (read-only snapshot) with live movement | Implemented |
+| Accounts: username + password (PBKDF2-hashed), stay signed in per device, change password | Implemented |
+| Cloud saves with revision checks, conflict choice, offline retry | Implemented |
+| Friend codes; send / accept / decline / cancel requests; remove friends | Implemented |
+| Online status of friends (online / visiting) | Implemented |
+| Visit a friend's island (read-only) and see each other move live | Implemented |
 | Trading, competitions, community goals | Planned — not built yet |
 
+**Testing with two accounts:** run `python server.py`, open
+<http://localhost:8000> in a normal window and a private window, create an
+account in each (Friends → Sign in → Create account), copy one friend code,
+add it from the other account, accept, then tap **Visit**.
+
 **How saves stay safe:** the local save is always what you play. When signed in,
-each upload says which cloud revision it was based on; the database only accepts
-the next revision, so two devices can't silently overwrite each other — you're
-asked which island to keep, and the other copy is archived on the device
-(*Settings → Save data*). Switching accounts never mixes islands.
+each upload says which cloud revision it was based on; the server only accepts
+it if that's still the latest, so two devices can't silently overwrite each
+other — you're asked which island to keep, and the other is archived on the
+device (*Settings → Save data*). Switching accounts never mixes islands.
 
-**Security notes:** row-level security limits saves and snapshots to their owner
-(snapshots are readable by accepted friends only, and only if visits are on).
-Friendships are created/accepted through `SECURITY DEFINER` functions that check
-every step. Visits load a public snapshot (no email, coins or inventory) and can't
-change the host's data. Presence and island channels use public Realtime topics
-(they share only user ids and positions); switching them to private Realtime
-channels with RLS is a recommended hardening step. Single-player progress is
-client-side by nature; any future trading must be validated by the server.
+**Security:** passwords are salted and hashed (PBKDF2-SHA256); devices keep a
+random sign-in token (stored hashed on the server), never the password; sign-in
+attempts are rate-limited. The server checks every friend action (you can only
+touch your own requests and friendships), only friends can load your island or
+join its live channel, and visits can be switched off. Island snapshots are
+cleaned on the server to public layout data only (no coins or inventory). The
+server only serves the game files — never `server.py` or the data file.
+Single-player progress is client-side by nature; future trading must be
+validated by the server.
 
-**Verified so far:** the SQL migration parses with the real PostgreSQL parser;
-the sync engine passes 9 scenario tests against an in-memory stand-in for the
-`saves` table; offline mode and island visits were tested in the browser.
-**Not yet verified against a live Supabase project** (needs your credentials):
-sign-up/sign-in emails, real cloud uploads, friend requests, presence and live
-movement between two real accounts.
+**Verified:** 44 end-to-end server checks with real WebSocket clients (accounts,
+conflicts, permissions, presence, movement relay, restart persistence), and a
+two-browser test through the real game UI: sign up, upload, add friend,
+accept, see each other online, visit, see each other walk, leave, reload and
+stay signed in. There is no email, so there is no password reset — players can
+change their password while signed in.
 
 ## Credits
 

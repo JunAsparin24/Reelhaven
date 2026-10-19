@@ -8,3 +8,5 @@ Thumbs.db
 # local online configuration (contains your project keys)
 config.json
 .env
+# server data (accounts, saves)
+server-data/

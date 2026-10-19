@@ -5,9 +5,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "npx --yes serve -l 5173 .",
-    "dev": "npx --yes serve -l 5173 .",
-    "test": "echo \"Start the server, then open http://localhost:5173/tests/test.html\""
+    "start": "python server.py",
+    "dev": "python server.py",
+    "test": "echo \"Run python server.py, then open http://localhost:8000/tests/test.html (tests are served by any static server)\""
   },
   "license": "UNLICENSED"
 }

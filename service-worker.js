@@ -1,6 +1,6 @@
 // Service worker: network-first for the game's own files (so updates appear
 // immediately during development), with a cache fallback for offline play.
-const CACHE = 'reelhaven-v2';
+const CACHE = 'reelhaven-v3';
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html', './manifest.json'])).catch(() => {}));
@@ -17,11 +17,8 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   const sameOrigin = url.origin === self.location.origin;
   const isFont = url.hostname.endsWith('fonts.googleapis.com') || url.hostname.endsWith('fonts.gstatic.com');
-  // The Supabase client library (pinned version) is cached for offline starts;
-  // API calls to Supabase itself are never cached.
-  const isLib = url.hostname === 'cdn.jsdelivr.net' && url.pathname.startsWith('/npm/@supabase/');
-  if (!sameOrigin && !isFont && !isLib) return;
-  if (sameOrigin && url.pathname.endsWith('/config.json')) return;
+  if (!sameOrigin && !isFont) return;
+  if (sameOrigin && url.pathname.startsWith('/api/')) return;   // server status is never cached
   event.respondWith(
     fetch(req).then(res => {
       if (res && (res.ok || res.type === 'opaque')) {

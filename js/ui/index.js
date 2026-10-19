@@ -277,7 +277,7 @@ export class UI {
     const el = this.el?.sync;
     if (!el) return;
     if (!c || !this.online.auth.signedIn) { el.hidden = true; return; }
-    const map = { synced: ['check', 'Synced'], syncing: ['island', 'Syncing…'], local: ['island', 'Saved locally'], offline: ['rain', 'Offline — will sync'], failed: ['storm', 'Sync failed — retrying'], conflict: ['quest', 'Choose a save'], paused: ['lock', 'Cloud sync paused'] };
+    const map = { synced: ['check', 'Synced'], syncing: ['island', 'Syncing…'], local: ['island', 'Syncing soon'], offline: ['rain', 'Offline — will sync'], failed: ['storm', 'Sync failed — retrying'], conflict: ['quest', 'Choose a save'], paused: ['lock', 'Cloud sync paused'] };
     const [ic, text] = map[c.status] || ['island', 'Cloud ready'];
     el.hidden = false;
     el.className = 'hud-note sync-note hud-glass ' + c.status;
@@ -298,12 +298,12 @@ export class UI {
   /** Load a friend's public island snapshot and go visit. */
   async visitFriend(fr) {
     try {
-      const snap = await this.online.social.snapshotOf(fr.other_id);
-      if (!snap?.data?.islands?.length) { toast(`${fr.display_name} hasn’t synced an island yet.`, 'island'); return; }
-      const go = islandId => { closeSheet(true); this.game.startVisit({ hostId: fr.other_id, hostName: fr.display_name, snapshot: snap.data, islandId }); };
+      const snap = await this.online.social.snapshotOf(fr.user);
+      if (!snap?.data?.islands?.length) { toast(`${fr.name} hasn’t synced an island yet.`, 'island'); return; }
+      const go = islandId => { closeSheet(true); this.game.startVisit({ hostId: fr.user, hostName: fr.name, snapshot: snap.data, islandId }); };
       if (snap.data.islands.length === 1) { go(snap.data.islands[0].id); return; }
       let close;
-      close = modal(h('div.confirm', h('h3', `Visit ${fr.display_name}`), h('p', 'Which island would you like to see?'),
+      close = modal(h('div.confirm', h('h3', `Visit ${fr.name}`), h('p', 'Which island would you like to see?'),
         h('div.list', snap.data.islands.map(i => button(`${i.name} · ${i.placements.length} things built`, () => { close(); go(i.id); }, { cls: 'wide', iconName: 'boat' }))),
         h('div.row.end', button('Cancel', () => close(), { cls: 'ghost' }))));
     } catch (err) {

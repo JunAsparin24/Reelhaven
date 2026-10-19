@@ -3,9 +3,10 @@
 // Ownership of data:
 //   * The local save (save.js) is always what the game plays from — the game
 //     works offline and as a guest with no account.
-//   * When signed in, the account's row in `saves` is the cloud copy. Each
-//     write carries the revision we last saw; the server only accepts
-//     revision + 1, so two devices can never silently overwrite each other.
+//   * When signed in, the account's save on the server is the cloud copy.
+//     Each upload says which revision it was based on; the server only accepts
+//     it if that is still the latest, so two devices can't silently overwrite
+//     each other.
 //   * Local sync metadata (which account the local save belongs to, the last
 //     synced revision, whether there are unsynced changes) lives under
 //     SYNC_KEY.
@@ -50,44 +51,30 @@ export function deviceLabel() {
   return `${os} · ${br}`;
 }
 
-/** Supabase implementation of the save backend (tests use an in-memory one). */
-export class SupabaseSaveBackend {
-  constructor(sb, userId) { this.sb = sb; this.userId = userId; }
+/** Save backend on the Reelhaven server (tests use an in-memory one). */
+export class ServerSaveBackend {
+  constructor(net) { this.net = net; }
 
   async fetch() {
-    const { data, error } = await this.sb.from('saves')
-      .select('data, revision, save_version, updated_at, client_saved_at, device_label')
-      .eq('user_id', this.userId).maybeSingle();
-    if (error) throw error;
-    return data;
+    const { save } = await this.net.request('save_get');
+    if (!save) return null;
+    return { data: save.data, revision: save.revision, updated_at: save.updatedAt, device_label: save.device };
   }
 
-  async insert(row) {
-    const { data, error } = await this.sb.from('saves')
-      .insert({ user_id: this.userId, ...row }).select('revision, updated_at').single();
-    if (error) {
-      if (error.code === '23505') return null;   // someone created it first → conflict
-      throw error;
+  async put(row, base) {
+    try {
+      return await this.net.request('save_put', { data: row.data, base, device: row.device_label });
+    } catch (err) {
+      if (err.code === 'conflict') return null;   // another device saved first
+      throw err;
     }
-    return data;
   }
 
-  async update(row, expectedRevision) {
-    const { data, error } = await this.sb.from('saves')
-      .update({ ...row, revision: expectedRevision + 1 })
-      .eq('user_id', this.userId).eq('revision', expectedRevision)
-      .select('revision, updated_at');
-    if (error) throw error;
-    return data && data.length ? data[0] : null;   // no row → another device wrote first
-  }
+  insert(row) { return this.put(row, 0); }
+  update(row, expectedRevision) { return this.put(row, expectedRevision); }
 
-  async publishSnapshot(snapshot, profileFields) {
-    const a = await this.sb.from('island_snapshots').upsert({ user_id: this.userId, data: snapshot });
-    if (a.error) throw a.error;
-    if (profileFields) {
-      const b = await this.sb.from('profiles').update(profileFields).eq('id', this.userId);
-      if (b.error) throw b.error;
-    }
+  async publishSnapshot(snapshot) {
+    await this.net.request('snapshot_put', { data: snapshot });
   }
 }
 
@@ -138,8 +125,8 @@ export class CloudSync {
     if (!a.enabled) return null;
     if (a.status === 'offline') return { signedIn: false, text: 'Online services unreachable — playing offline' };
     if (!a.signedIn) return { signedIn: false, text: 'Not signed in — saves stay on this device' };
-    const name = a.profile?.display_name || 'Signed in';
-    const s = { synced: 'cloud save up to date', syncing: 'syncing…', offline: 'offline — will sync later', failed: 'sync failed — will retry', conflict: 'needs your choice', paused: 'cloud sync paused', local: 'saved on device' }[this.status] || '';
+    const name = a.profile?.name || 'Signed in';
+    const s = { synced: 'cloud save up to date', syncing: 'syncing…', offline: 'offline — will sync later', failed: 'sync failed — will retry', conflict: 'needs your choice', paused: 'cloud sync paused', local: 'syncing soon' }[this.status] || '';
     return { signedIn: true, text: `${name}${s ? ' · ' + s : ''}` };
   }
 
@@ -330,7 +317,7 @@ export class CloudSync {
     if (this.lastPublish && this.now() - this.lastPublish < 60_000) return;
     this.lastPublish = this.now();
     try {
-      await this.backend.publishSnapshot?.(islandSnapshot(state), { level: state.player.level, look: state.player.look });
+      await this.backend.publishSnapshot?.(islandSnapshot(state));
     } catch (err) {
       console.warn('Snapshot publish failed', err);
     }

@@ -1,32 +1,23 @@
-# Render Blueprint — deploys Reelhaven as a free Static Site.
-# In Render: New + → Blueprint → pick this repository.
-# Online features: set SUPABASE_URL and SUPABASE_ANON_KEY under Environment
-# (see README → Online setup). Without them the game runs offline.
+# Render Blueprint — runs Reelhaven's server (server.py) as a Docker web
+# service, the same way FriendZone runs. In Render: New + → Blueprint → pick
+# this repository → Apply.
+#
+# IMPORTANT — keeping accounts and saves:
+#   Render's free instances have no persistent disk, so the data file is wiped
+#   whenever the service restarts, redeploys or sleeps after ~15 minutes idle.
+#   Players' islands are still safe on their own devices (and re-upload when
+#   they sign in), but *accounts and friend lists* reset. To keep them, switch
+#   the plan to "starter" and uncomment the disk below (Render charges for both).
 services:
   - type: web
-    name: tide-and-town
-    runtime: static
-    # No compile step: copy the game files into dist/ and write config.json.
-    buildCommand: mkdir -p dist && cp -r index.html manifest.json service-worker.js css js data assets dist/ && sh tools/write-config.sh dist/config.json
-    staticPublishPath: dist
-    pullRequestPreviewsEnabled: false
+    name: reelhaven
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
     envVars:
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
-      - key: GOOGLE_AUTH_ENABLED
-        value: "false"
-    headers:
-      - path: /service-worker.js
-        name: Cache-Control
-        value: no-cache
-      - path: /index.html
-        name: Cache-Control
-        value: no-cache
-      - path: /config.json
-        name: Cache-Control
-        value: no-cache
-      - path: /*
-        name: X-Content-Type-Options
-        value: nosniff
+      - key: RH_DATA
+        value: /data/reelhaven.json
+    # disk:
+    #   name: reelhaven-data
+    #   mountPath: /data
+    #   sizeGB: 1
