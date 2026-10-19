@@ -155,10 +155,6 @@ export class AccountUI {
       try { await a.updateProfile({ allowVisits: e.target.checked }); toast(e.target.checked ? 'Friends can visit your island.' : 'Island visits turned off.', 'island'); }
       catch (err) { e.target.checked = !e.target.checked; toast(friendlyError(err), null, 'error'); }
     } } });
-    const coop = h('input', { type: 'checkbox', checked: !!p.allowCoop, on: { change: async e => {
-      try { await a.updateProfile({ allowCoop: e.target.checked }); toast(e.target.checked ? 'Friends can now build on your island while you’re there.' : 'Building together turned off.', 'build'); }
-      catch (err) { e.target.checked = !e.target.checked; toast(friendlyError(err), null, 'error'); }
-    } } });
     const syncBtn = button('Sync now', () => busy(syncBtn, msg, async () => {
       const res = await this.cloud.reconcile();
       if (res.state && this.ui.game.mode === 'play') this.online.applyState(res.state);
@@ -176,8 +172,7 @@ export class AccountUI {
           catch { toast('Copy not available — your code is ' + p.code, 'friends'); }
         }, { cls: 'small ghost' })),
       h('div.form-inline', name.el, saveName),
-      h('label.setting.toggle', h('span', 'Let friends visit my island', h('small', 'They can walk around your island.')), visits),
-      h('label.setting.toggle', h('span', 'Let friends build with me', h('small', 'While you’re on your island, visiting friends can fish, gather, and place or move buildings and decorations (they pay with their own coins).')), coop),
+      h('label.setting.toggle', h('span', 'Let friends visit my island', h('small', 'Friends can look around your island (to play together, host a game from Friends).')), visits),
       h('div.acct-sync', icon('island'), h('div', h('b', status?.text || 'Cloud save'), h('small', synced ? 'Last synced ' + new Date(synced).toLocaleString() : 'Not synced yet'))),
       msg,
       h('div.row.wrap.end',

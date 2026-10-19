@@ -199,6 +199,11 @@ class Server:
         self.store = store
         self.clients = set()
         self.rooms = {}             # (host, island) -> set(Client)
+        # Hosted multiplayer games: host -> {"code", "members": set(usernames)}.
+        # Joined players may build / fish / gather on the host's island;
+        # visitors (friends who aren't in the game) can only look around.
+        self.sessions = {}
+        self.session_codes = {}     # invite code -> host
 
     # ------------------------------------------------------------ helpers
     def online_users(self):
@@ -206,13 +211,13 @@ class Server:
 
     def account_view(self, user):
         a = self.store.accounts[user]
-        return {"username": user, "name": a["name"], "code": a["code"], "allowVisits": a.get("allowVisits", True), "allowCoop": a.get("allowCoop", False),
+        return {"username": user, "name": a["name"], "code": a["code"], "allowVisits": a.get("allowVisits", True),
                 "level": a.get("level", 1), "look": a.get("look", {})}
 
     def card(self, user):
         a = self.store.accounts[user]
         return {"user": user, "name": a["name"], "code": a["code"], "level": a.get("level", 1), "look": a.get("look", {}),
-                "allowVisits": a.get("allowVisits", True), "allowCoop": a.get("allowCoop", False)}
+                "allowVisits": a.get("allowVisits", True)}
 
     def friends_of(self, user):
         out = []
@@ -362,8 +367,6 @@ class Server:
             a["name"] = name
         if "allowVisits" in m:
             a["allowVisits"] = bool(m["allowVisits"])
-        if "allowCoop" in m:
-            a["allowCoop"] = bool(m["allowCoop"])
         self.store.mark()
         self.notify_friends_changed(*self.friends_of(c.user))
         return {"account": self.account_view(c.user)}
@@ -440,7 +443,6 @@ class Server:
             rel = "none" if not f else "friend" if f["status"] == "accepted" else "outgoing" if f["a"] == c.user else "incoming"
         card = self.card(user)
         card.pop("allowVisits", None)
-        card.pop("allowCoop", None)
         return {"player": {**card, "relation": rel}}
 
     def on_friend_request(self, c, m):
@@ -514,13 +516,18 @@ class Server:
         return {}
 
     # ------------------------------------------------------------ visits
+    def is_member(self, user, host):
+        sess = self.sessions.get(host)
+        return bool(sess and user in sess["members"])
+
     def on_visit_get(self, c, m):
         self.require(c)
         host = clean_text(m.get("user"), 16).lower()
         a = self.store.accounts.get(host)
-        if not a or not self.store.are_friends(c.user, host):
+        member = self.is_member(c.user, host)
+        if not a or not (member or self.store.are_friends(c.user, host)):
             raise ApiError("You can only visit your friends' islands.", "forbidden")
-        if not a.get("allowVisits", True):
+        if not member and not a.get("allowVisits", True):
             raise ApiError(f"{a['name']} has island visits turned off.", "forbidden")
         snap = self.store.snapshots.get(host)
         return {"snapshot": snap}
@@ -531,10 +538,13 @@ class Server:
         island = str(m.get("island", ""))
         if island not in ISLANDS or host not in self.store.accounts:
             raise ApiError("That island doesn't exist.", "not_found")
-        if host != c.user and not self.store.are_friends(c.user, host):
+        if host != c.user and not (self.store.are_friends(c.user, host) or self.is_member(c.user, host)):
             raise ApiError("You can only visit your friends' islands.", "forbidden")
         self.leave_room(c)
         key = (host, island)
+        # When the host sails to another island, joined players follow.
+        if host == c.user and host in self.sessions:
+            self.push_session(host, {"t": "session_move", "host": host, "island": island})
         c.room = key
         c.pos = self.clean_pos(m)
         self.rooms.setdefault(key, set()).add(c)
@@ -584,10 +594,8 @@ class Server:
             raise ApiError("You're not visiting anyone.", "bad")
         host = c.room[0]
         a = self.store.accounts.get(host)
-        if not a or not self.store.are_friends(c.user, host):
-            raise ApiError("You can only build on your friends' islands.", "forbidden")
-        if not a.get("allowCoop", False):
-            raise ApiError(f"{a['name']} hasn't turned on building together.", "forbidden")
+        if not a or not self.is_member(c.user, host):
+            raise ApiError("Only players who joined the game can build here — visitors can just look around.", "forbidden")
         hc = self.room_host(c)
         if not hc:
             raise ApiError(f"{a['name']} needs to be on this island for you to build here.", "host_away")
@@ -646,6 +654,127 @@ class Server:
                     self.push_peers(key)
             c.room = None
 
+    # ------------------------------------------------------------ hosted games
+    def host_island(self, host):
+        for o in self.clients:
+            if o.user == host and o.room and o.room[0] == host:
+                return o.room[1]
+        return "sunny"
+
+    def session_view(self, host):
+        sess = self.sessions[host]
+        return {"code": sess["code"], "members": [{"user": u, "name": self.store.accounts[u]["name"]} for u in sorted(sess["members"]) if u in self.store.accounts]}
+
+    def push_session(self, host, msg):
+        online = self.online_users()
+        for u in self.sessions.get(host, {}).get("members", ()):
+            if u in online:
+                online[u].ws.send(msg)
+
+    def push_members(self, host):
+        c = self.online_users().get(host)
+        if c and host in self.sessions:
+            c.ws.send({"t": "session", **self.session_view(host)})
+
+    def ensure_session(self, host):
+        if host not in self.sessions:
+            while True:
+                code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(6))
+                if code not in self.session_codes:
+                    break
+            self.sessions[host] = {"code": code, "members": set()}
+            self.session_codes[code] = host
+        return self.sessions[host]
+
+    def end_session(self, host, reason):
+        sess = self.sessions.pop(host, None)
+        if not sess:
+            return
+        self.session_codes.pop(sess["code"], None)
+        online = self.online_users()
+        for u in sess["members"]:
+            if u in online:
+                online[u].ws.send({"t": "session_end", "host": host, "reason": reason})
+
+    def on_host_start(self, c, m):
+        self.require(c)
+        self.ensure_session(c.user)
+        return self.session_view(c.user)
+
+    def on_host_status(self, c, m):
+        self.require(c)
+        return self.session_view(c.user) if c.user in self.sessions else {"code": None, "members": []}
+
+    def on_host_stop(self, c, m):
+        self.require(c)
+        self.end_session(c.user, "stopped")
+        return {}
+
+    def on_host_kick(self, c, m):
+        self.require(c)
+        sess = self.sessions.get(c.user)
+        user = clean_text(m.get("user"), 16).lower()
+        if sess and user in sess["members"]:
+            sess["members"].discard(user)
+            target = self.online_users().get(user)
+            if target:
+                target.ws.send({"t": "session_end", "host": c.user, "reason": "removed"})
+        self.push_members(c.user)
+        return {}
+
+    def join(self, c, host):
+        if host == c.user:
+            raise ApiError("That's your own game!", "self")
+        if host not in self.online_users():
+            raise ApiError("The host isn't online right now.", "host_away")
+        sess = self.sessions[host]
+        sess["members"].add(c.user)
+        hc = self.online_users()[host]
+        hc.ws.send({"t": "session_joined", "user": c.user, "name": self.store.accounts[c.user]["name"]})
+        self.push_members(host)
+        return {"host": host, "name": self.store.accounts[host]["name"], "island": self.host_island(host)}
+
+    def on_join_code(self, c, m):
+        self.require(c)
+        self.rate_limit(c)
+        code = clean_text(m.get("code"), 6).upper()
+        host = self.session_codes.get(code)
+        if not host:
+            c.attempts.append(time.time())
+            raise ApiError("That invite code isn't active. Check it with the host.", "not_found")
+        return self.join(c, host)
+
+    def on_invite(self, c, m):
+        """Host invites a friend; the friend gets a popup and can join."""
+        self.require(c)
+        user = clean_text(m.get("user"), 16).lower()
+        if not self.store.are_friends(c.user, user):
+            raise ApiError("You can only invite friends.", "forbidden")
+        target = self.online_users().get(user)
+        if not target:
+            raise ApiError(f"{self.store.accounts[user]['name']} is offline.", "offline")
+        sess = self.ensure_session(c.user)
+        sess.setdefault("invited", set()).add(user)
+        target.ws.send({"t": "invite", "from": c.user, "name": self.store.accounts[c.user]["name"], "code": sess["code"]})
+        return self.session_view(c.user)
+
+    def on_join_invite(self, c, m):
+        self.require(c)
+        host = clean_text(m.get("host"), 16).lower()
+        sess = self.sessions.get(host)
+        if not sess or c.user not in sess.get("invited", set()):
+            raise ApiError("That invite has expired.", "not_found")
+        return self.join(c, host)
+
+    def on_session_leave(self, c, m):
+        self.require(c)
+        host = clean_text(m.get("host"), 16).lower()
+        sess = self.sessions.get(host)
+        if sess and c.user in sess["members"]:
+            sess["members"].discard(c.user)
+            self.push_members(host)
+        return {}
+
     def on_ping(self, c, m):
         return {}
 
@@ -654,6 +783,14 @@ class Server:
         self.leave_room(c)
         if c.user:
             user, c.user = c.user, None
+            still_here = any(o.user == user for o in self.clients)
+            if not still_here:
+                if user in self.sessions:
+                    self.end_session(user, "host_left")
+                for host, sess in list(self.sessions.items()):
+                    if user in sess["members"]:
+                        sess["members"].discard(user)
+                        self.push_members(host)
             self.push_presence(user)
 
 

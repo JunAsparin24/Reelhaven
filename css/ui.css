@@ -316,3 +316,12 @@
 .visit-banner[hidden] { display: none; }
 .visit-banner small { font-weight: 600; opacity: 0.85; }
 #app.visiting .nav-btn[data-tab="build"] { opacity: 0.45; }
+
+/* ---------- multiplayer box */
+.mp-box { background: #eef6f3; box-shadow: 0 0 0 2px var(--ink); padding: 2px 10px 10px; margin: 6px 2px 12px; }
+.mp-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.mp-row .item-sub { font-size: 0.74rem; color: var(--muted); }
+.mp-code { display: flex; align-items: center; gap: 6px; background: var(--cream); padding: 6px 10px; margin: 6px 0; box-shadow: 0 0 0 2px var(--ink); }
+.mp-code > div { flex: 1; }
+.mp-code small { display: block; font-size: 0.7rem; color: var(--muted); }
+.mp-code b { font-size: 1.3rem; letter-spacing: 0.18em; color: var(--deep); }

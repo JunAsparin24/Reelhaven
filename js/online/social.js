@@ -39,6 +39,32 @@ export class Social {
       p.resolve(m);
     });
     this.coopPending = new Map();
+    // Hosted multiplayer games.
+    this.hosting = null;            // { code, members: [{user, name}] } while I host
+    this.joined = null;             // { host, name } while I'm in someone's game
+    this.handlers = {};             // set by the UI: onInvite, onJoined, onSessionEnd, onSessionMove
+    net.on('session', m => { this.hosting = { code: m.code, members: m.members || [] }; this.emit('session'); });
+    net.on('session_joined', m => this.handlers.onJoined?.(m));
+    net.on('invite', m => this.handlers.onInvite?.(m));
+    net.on('session_end', m => {
+      if (this.joined && this.joined.host === m.host) { this.joined = null; this.handlers.onSessionEnd?.(m); }
+      this.emit('session');
+    });
+    net.on('session_move', m => { if (this.joined && this.joined.host === m.host) this.handlers.onSessionMove?.(m); });
+  }
+
+  // ------------------------------------------------------------ hosted games
+  async hostStart() { const r = await this.net.request('host_start'); this.hosting = r; this.emit('session'); return r; }
+  async hostStop() { await this.net.request('host_stop'); this.hosting = null; this.emit('session'); }
+  async hostStatus() { const r = await this.net.request('host_status'); this.hosting = r.code ? r : null; this.emit('session'); return this.hosting; }
+  async kick(user) { await this.net.request('host_kick', { user }); }
+  async invite(user) { const r = await this.net.request('invite', { user }); this.hosting = r; this.emit('session'); return r; }
+  /** Join by invite code or by an invite from a friend. Resolves { host, name, island }. */
+  async joinCode(code) { const r = await this.net.request('join_code', { code }); this.joined = { host: r.host, name: r.name }; this.emit('session'); return r; }
+  async joinInvite(host) { const r = await this.net.request('join_invite', { host }); this.joined = { host: r.host, name: r.name }; this.emit('session'); return r; }
+  async leaveSession() {
+    const j = this.joined; this.joined = null; this.emit('session');
+    if (j) { try { await this.net.request('session_leave', { host: j.host }); } catch { /* offline */ } }
   }
 
   get net() { return this.auth.net; }
@@ -67,7 +93,7 @@ export class Social {
   /** After (re)connecting: tell the server our status again. */
   resync() { this.setStatus(this.status); }
 
-  clear() { this.online = new Map(); this.room = null; this.emit(); }
+  clear() { this.online = new Map(); this.room = null; this.hosting = null; this.joined = null; this.emit(); }
 
   // ------------------------------------------------------------ co-op
   /** Visitor → host: ask to place / move something. Resolves { ok, error }. */

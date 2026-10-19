@@ -251,7 +251,7 @@ export class UI {
   // ---------------------------------------------------------------- features
   openBuild() {
     const v = this.game.visit;
-    if (v && !v.coop) { toast(`${v.hostName} hasn’t turned on building together, so you can only look around.`, 'build'); return; }
+    if (v && !v.member) { toast('You’re visiting, so you can only look around. Join their game to build.', 'build'); return; }
     if (v && !v.hostHere) { toast(`${v.hostName} needs to be on this island for you to build.`, 'build'); return; }
     if (this.game.fishing) this.game.stopFishing();
     this.open('build');
@@ -267,6 +267,7 @@ export class UI {
   attachOnline(online) {
     this.online = online;
     this.account = new AccountUI(this, online);
+    this.wireSessions();
     online.auth.on(type => { if (type === 'change') { this.refreshSync(); if (this.title.visible && !this.titleRefreshQueued) { this.titleRefreshQueued = true; setTimeout(() => { this.titleRefreshQueued = false; if (!modalOpen()) this.title.refresh(); }, 50); } } });
     return { chooseSave: (l, c, w) => this.account.chooseSave(l, c, w), confirmUpload: l => this.account.confirmUpload(l) };
   }
@@ -293,8 +294,50 @@ export class UI {
     this.app.classList.toggle('visiting', !!v);
     if (!v) { el.hidden = true; return; }
     el.hidden = false;
-    el.replaceChildren(icon('island'), h('span', `${v.hostName}’s ${v.islandName}`, h('small', (v.hostHere ? ' · host is here' : ' · host is away') + (v.coop ? ' · building together' : ''))),
+    el.replaceChildren(icon('island'), h('span', `${v.hostName}’s ${v.islandName}`, h('small', (v.member ? ' · playing together' : ' · visiting') + (v.hostHere ? '' : ' · host is away'))),
       button('Leave', () => this.game.leaveVisit(), { cls: 'small', iconName: 'home' }));
+  }
+
+  /** Join a hosted game; from the title screen your own game loads first. */
+  async joinHosted(res) {
+    closeSheet(true);
+    if (this.game.mode !== 'play') {
+      if (!this.title.loaded?.state) { toast('Start a game first, then you can join friends.', 'island'); this.online.social.leaveSession(); return; }
+      await this.title.continueGame();
+      setTimeout(() => this.game.joinGame(res), 900);
+      return;
+    }
+    this.game.joinGame(res);
+  }
+
+  /** Popups and events for hosted games. */
+  wireSessions() {
+    const social = this.online.social;
+    social.handlers.onInvite = m => {
+      sfx('quest');
+      let close;
+      close = modal(h('div.confirm',
+        h('h3', `${m.name} invited you!`),
+        h('p', `Join ${m.name}’s game to fish, gather and build together on their island. Your own island and progress stay safe.`),
+        h('div.row.end',
+          button('Not now', () => close(), { cls: 'ghost' }),
+          button('Join game', async () => {
+            close();
+            try { this.joinHosted(await social.joinInvite(m.from)); }
+            catch (err) { toast(friendlyError(err), null, 'error'); }
+          }, { cls: 'primary', iconName: 'boat' }))), { cls: 'invite-modal' });
+    };
+    social.handlers.onJoined = m => toast(`${m.name} joined your game!`, 'friends', 'good');
+    social.handlers.onSessionEnd = m => {
+      const v = this.game.visit;
+      const why = { stopped: 'The host closed the game.', host_left: 'The host left.', removed: 'The host removed you from the game.' }[m.reason] || 'The game ended.';
+      toast(why + ' Heading home.', 'home');
+      if (v && v.member && v.hostId === m.host) { v.member = false; this.game.leaveVisit(); }
+    };
+    social.handlers.onSessionMove = m => {
+      const v = this.game.visit;
+      if (v && v.member && v.hostId === m.host && v.islandId !== m.island) this.game.joinGame({ host: m.host, name: v.hostName, island: m.island });
+    };
   }
 
   /** Load a friend's public island snapshot and go visit. */
@@ -311,7 +354,7 @@ export class UI {
     try {
       const snap = await this.online.social.snapshotOf(fr.user);
       if (!snap?.data?.islands?.length) { toast(`${fr.name} hasn’t synced an island yet.`, 'island'); return; }
-      const go = islandId => { closeSheet(true); this.game.startVisit({ hostId: fr.user, hostName: fr.name, snapshot: snap.data, islandId, coop: !!fr.allowCoop }); };
+      const go = islandId => { closeSheet(true); this.game.startVisit({ hostId: fr.user, hostName: fr.name, snapshot: snap.data, islandId }); };
       if (snap.data.islands.length === 1) { go(snap.data.islands[0].id); return; }
       let close;
       close = modal(h('div.confirm', h('h3', `Visit ${fr.name}`), h('p', 'Which island would you like to see?'),

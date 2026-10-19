@@ -1,6 +1,6 @@
 // Friends hub (real friends when online; an honest offline state otherwise),
 // island postcards, and the player profile / wardrobe.
-import { h, icon, spriteImg, button, refreshSheet, fmt, confirmModal, sheetOpen } from '../dom.js';
+import { h, icon, spriteImg, button, refreshSheet, fmt, confirmModal, sheetOpen, closeSheet } from '../dom.js';
 import { friendlyError } from '../../online/auth.js';
 import { scaleUp } from '../../art/pixel.js';
 import { buildPortrait } from '../../art/characters.js';
@@ -24,6 +24,7 @@ function loadFriends(online, force = false) {
     online.social.on(what => {
       if (sheetOpen() !== 'friends') return;
       if (what === 'friends') loadFriends(online, true);
+      else if (what === 'session') refreshSheet();
       else refreshSheet();
     });
   }
@@ -72,7 +73,10 @@ export const friendsPanel = {
       }, { cls: 'small' }),
       button('Account', () => ctx.ui.openAccount(), { cls: 'small ghost' })));
 
+    multiplayerSection(body, ctx, online);
+
     // add friend
+    body.append(h('h4.section', 'Add a friend'));
     const input = h('input.field.code-input', { type: 'text', maxlength: '8', placeholder: 'FRIEND CODE', value: social.code, 'aria-label': 'Friend code',
       on: { input: e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); social.code = e.target.value; } } });
     const findBtn = button('Find', async () => {
@@ -129,7 +133,8 @@ export const friendsPanel = {
       const where = !on ? 'Offline' : pres?.status === 'visiting' ? 'Online · visiting an island' : 'Online';
       return h('div.item-row.friend', h('span.presence' + (on ? '.on' : ''), { title: where }), lookMini(fr.look),
         h('div.item-main', h('div.item-name', fr.name), h('div.item-sub', `${where} · Level ${fr.level}`)),
-        button('Visit', () => ctx.ui.visitFriend(fr), { cls: 'small primary', iconName: 'boat', disabled: !fr.allowVisits, title: fr.allowVisits ? 'Visit their island' : 'They have island visits turned off' }),
+        on ? button('Invite', act(() => online.social.invite(fr.user), `Invite sent to ${fr.name}!`), { cls: 'small primary', iconName: 'friends', title: 'Invite them to join your game' }) : null,
+        button('Visit', () => ctx.ui.visitFriend(fr), { cls: 'small', iconName: 'boat', disabled: !fr.allowVisits, title: fr.allowVisits ? 'Look around their island' : 'They have island visits turned off' }),
         button('Remove', () => {
           confirmModal('Remove friend?', `Remove ${fr.name} from your friends?`, 'Remove', act(() => online.social.remove(fr.id), 'Friend removed.'), { danger: true });
         }, { cls: 'small ghost' }));
@@ -143,6 +148,48 @@ export const friendsPanel = {
     profileCard(body, ctx, s);
   },
 };
+
+/** Host a game / invite code / join by code. */
+function multiplayerSection(body, ctx, online) {
+  const social = online.social;
+  if (!social.statusChecked) { social.statusChecked = true; social.hostStatus().catch(() => {}); }
+  const wrap = h('div.mp-box');
+  wrap.append(h('h4.section', 'Multiplayer'));
+  const err = e => toast(friendlyError(e), null, 'error');
+  const joined = social.joined;
+  if (joined) {
+    wrap.append(h('div.mp-row', icon('boat'), h('div.item-main', h('b', `Playing on ${joined.name}’s island`), h('div.item-sub', 'You can fish, gather and build here with them.')),
+      button('Leave', () => { closeSheet(true); ctx.game.leaveVisit(); }, { cls: 'small ghost' })));
+  }
+  const host = social.hosting;
+  if (host) {
+    wrap.append(h('div.mp-code', h('div', h('small', 'Your game is open · invite code'), h('b', host.code)),
+      button('Copy', async () => {
+        try { await navigator.clipboard.writeText(host.code); toast('Invite code copied!', 'check', 'good'); }
+        catch { toast('Your invite code is ' + host.code, 'friends'); }
+      }, { cls: 'small' }),
+      button('Stop hosting', () => social.hostStop().then(() => toast('Your game is closed.', 'home')).catch(err), { cls: 'small ghost' })));
+    if (host.members.length) {
+      wrap.append(h('div.list', host.members.map(m => h('div.item-row', icon('friends', 'item-icon'),
+        h('div.item-main', h('div.item-name', m.name), h('div.item-sub', 'In your game')),
+        button('Remove', () => social.kick(m.user).catch(err), { cls: 'small ghost' })))));
+    } else wrap.append(h('p.muted', 'Share the code, or tap Invite next to a friend. Players who join can fish, gather and build on your island while you’re here.'));
+  } else if (!joined) {
+    wrap.append(h('div.mp-row', h('div.item-main', h('b', 'Play together'), h('div.item-sub', 'Host a game so friends can join and build on your island with you.')),
+      button('Host a game', () => social.hostStart().then(() => toast('Your game is open!', 'friends', 'good')).catch(err), { cls: 'small primary', iconName: 'home' })));
+  }
+  if (!host) {
+    const code = h('input.field.code-input', { type: 'text', maxlength: '6', placeholder: 'INVITE CODE', 'aria-label': 'Invite code',
+      on: { input: e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); } } });
+    const join = button('Join', async () => {
+      if (code.value.length !== 6) { toast('Invite codes have 6 letters and numbers.', null, 'error'); return; }
+      try { ctx.ui.joinHosted(await social.joinCode(code.value)); } catch (e) { err(e); }
+    }, { cls: 'small primary' });
+    code.addEventListener('keydown', e => { if (e.key === 'Enter') join.click(); });
+    wrap.append(h('label.form-row', h('span', 'Enter invite code'), h('div.add-friend', code, join)));
+  }
+  body.append(wrap);
+}
 
 function profileCard(body, ctx, s) {
   if (!s) return;   // opened from the title screen before a game is loaded

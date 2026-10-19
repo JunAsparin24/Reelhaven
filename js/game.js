@@ -192,10 +192,13 @@ export class Game {
    * built from the snapshot; the visitor's own state (save, island, position,
    * inventory) is never modified and saving continues as normal.
    */
-  startVisit({ hostId, hostName, snapshot, islandId, coop = false }) {
+  startVisit({ hostId, hostName, snapshot, islandId, member = false }) {
     if (this.fishing) this.stopFishing();
     if (this.build.active) this.ui.closeBuild();
-    const isl = snapshot.islands.find(i => i.id === islandId) || snapshot.islands[0];
+    // Joined players may arrive before the host ever synced: start empty, the
+    // host's live layout arrives a moment later.
+    const islands = snapshot?.islands?.length ? snapshot.islands : [{ id: islandId || 'sunny', placements: [], flags: {} }];
+    const isl = islands.find(i => i.id === islandId) || (member ? { id: islandId, placements: [], flags: {} } : islands[0]);
     if (!isl || !ISLANDS[isl.id]) { toast('That island can’t be visited right now.', null, 'error'); return; }
     this.syncPlayerToState();
     this.ui.fade(() => {
@@ -204,7 +207,7 @@ export class Game {
         unlocked: true, visited: true, nodes: {}, gardens: {}, flags: { ...(isl.flags || {}) },
         placements: isl.placements.filter(p => p && typeof p.type === 'string').map((p, i) => ({ ...p, uid: 'visit' + i })),
       };
-      this.visit = { hostId, hostName, islandId: isl.id, islandName: isl.name || ISLANDS[isl.id].name, hostHere: false, coop };
+      this.visit = { hostId, hostName, islandId: isl.id, islandName: isl.name || ISLANDS[isl.id].name, hostHere: false, member };
       this.world = new World(isl.id, temp);
       this.renderer.setWorld(this.world);
       this.revealedSpots = new Set();
@@ -222,6 +225,7 @@ export class Game {
 
   leaveVisit() {
     if (!this.visit) return;
+    if (this.visit.member) this.ui.online?.social.leaveSession();
     this.ui.fade(() => {
       this.leaveChannel();
       this.visit = null;
@@ -432,14 +436,21 @@ export class Game {
   }
 
   /**
-   * While visiting: guests can talk to NPCs; with building-together on they
-   * can also fish, gather and shop (all progress goes to their own save).
-   * Things that would change the host's island directly stay off.
+   * Visitors can only look around and talk to NPCs. Players who joined the
+   * host's game can also fish, gather and shop (progress goes to their own
+   * save). Things that would change the host's island directly stay off.
    */
+  /** Join a hosted game (from an invite code or a friend's invite). */
+  async joinGame({ host, name, island }) {
+    let snap = null;
+    try { snap = (await this.ui.online.social.snapshotOf(host))?.data || null; } catch { /* start empty */ }
+    this.startVisit({ hostId: host, hostName: name, snapshot: snap, islandId: island, member: true });
+  }
+
   canUse(it) {
     if (!this.visit) return true;
     if (it.kind === 'npc') return true;
-    return this.visit.coop && ['spot', 'gather', 'shop', 'board'].includes(it.kind);
+    return this.visit.member && ['spot', 'gather', 'shop', 'board'].includes(it.kind);
   }
 
   // ---------------------------------------------------------------- co-op
@@ -504,7 +515,7 @@ export class Game {
   coopConfirm(b) {
     const g = b.ghost, v = this.visit;
     if (!b.type || !g) return { ok: false, message: 'Choose something to build first.' };
-    if (!v.coop) return { ok: false, message: `${v.hostName} hasn’t turned on building together.` };
+    if (!v.member) return { ok: false, message: 'Visitors can only look around — join the game to build.' };
     if (!v.hostHere) return { ok: false, message: `${v.hostName} needs to be on this island for you to build.` };
     if (!g.ok) return { ok: false, message: reasonText(g.reasons) };
     const s = getState();
