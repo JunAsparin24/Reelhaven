@@ -166,13 +166,13 @@ export class CloudSync {
     this.paused = false;
     this.setStatus('syncing');
 
-    // A save that belongs to a different account is never mixed in. If it has
-    // progress that never reached that account's cloud, it is archived on the
-    // device; otherwise it's already safe in their cloud and is removed here so
-    // the next person on this device can't see it.
+    // A save that belongs to a different account is never mixed in, but it is
+    // always kept as a restorable backup: the server copy may not exist any
+    // more (e.g. a server that lost its data), so the device copy can be the
+    // only one left.
     let localState = local;
     if (localState && this.meta.userId && this.meta.userId !== uid) {
-      if (this.meta.dirty) Save.archiveSave(localState, 'other-account-unsynced');
+      Save.archiveSave(localState, 'other-account');
       Save.wipe();
       localState = null;
       this.meta = { userId: null, revision: 0, dirty: false, syncedAt: null };

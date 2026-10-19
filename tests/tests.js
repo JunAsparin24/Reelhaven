@@ -374,14 +374,14 @@ test('cloud: offline keeps the local save and marks status offline', () => withC
   eq(res.state.player.name, 'Local'); eq(cloud.status, 'offline');
   clearTimeout(cloud.pushTimer);
 }));
-test('cloud: another account’s synced island is not mixed in', () => withCloud(async () => {
+test('cloud: another account’s island is not mixed in, but is kept as a backup', () => withCloud(async () => {
   save(island('Alice', 6));
   localStorage.setItem('tidetown.sync', JSON.stringify({ userId: 'user-alice', revision: 4, dirty: false }));
   const be = new MemoryBackend({ data: island('Bob', 2), revision: 1 });
   const { cloud, asked } = makeCloud(be, 'user-bob');
   const res = await cloud.reconcile();
   eq(asked.length, 0); eq(res.state.player.name, 'Bob');
-  assert(!Save.listArchives().some(a => a.name === 'Alice'), 'synced Alice save not left on device');
+  assert(Save.listArchives().some(a => a.name === 'Alice'), 'Alice’s island kept as a restorable backup');
 }));
 test('cloud: sign-out with unsynced progress keeps an archive', () => withCloud(async () => {
   const be = new MemoryBackend({ data: island('Me', 2), revision: 1 });
