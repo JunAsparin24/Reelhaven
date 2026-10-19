@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tide &amp; Town icon generator</title>
+<style>body{font-family:sans-serif;background:#263a58;color:#fff5df;padding:20px}canvas{image-rendering:pixelated;margin:8px;box-shadow:0 0 0 3px #2c2433}a{color:#69cfc9;display:block}</style>
+</head>
+<body>
+<h1>App icon generator</h1>
+<p>Renders the PWA icons from the game's own pixel art. Right-click to save, or use the links. Output goes in <code>assets/icons/</code>.</p>
+<div id="out"></div>
+<script type="module">
+import { paint } from '../js/art/pixel.js';
+import { buildFishSprite } from '../js/art/fish-art.js';
+import { palm } from '../js/art/objects.js';
+import { FISH_BY_ID } from '../data/fish-data.js';
+
+// 32x32 master icon: island with a palm under a sun, a fish leaping.
+function master() {
+  return paint(32, 32, p => {
+    p.rect(0, 0, 32, 32, '#69cfc9');
+    p.rect(0, 0, 32, 14, '#a8dff0');
+    p.ellipse(25, 6, 3, 3, '#f8dc7c');
+    for (let x = 0; x < 32; x += 4) p.hline(x, 17 + (x % 8 ? 0 : 1), 2, '#8fdcd0');
+    p.ellipse(13, 24, 11, 4, '#f4dead');
+    p.ellipse(13, 23, 8, 2.5, '#8cc78a');
+    p.rect(0, 28, 32, 4, '#3fa7b3');
+    const tree = palm(1, 0);
+    p.ctx.drawImage(tree, 0, 0, 36, 50, 2, -1, 18, 25);
+    const fish = buildFishSprite(FISH_BY_ID.golden_koi.art);
+    p.ctx.drawImage(fish, 0, 0, 26, 18, 18, 14, 13, 9);
+  });
+}
+
+const m = master();
+for (const size of [192, 512]) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const g = c.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  g.drawImage(m, 0, 0, size, size);
+  c.id = 'icon' + size;
+  document.getElementById('out').append(c);
+  const a = document.createElement('a');
+  a.href = c.toDataURL('image/png');
+  a.download = `icon-${size}.png`;
+  a.textContent = `Download icon-${size}.png`;
+  document.getElementById('out').append(a);
+}
+window.iconsReady = true;
+</script>
+</body>
+</html>

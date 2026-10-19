@@ -1,0 +1,50 @@
+/* Responsive adjustments. Portrait phones are the primary target; these rules
+   adapt the layout for small phones, landscape, tablets and desktop. */
+
+/* Very small phones */
+@media (max-width: 370px) {
+  .pinfo { max-width: 90px; }
+  .pill.clock .clock-text { display: none; }
+  .pill { padding: 2px 6px 2px 3px; font-size: 0.9rem; }
+  .fab { width: 52px; min-height: 52px; }
+  .fab span { display: none; }
+  #interact-btn { width: 76px; height: 76px; }
+  .ency-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+}
+
+@media (max-width: 480px) {
+  .clock-text .ampm { display: none; }
+  .pill.clock { padding-right: 6px; }
+  .pill.clock .save-dot { position: absolute; top: 2px; right: 2px; margin: 0; }
+}
+
+/* Short landscape phones: shrink chrome so the island stays visible */
+@media (max-height: 500px) and (orientation: landscape) {
+  #hud-top { padding-top: calc(3px + var(--safe-top)); padding-bottom: 4px; }
+  .nav-btn { min-height: 44px; flex-direction: row; gap: 6px; }
+  .nav-btn .px-icon { width: 24px; height: 24px; }
+  #side-buttons { top: 8px; gap: 8px; }
+  .fab { min-height: 48px; }
+  .sheet { max-height: calc(100% - 10px); left: 15%; right: 15%; }
+  #fishing-ui, #dialogue, #build-bar { max-width: 560px; }
+  .fish-msg { min-height: 1.4em; }
+  .action-btn { min-height: 54px; }
+  .quest-chip { top: 6px; }
+}
+
+/* Tablets and desktop: centred sheets that do not span the whole width */
+@media (min-width: 760px) {
+  .sheet { left: 50%; right: auto; width: min(640px, 92vw); transform: translate(-50%, 105%); bottom: 16px; max-height: calc(100% - 32px); }
+  .sheet.wide { width: min(860px, 94vw); }
+  .sheet.in { transform: translate(-50%, 0); }
+  .sheet.out { transform: translate(-50%, 105%); }
+  #nav { justify-content: center; grid-template-columns: repeat(4, minmax(90px, 140px)); }
+  #side-buttons { top: 64px; }
+  .quest-chip { max-width: 420px; }
+  .map-board { height: 360px; }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ency-card:hover, .build-card:hover:not(:disabled), .item-row.selectable:hover { filter: brightness(1.04); }
+  .nav-btn:hover:not(.active) { background: rgba(255, 255, 255, 0.06); }
+}

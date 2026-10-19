@@ -1,0 +1,13 @@
+{
+  "name": "tide-and-town",
+  "version": "1.0.0",
+  "description": "A cozy pixel-art fishing and island-building browser game.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "npx --yes serve -l 5173 .",
+    "dev": "npx --yes serve -l 5173 .",
+    "test": "echo \"Start the server, then open http://localhost:5173/tests/test.html\""
+  },
+  "license": "UNLICENSED"
+}

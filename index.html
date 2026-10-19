@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#247d91">
+  <meta name="description" content="Tide & Town — a cozy pixel-art fishing and island-building game.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Tide &amp; Town</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="assets/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/game.css">
+  <link rel="stylesheet" href="css/ui.css">
+  <link rel="stylesheet" href="css/mobile.css">
+</head>
+<body>
+  <div id="app" class="on-title">
+    <header id="hud-top" aria-label="Status"></header>
+    <main id="stage">
+      <canvas id="world" aria-label="Island world. Drag to move, tap to walk or interact."></canvas>
+      <div id="toasts" aria-live="polite"></div>
+      <section id="fishing-ui" aria-label="Fishing"></section>
+      <section id="build-bar" aria-label="Build mode"></section>
+      <section id="dialogue" role="dialog" aria-label="Conversation"></section>
+      <!-- menus live inside the stage so the top bar and nav stay tappable -->
+      <div id="sheet-layer"></div>
+    </main>
+    <nav id="nav" aria-label="Main"></nav>
+    <div id="modal-layer"></div>
+    <section id="title-screen" aria-label="Title screen"></section>
+    <div id="fade" aria-hidden="true"><span class="fade-label"></span></div>
+    <div id="boot-error" role="alert" hidden></div>
+    <noscript><p class="noscript">Tide &amp; Town needs JavaScript to run.</p></noscript>
+  </div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

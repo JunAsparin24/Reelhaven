@@ -1,0 +1,22 @@
+# Render Blueprint — deploys Tide & Town as a free Static Site.
+# In Render: New + → Blueprint → pick this repository. (Or New + → Static Site
+# with the same build command and publish directory.)
+services:
+  - type: web
+    name: tide-and-town
+    runtime: static
+    # No compile step: copy only the files the game needs into dist/.
+    buildCommand: mkdir -p dist && cp -r index.html manifest.json service-worker.js css js data assets dist/
+    staticPublishPath: dist
+    pullRequestPreviewsEnabled: false
+    headers:
+      # The service worker must always be re-checked so updates reach players.
+      - path: /service-worker.js
+        name: Cache-Control
+        value: no-cache
+      - path: /index.html
+        name: Cache-Control
+        value: no-cache
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
