@@ -6,8 +6,9 @@ import { ISLANDS, ISLAND_ORDER } from '../data/island-data.js';
 import { MAIN_QUESTS } from '../data/quest-data.js';
 import { defaultPlacements } from './world-gen.js';
 
-export const SAVE_VERSION = 3;
-export const GAME_VERSION = '1.0.0';
+export const SAVE_VERSION = 4;
+export const GAME_NAME = 'Reelhaven';
+export const GAME_VERSION = '2.0.0';
 
 let state = null;
 
@@ -26,7 +27,7 @@ export function uid(prefix = 'u') {
 }
 
 export function defaultSettings() {
-  return { music: 0.5, sfx: 0.7, reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches, haptics: true, tapToMove: true };
+  return { master: 1, music: 0.5, sfx: 0.7, footsteps: 0.8, ambience: 0.6, reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches, haptics: true, tapToMove: true };
 }
 
 export function createIslandState(id) {

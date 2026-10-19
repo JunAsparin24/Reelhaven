@@ -1,6 +1,6 @@
 // Runtime world for the current island: effective terrain (island flags
 // applied), objects, player-built placements, NPCs and the collision grid.
-import { buildIslandMap, T, WALKABLE, WATERY, BUILDABLE } from './world-gen.js';
+import { buildIslandMap, T, WALKABLE, WATERY, BUILDABLE, SURFACE } from './world-gen.js';
 import { TILE } from './art/tiles.js';
 import { ISLANDS } from '../data/island-data.js';
 import { NPCS } from '../data/npc-data.js';
@@ -50,6 +50,15 @@ export class World {
   applyFlags() {
     const flags = this.islandState.flags;
     if (flags.bridgeRepaired) for (let i = 0; i < this.terrain.length; i++) if (this.terrain[i] === T.X) this.terrain[i] = T.B;
+  }
+
+  /** Surface under a world-pixel position (for footsteps). Decorations like
+   *  stone paths override the ground they sit on. */
+  surfaceAt(px, py) {
+    const tx = Math.floor(px / TILE), ty = Math.floor(py / TILE);
+    const pl = this.placementAt(tx, ty);
+    if (pl && pl.type === 'stone_path') return 'stone';
+    return SURFACE[this.tile(tx, ty)] || 'grass';
   }
 
   tile(x, y) { return (x < 0 || y < 0 || x >= this.w || y >= this.h) ? T.W : this.terrain[y * this.w + x]; }

@@ -10,32 +10,25 @@ import { GAME_VERSION } from './state.js';
 import { FISH } from '../data/fish-data.js';
 import { ISLANDS } from '../data/island-data.js';
 
-export const ONLINE_CONFIG = {
-  provider: null,       // e.g. 'supabase'
-  url: '',              // project URL
-  anonKey: '',          // public anon key (never a service key)
-};
-
+/** Status shown when no backend is configured (see js/online/ for the real thing). */
 export function onlineStatus() {
-  if (!ONLINE_CONFIG.provider || !ONLINE_CONFIG.url) {
-    return { configured: false, connected: false, message: 'Online services are not set up for this build. Everything you do is saved on this device.' };
-  }
-  return { configured: true, connected: false, message: 'Online services are configured but not yet implemented in this version.' };
+  return { configured: false, connected: false, message: 'Online services are not set up for this copy of the game. Everything you do is saved on this device.' };
 }
 
 export const PLANNED_FEATURES = [
-  { icon: 'friends', title: 'Friends & island visits', text: 'Add friends and stroll around their islands to see their builds.' },
-  { icon: 'fish', title: 'Fishing competitions', text: 'Weekend tournaments with shared leaderboards.' },
+  { icon: 'island', title: 'Cloud saves', text: 'Keep your island safe and play it on any device.', live: true },
+  { icon: 'friends', title: 'Friends & island visits', text: 'Add friends by code and stroll around their islands.', live: true },
   { icon: 'sell', title: 'Trading', text: 'Swap spare fish and decorations, verified by the server.' },
-  { icon: 'island', title: 'Cloud saves', text: 'Keep your island safe and play on any device.' },
+  { icon: 'fish', title: 'Fishing competitions', text: 'Weekend tournaments with shared leaderboards.' },
   { icon: 'trophy', title: 'Community goals', text: 'Work together on island-wide projects.' },
 ];
 
-/** Public, read-only snapshot of an island — the format a server would store. */
+/** Public, read-only snapshot of an island — what friends load when visiting.
+ *  Contains no email, coins, inventory or other private data. */
 export function islandSnapshot(state) {
   const p = state.player;
   return {
-    schema: 1,
+    schema: 2,
     gameVersion: GAME_VERSION,
     name: p.name,
     level: p.level,
@@ -44,6 +37,7 @@ export function islandSnapshot(state) {
     speciesTotal: FISH.length,
     islands: Object.entries(state.islands).filter(([, v]) => v.unlocked).map(([id, v]) => ({
       id, name: ISLANDS[id].name,
+      flags: { bridgeRepaired: !!v.flags?.bridgeRepaired },
       placements: v.placements.map(({ type, x, y, rot }) => ({ type, x, y, rot })),
     })),
   };

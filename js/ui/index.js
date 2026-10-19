@@ -18,13 +18,38 @@ import { repairBridge, harvestGarden, BRIDGE_COST } from '../interactions.js';
 import { checkCost } from '../economy.js';
 import { capacity } from '../inventory.js';
 import { countBuilt } from '../building-count.js';
+import { nearbyInteractables } from '../interactions.js';
+import { Layout } from './layout.js';
+import { AccountUI } from './account-ui.js';
+import { friendlyError } from '../online/auth.js';
 
-const NAV = [
-  ['island', 'Island', 'island'],
+// Menu bar: one compact row of icon buttons (top-right in landscape,
+// bottom edge in portrait). null = visual separator.
+const MENU = [
+  ['inventory', 'Bag', 'bag'],
+  ['quests', 'Quests', 'quest'],
+  ['build', 'Build', 'build'],
+  null,
   ['encyclopedia', 'Fish', 'fish'],
   ['map', 'Map', 'map'],
   ['friends', 'Friends', 'friends'],
+  ['settings', 'Settings', 'gear'],
 ];
+
+/** Icon shown on the contextual action button for each kind of interaction. */
+function actionIcon(it) {
+  switch (it.kind) {
+    case 'spot': return 'rod';
+    case 'npc': return 'friends';
+    case 'shop': return 'shop';
+    case 'board': return 'quest';
+    case 'boat': return 'boat';
+    case 'bridge': return 'build';
+    case 'building': return { cottage: 'sleep', fishing_hut: 'worm', fish_market: 'order', crop_garden: 'flower', storage_shed: 'bag', lighthouse: 'map' }[it.placement.type] || 'home';
+    case 'gather': return { wood: 'wood', stone: 'stone', shell: 'shell', seaglass: 'seaglass', flower: 'flower', tidepool: 'shell', crystal: 'seaglass' }[it.obj.def.resource.item] || 'sparkle';
+    default: return 'sparkle';
+  }
+}
 
 export class UI {
   constructor() {
@@ -61,19 +86,21 @@ export class UI {
     this.el.clock = h('span.clock-text');
     this.el.saving = h('span.save-dot', { title: 'Saved', 'aria-live': 'polite' });
     top.append(
-      h('button.profile', { type: 'button', 'aria-label': 'Profile', on: { click: () => this.open('profile') } },
+      h('button.profile.hud-glass', { type: 'button', 'aria-label': 'Profile', on: { click: () => this.open('profile') } },
         h('div.portrait-wrap', this.el.portrait, this.el.level),
-        h('div.pinfo', h('div.prow', this.el.name), h('div.bar.xp', this.el.xpFill))),
-      h('div.wallet',
-        h('div.pill.coins', { title: 'Coins' }, icon('coin'), this.el.coins),
-        h('div.pill.pearls', { title: 'Pearls' }, icon('pearl'), this.el.pearls)),
-      h('div.pill.clock', { title: 'Time & weather' }, this.el.clockIcon, this.el.clock, this.el.saving),
-      h('button.icon-btn.settings', { type: 'button', 'aria-label': 'Settings', on: { click: () => this.open('settings') } }, icon('gear')));
+        h('div.pinfo', this.el.name, h('div.bar.xp', this.el.xpFill))),
+      h('div.pill.coins.hud-glass', { title: 'Coins' }, icon('coin'), this.el.coins),
+      h('div.pill.pearls.hud-glass', { title: 'Pearls' }, icon('pearl'), this.el.pearls),
+      h('div.pill.clock.hud-glass', { title: 'Time & weather' }, this.el.clockIcon, this.el.clock, this.el.saving));
 
     const nav = document.getElementById('nav');
     this.navButtons = {};
-    for (const [id, label, ic] of NAV) {
-      const b = h('button.nav-btn', { type: 'button', 'data-tab': id, on: { click: () => { sfx('click'); this.navTo(id); } } }, icon(ic), h('span', label));
+    this.el.questBadge = h('span.badge', { hidden: true }, '!');
+    for (const item of MENU) {
+      if (!item) { nav.append(h('span.nav-sep')); continue; }
+      const [id, label, ic] = item;
+      const b = h('button.nav-btn', { type: 'button', 'data-tab': id, 'aria-label': label, title: label, on: { click: () => { sfx('click'); this.navTo(id); } } },
+        icon(ic), h('span', label), id === 'quests' ? this.el.questBadge : null);
       this.navButtons[id] = b;
       nav.append(b);
     }
@@ -81,16 +108,34 @@ export class UI {
     const stage = document.getElementById('stage');
     // Safety net for browsers without overflow: clip.
     stage.addEventListener('scroll', () => { stage.scrollTop = 0; stage.scrollLeft = 0; });
-    this.el.questBadge = h('span.badge', { hidden: true }, '!');
-    this.el.side = h('div#side-buttons',
-      h('button.fab', { type: 'button', 'aria-label': 'Bag', on: { click: () => this.open('inventory') } }, icon('bag'), h('span', 'Bag')),
-      h('button.fab', { type: 'button', 'aria-label': 'Quests', on: { click: () => this.open('quests') } }, icon('quest'), h('span', 'Quests'), this.el.questBadge),
-      h('button.fab', { type: 'button', 'aria-label': 'Build', on: { click: () => this.openBuild() } }, icon('build'), h('span', 'Build')));
     this.el.questChip = h('button.quest-chip', { type: 'button', on: { click: () => this.open('quests') } });
-    this.el.interact = h('button#interact-btn', { type: 'button', 'aria-label': 'Interact', on: { click: () => { const t = this.game.interactTarget; if (t) this.game.interact(t); } } },
-      h('span.key', 'A'), h('span.verb'));
-    this.el.prompt = h('div#prompt', { 'aria-live': 'polite' });
-    stage.append(this.el.side, this.el.questChip, this.el.interact, this.el.prompt);
+    this.el.rotate = h('div.hud-note.rotate-hint.hud-glass', icon('sparkle'), h('span', 'Turn your phone sideways for the best view'));
+    this.el.info = document.getElementById('hud-info');
+    this.el.sync = h('div.hud-note.sync-note.hud-glass', { hidden: true, role: 'status' });
+    this.el.visit = h('div.visit-banner.hud-glass', { hidden: true });
+    this.el.info.append(this.el.visit, this.el.questChip, this.el.sync, this.el.rotate);
+    this.el.actions = document.getElementById('action-region');
+    this.layout = new Layout();
+  }
+
+  /** Render the contextual action buttons (only what is nearby, never stale). */
+  renderActions() {
+    const g = this.game;
+    const usable = g.mode === 'play' && !this.blocking() && !g.build.active && !g.fishing;
+    const list = usable ? nearbyInteractables(g, 3) : [];
+    const key = list.map(it => it.kind + ':' + it.verb + ':' + it.label).join('|');
+    if (key === this.actionKey) return;
+    this.actionKey = key;
+    this.actionList = list;
+    const kb = matchMedia('(hover: hover) and (pointer: fine)').matches;
+    // The closest object is the big primary action; others stack above it.
+    const nodes = list.map((it, i) => h('button.act' + (i === 0 ? '.primary' : ''), {
+      type: 'button', 'aria-label': it.verb + ' ' + it.label,
+      on: { click: e => { e.stopPropagation(); const cur = this.actionList?.[i]; if (cur) g.interact(cur); } },
+    },
+    h('span.key', icon(actionIcon(it))),
+    h('span.txt', h('span.verb', it.verb, i === 0 && kb ? h('kbd', 'E') : null), h('span.what', it.label))));
+    this.el.actions.replaceChildren(...nodes.reverse());
   }
 
   enterPlay() {
@@ -100,6 +145,7 @@ export class UI {
     clearUrlCache('portrait_player');
     document.documentElement.classList.toggle('reduced-motion', !!getState().settings.reducedMotion);
     this.refreshHud();
+    this.layout.measure();
     this.navTo('island');
     const s = getState();
     if (s.stats.fishCaught === 0 && s.quests.index === 0) {
@@ -140,14 +186,8 @@ export class UI {
     }
   }
 
-  /** CSS px at the bottom of the stage hidden by a panel (fishing, dialogue, build). */
-  obscuredBottom() {
-    for (const id of ['fishing-ui', 'dialogue', 'build-bar']) {
-      const el = document.getElementById(id);
-      if (el.classList.contains('show')) return el.offsetHeight + 12;
-    }
-    return 0;
-  }
+  /** CSS px of the stage covered by UI on each side (see layout.js). */
+  insets() { return this.layout.insets(); }
 
   /** Called every frame by the game; keep it cheap. */
   frame(dt) {
@@ -161,29 +201,17 @@ export class UI {
     }
     this.clockAcc = (this.clockAcc || 0) + dt;
     if (this.clockAcc > 0.5) { this.clockAcc = 0; this.updateClock(); }
-    const t = this.game.interactTarget;
-    const show = !!t && !this.blocking() && !this.game.build.active;
-    const key = show ? t.verb + '|' + t.label : '';
-    if (key !== this.lastPrompt) {
-      this.lastPrompt = key;
-      this.el.interact.classList.toggle('show', show);
-      this.el.prompt.classList.toggle('show', show);
-      if (show) {
-        this.el.interact.querySelector('.verb').textContent = t.verb;
-        const kb = matchMedia('(hover: hover) and (pointer: fine)').matches;
-        this.el.prompt.replaceChildren(h('b', t.label), h('span', kb ? ` — press E to ${t.verb.toLowerCase()}` : ` — tap ${t.verb}`));
-      }
-    }
+    this.app.classList.toggle('talking', this.dialogueUI.open);
+    this.renderActions();
     this.fishingUI.frame(dt);
   }
 
   // ---------------------------------------------------------------- routing
   navTo(tab) {
-    for (const [id, b] of Object.entries(this.navButtons)) {
-      b.classList.toggle('active', id === tab);
-      b.setAttribute('aria-current', id === tab ? 'page' : 'false');
-    }
-    if (tab === 'island') { closeSheet(true); if (this.game.build.active) this.closeBuild(); return; }
+    if (tab === 'island') { closeSheet(true); if (this.game.build.active) this.closeBuild(); this.syncNav(null); return; }
+    // Tapping the active menu button again closes it.
+    if (sheetOpen() === tab) { closeSheet(); return; }
+    if (tab === 'build') { this.openBuild(); return; }
     this.open(tab);
   }
 
@@ -200,8 +228,10 @@ export class UI {
   }
 
   syncNav(name) {
-    const tab = NAV.find(n => n[0] === name)?.[0] || 'island';
-    for (const [id, b] of Object.entries(this.navButtons)) b.classList.toggle('active', id === tab);
+    for (const [id, b] of Object.entries(this.navButtons)) {
+      b.classList.toggle('active', id === name);
+      b.setAttribute('aria-pressed', id === name ? 'true' : 'false');
+    }
   }
 
   closeAll() { closeSheet(true); if (this.game.build.active) this.closeBuild(); this.dialogueUI.close(); }
@@ -220,12 +250,66 @@ export class UI {
 
   // ---------------------------------------------------------------- features
   openBuild() {
+    if (this.game.visit) { toast('You can only build on your own island.', 'build'); return; }
     if (this.game.fishing) this.game.stopFishing();
     this.open('build');
   }
   closeBuild() { this.buildUI.exit(); }
 
   talk(npcId) { this.dialogueUI.start(npcId); }
+
+  /** Account / sign-in screen (see account-ui.js). */
+  openAccount() { this.account?.open(); }
+
+  /** Connect the online services (accounts, cloud saves, friends). */
+  attachOnline(online) {
+    this.online = online;
+    this.account = new AccountUI(this, online);
+    online.auth.on(type => { if (type === 'change') { this.refreshSync(); if (this.title.visible && !this.titleRefreshQueued) { this.titleRefreshQueued = true; setTimeout(() => { this.titleRefreshQueued = false; if (!modalOpen()) this.title.refresh(); }, 50); } } });
+    return { chooseSave: (l, c, w) => this.account.chooseSave(l, c, w), confirmUpload: l => this.account.confirmUpload(l) };
+  }
+
+  get cloud() { return this.online?.cloud ? Object.assign(this.online.cloud, { resolveBeforePlay: st => this.online.resolveBeforePlay(st) }) : null; }
+
+  /** Small cloud-sync indicator under the status card (only when signed in). */
+  refreshSync() {
+    const c = this.online?.cloud;
+    const el = this.el?.sync;
+    if (!el) return;
+    if (!c || !this.online.auth.signedIn) { el.hidden = true; return; }
+    const map = { synced: ['check', 'Synced'], syncing: ['island', 'Syncing…'], local: ['island', 'Saved locally'], offline: ['rain', 'Offline — will sync'], failed: ['storm', 'Sync failed — retrying'], conflict: ['quest', 'Choose a save'], paused: ['lock', 'Cloud sync paused'] };
+    const [ic, text] = map[c.status] || ['island', 'Cloud ready'];
+    el.hidden = false;
+    el.className = 'hud-note sync-note hud-glass ' + c.status;
+    el.replaceChildren(icon(ic), h('span', text));
+  }
+
+  /** Visitor banner with a clear way home. */
+  refreshVisit() {
+    const v = this.game.visit;
+    const el = this.el.visit;
+    this.app.classList.toggle('visiting', !!v);
+    if (!v) { el.hidden = true; return; }
+    el.hidden = false;
+    el.replaceChildren(icon('island'), h('span', `${v.hostName}’s ${v.islandName}`, h('small', v.hostHere ? ' · host is here' : ' · host is away')),
+      button('Leave', () => this.game.leaveVisit(), { cls: 'small', iconName: 'home' }));
+  }
+
+  /** Load a friend's public island snapshot and go visit. */
+  async visitFriend(fr) {
+    try {
+      const snap = await this.online.social.snapshotOf(fr.other_id);
+      if (!snap?.data?.islands?.length) { toast(`${fr.display_name} hasn’t synced an island yet.`, 'island'); return; }
+      const go = islandId => { closeSheet(true); this.game.startVisit({ hostId: fr.other_id, hostName: fr.display_name, snapshot: snap.data, islandId }); };
+      if (snap.data.islands.length === 1) { go(snap.data.islands[0].id); return; }
+      let close;
+      close = modal(h('div.confirm', h('h3', `Visit ${fr.display_name}`), h('p', 'Which island would you like to see?'),
+        h('div.list', snap.data.islands.map(i => button(`${i.name} · ${i.placements.length} things built`, () => { close(); go(i.id); }, { cls: 'wide', iconName: 'boat' }))),
+        h('div.row.end', button('Cancel', () => close(), { cls: 'ghost' }))));
+    } catch (err) {
+      toast(friendlyError(err), null, 'error');
+    }
+  }
 
   fishingStart(session) { this.fishingUI.start(session); this.app.classList.add('fishing'); }
   fishingEnd() { this.fishingUI.end(); this.app.classList.remove('fishing'); setTimeout(() => this.flushPending(), 250); }

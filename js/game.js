@@ -21,6 +21,8 @@ import { initAudio, sfx, setVolumes, startMusic, setMood, pauseAudio, resumeAudi
 import { ISLANDS } from '../data/island-data.js';
 import { markTalked } from './dialogue.js';
 import { pendingSettings } from './ui/panels/settings.js';
+import { FootstepSystem } from './footsteps.js';
+import { buildCharacter } from './art/characters.js';
 
 export class Game {
   constructor({ canvas, ui }) {
@@ -33,11 +35,14 @@ export class Game {
     this.renderer = new Renderer(canvas);
     this.fishing = null;
     this.build = new BuildMode(this);
+    this.footsteps = new FootstepSystem(this);
+    this.visit = null;
+    this.remotes = new Map();
+    this.charCache = new Map();
     this.interactTarget = null;
     this.revealedSpots = new Set();
     this.paused = false;
     this.last = 0;
-    this.titlePan = 0;
     this.timers = { orders: 0, daily: 0, pos: 0, nodes: 0 };
     this.autosave = Save.createAutosaver(getState);
     this.controls = new Controls(canvas, {
@@ -121,6 +126,7 @@ export class Game {
     this.revealedSpots = new Set();
     const pos = keepPos && s.player.pos ? s.player.pos : ISLANDS[id].spawn;
     this.player = new Player(0, 0, s.player.facing || 'down');
+    this.footsteps.attach(this.player);
     this.player.placeAtTile(pos.x, pos.y);
     // If the saved position became blocked (e.g. something was built), find space.
     if (!this.world.walkableTile(pos.x, pos.y)) {
@@ -152,9 +158,119 @@ export class Game {
 
   syncPlayerToState() {
     const s = getState();
-    if (!s || !this.player) return;
+    if (!s || !this.player || this.visit) return;   // a visit never moves your own save
     s.player.pos = { x: this.player.tileX, y: this.player.tileY };
     s.player.facing = this.player.facing;
+  }
+
+  // ---------------------------------------------------------------- visits
+  /**
+   * Visit a friend's island from their public snapshot. A temporary world is
+   * built from the snapshot; the visitor's own state (save, island, position,
+   * inventory) is never modified and saving continues as normal.
+   */
+  startVisit({ hostId, hostName, snapshot, islandId }) {
+    if (this.fishing) this.stopFishing();
+    if (this.build.active) this.ui.closeBuild();
+    const isl = snapshot.islands.find(i => i.id === islandId) || snapshot.islands[0];
+    if (!isl || !ISLANDS[isl.id]) { toast('That island can’t be visited right now.', null, 'error'); return; }
+    this.syncPlayerToState();
+    this.ui.fade(() => {
+      this.leaveChannel();
+      const temp = {
+        unlocked: true, visited: true, nodes: {}, gardens: {}, flags: { ...(isl.flags || {}) },
+        placements: isl.placements.filter(p => p && typeof p.type === 'string').map((p, i) => ({ ...p, uid: 'visit' + i })),
+      };
+      this.visit = { hostId, hostName, islandId: isl.id, islandName: isl.name || ISLANDS[isl.id].name, hostHere: false };
+      this.world = new World(isl.id, temp);
+      this.renderer.setWorld(this.world);
+      this.revealedSpots = new Set();
+      const sp = ISLANDS[isl.id].spawn;
+      this.player = new Player(0, 0, 'up');
+      this.footsteps.attach(this.player);
+      this.player.placeAtTile(sp.x, sp.y);
+      this.onResize();
+      this.camera.snap(this.player.x, this.player.y, this.world);
+      this.joinChannel(hostId, isl.id);
+      this.ui.online?.social.setStatus({ status: 'visiting' });
+      this.ui.refreshVisit();
+    }, `${hostName}’s island`);
+  }
+
+  leaveVisit() {
+    if (!this.visit) return;
+    this.ui.fade(() => {
+      this.leaveChannel();
+      this.visit = null;
+      this.loadIsland(getState().player.island, true);
+      this.ui.online?.social.setStatus({ status: 'home' });
+      this.ui.refreshVisit();
+    }, 'Home sweet home');
+  }
+
+  /** Live channel for whichever island we're on (as host or visitor). */
+  joinChannel(hostId, islandId) {
+    const online = this.ui.online;
+    if (!online?.auth.signedIn) return;
+    const key = hostId + ':' + islandId;
+    if (this.channel && this.channelKey === key) return;
+    this.leaveChannel();
+    const s = getState();
+    this.remotes = new Map();
+    this.channelKey = key;
+    this.channel = online.social.joinIsland(hostId, islandId, {
+      name: online.auth.profile?.display_name || s.player.name, look: s.player.look,
+      host: hostId === online.auth.user.id, x: this.player.x, y: this.player.y, f: this.player.facing,
+    }, {
+      onPeers: list => {
+        const ids = new Set(list.map(p => p.id));
+        for (const id of [...this.remotes.keys()]) if (!ids.has(id)) this.remotes.delete(id);
+        for (const p of list) {
+          const r = this.remotes.get(p.id) || { x: p.x, y: p.y, tx: p.x, ty: p.y, f: p.f || 'down', anim: 0 };
+          Object.assign(r, { name: p.name, look: p.look, host: p.host });
+          this.remotes.set(p.id, r);
+        }
+        if (this.visit) { this.visit.hostHere = list.some(p => p.host); this.ui.refreshVisit(); }
+      },
+      onMove: (id, pos) => {
+        const r = this.remotes.get(id);
+        if (!r) return;
+        r.tx = pos.x; r.ty = pos.y; r.f = pos.f || r.f;
+      },
+    });
+  }
+
+  leaveChannel() {
+    if (this.channel) { try { this.channel.leave(); } catch { /* already closed */ } }
+    this.channel = null; this.channelKey = null; this.remotes = new Map();
+  }
+
+  /** Throttled position broadcast + smooth movement of other players. */
+  updateRemotes(dt) {
+    const online = this.ui.online;
+    // Hosts are reachable on their own island whenever they're signed in.
+    if (!this.visit && online?.auth.signedIn && this.mode === 'play') this.joinChannel(online.auth.user.id, this.world.id);
+    if (!this.channel) return;
+    this.netT = (this.netT || 0) - dt;
+    const p = this.player;
+    const moved = !this.lastSent || Math.hypot(p.x - this.lastSent.x, p.y - this.lastSent.y) > 0.5 || p.facing !== this.lastSent.f;
+    if ((moved && this.netT <= 0) || this.netT < -2) {
+      this.netT = 0.12;
+      this.lastSent = { x: Math.round(p.x), y: Math.round(p.y), f: p.facing };
+      try { this.channel.send(this.lastSent); } catch { /* reconnecting */ }
+    }
+    for (const r of this.remotes.values()) {
+      const dx = r.tx - r.x, dy = r.ty - r.y, d = Math.hypot(dx, dy);
+      r.moving = d > 0.6;
+      if (d > 80) { r.x = r.tx; r.y = r.ty; }
+      else if (r.moving) { const k = Math.min(1, dt * 10); r.x += dx * k; r.y += dy * k; r.anim += dt * 8; }
+      if (!r.sprites || r.lookKey !== JSON.stringify(r.look)) {
+        r.lookKey = JSON.stringify(r.look);
+        const look = r.look && r.look.skin ? r.look : { skin: '#e8b48f', hair: '#4a3328', shirt: '#6dbb72' };
+        r.sprites = this.charCache.get(r.lookKey) || buildCharacter(look);
+        this.charCache.set(r.lookKey, r.sprites);
+      }
+    }
   }
 
   bindEvents() {
@@ -287,8 +403,12 @@ export class Game {
     if (mx || my) { this.build.nudge(mx, my); this.dragAcc.x -= mx * TILE; this.dragAcc.y -= my * TILE; }
   }
 
+  /** While visiting a friend, only harmless interactions are allowed. */
+  canUse(it) { return !this.visit || it.kind === 'npc'; }
+
   interact(it) {
     if (!it || this.inputBlocked()) return;
+    if (!this.canUse(it)) { toast('You’re a guest here — fishing, gathering and building happen on your own island.', 'island'); return; }
     initAudio();
     const p = this.player;
     p.cancelPath();
@@ -344,17 +464,17 @@ export class Game {
   }
 
   update(dt) {
-    if (this.mode === 'title') {
-      this.titlePan += dt;
-      const cx = 22 * TILE + Math.sin(this.titlePan * 0.08) * 90, cy = 26 * TILE + Math.cos(this.titlePan * 0.06) * 50;
-      this.camera.follow(cx, cy, dt, this.world);
-      this.updateNpcs(dt);
-      return;
-    }
+    if (this.mode === 'title') { this.footsteps.update(dt); return; }   // the title scene animates itself
     const s = getState();
     tickWeather(dt);
-    const input = this.inputBlocked() ? { x: 0, y: 0 } : this.controls.read();
+    const blocked = this.inputBlocked();
+    // Menus, dialogue and fishing stop the player (and their footsteps) at once,
+    // including a tap-to-walk that was in progress.
+    if (blocked && this.player.path) this.player.cancelPath();
+    const input = blocked ? { x: 0, y: 0 } : this.controls.read();
     if (!this.build.active) this.player.update(dt, input, this.world);
+    else this.player.moving = false;
+    this.footsteps.update(dt);
     this.updateNpcs(dt);
     if (this.fishing) this.fishing.update(dt);
     this.interactTarget = this.build.active || this.fishing ? null : findInteractable(this);
@@ -366,17 +486,17 @@ export class Game {
         sfx('perfect');
       }
     }
+    // Keep the action centred in the part of the screen not covered by UI.
+    const ins = this.uiInsets(dt);
+    this.camera.extraBottom = ins.bottom;
+    this.camera.extraRight = ins.right;
+    const shift = { x: (ins.right - ins.left) / 2, y: (ins.bottom - ins.top) / 2 };
     if (this.build.active && this.build.ghost) {
       const g = this.build.ghost;
-      const hidden = (this.ui.obscuredBottom() * this.renderer.dpr) / this.renderer.scale;
-      this.camera.extraBottom = hidden;
-      this.camera.follow((g.x + g.fw / 2) * TILE, (g.y + g.fh / 2) * TILE + hidden / 2, dt, this.world);
+      this.camera.follow((g.x + g.fw / 2) * TILE + shift.x, (g.y + g.fh / 2) * TILE + shift.y, dt, this.world);
     } else {
       const look = this.fishing && this.fishing.bobber ? { x: (this.fishing.bobber.x - this.player.x) * 0.5, y: (this.fishing.bobber.y - this.player.y) * 0.5 } : { x: 0, y: 0 };
-      // Keep the action centred in the part of the screen not covered by panels.
-      const hidden = (this.ui.obscuredBottom() * this.renderer.dpr) / this.renderer.scale;
-      look.y += hidden / 2;
-      this.camera.extraBottom = hidden;
+      look.x += shift.x; look.y += shift.y;
       this.camera.follow(this.player.x, this.player.y - 8, dt, this.world, look);
     }
     // periodic housekeeping
@@ -385,7 +505,20 @@ export class Game {
     if (t.orders > 5) { t.orders = 0; ensureOrders(); }
     if (t.daily > 30) { t.daily = 0; ensureDaily(); }
     if (t.nodes > 4) { t.nodes = 0; this.world.rebuild(); }
+    this.updateRemotes(dt);
     this.ui.frame(dt, s);
+  }
+
+  /** UI-covered margins in buffer pixels, re-measured a few times a second. */
+  uiInsets(dt) {
+    this.insetT = (this.insetT || 0) - dt;
+    if (this.insetT <= 0 || !this.insetCache) {
+      this.insetT = 0.15;
+      const css = this.ui.insets();
+      const k = this.renderer.dpr / this.renderer.scale;
+      this.insetCache = { top: css.top * k, right: css.right * k, bottom: css.bottom * k, left: css.left * k };
+    }
+    return this.insetCache;
   }
 
   updateNpcs(dt) {
@@ -436,7 +569,8 @@ export class Game {
       title: !play,
       stick: play ? this.controls.stickVisual() : null,
       hiddenSpotsVisible: this.revealedSpots,
-      questGiver: play ? questGiverHere() : null,
+      questGiver: play && !this.visit ? questGiverHere() : null,
+      remotes: play && this.remotes ? [...this.remotes.values()] : null,
       phase: play ? currentPhase() : 'morning',
     };
     this.renderer.render(scene, dt);

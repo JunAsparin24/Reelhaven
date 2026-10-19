@@ -16,6 +16,7 @@ export const WATER_STYLES = {
   mistDeep: [C.mistWater2, '#5a9590', '#bcd9d3'],
   moon: [C.moonWater, '#386491', '#9fd0ff'],
   moonDeep: [C.moonWater2, '#2c5381', '#7fd8ff'],
+  wade: ['#93d6c7', '#b2e6da', C.foam],
 };
 
 function waterFrame(style, f, variant) {

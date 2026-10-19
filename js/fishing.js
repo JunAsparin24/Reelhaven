@@ -19,7 +19,7 @@ import { sfx, vibrate } from './audio.js';
 import { eventEffect } from './world-events.js';
 
 const DIR = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
-export const PERFECT_ZONE = [0.76, 0.94];
+export const PERFECT_ZONE = [0.78, 0.93];
 
 /** Movement styles for the reeling minigame. Values are in track units (0..1). */
 const BEHAVIORS = {
@@ -146,7 +146,8 @@ export class FishingSession {
     const isl = ISLANDS[this.state.player.island];
     const difficulty = Math.min(10, this.fish.difficulty + (isl.fishingMod?.difficulty || 0));
     const beh = BEHAVIORS[this.fish.behavior] || BEHAVIORS.smooth;
-    const zoneW = Math.max(0.18, Math.min(0.5, rod.zone - (difficulty - 3) * 0.008));
+    // Catch zone ~10% narrower than v1 (fishing was a little too easy).
+    const zoneW = Math.max(0.16, Math.min(0.46, rod.zone * 0.9 - (difficulty - 3) * 0.008));
     this.reel = {
       difficulty, beh, zoneW, power: rod.power,
       fishPos: 0.5, fishVel: 0, fishTarget: 0.5, nextMove: 0.6, t: 0,
@@ -259,7 +260,7 @@ export class FishingSession {
     }
     let goal = r.fishTarget;
     if (beh.wave) goal += Math.sin(r.t * 3.2) * beh.wave;
-    const maxSpeed = (0.22 + r.difficulty * 0.075) * beh.speed;
+    const maxSpeed = (0.24 + r.difficulty * 0.08) * beh.speed;
     const want = Math.max(-maxSpeed, Math.min(maxSpeed, (goal - r.fishPos) * 4));
     r.fishVel += (want - r.fishVel) * Math.min(1, dt * 6);
     r.fishPos = Math.max(0.02, Math.min(0.98, r.fishPos + r.fishVel * dt));
@@ -272,8 +273,8 @@ export class FishingSession {
     // --- progress
     const inZone = r.fishPos >= r.zonePos && r.fishPos <= r.zonePos + r.zoneW;
     r.inZone = inZone;
-    if (inZone) r.progress += 0.27 * r.power * dt;
-    else r.progress -= (0.13 + r.difficulty * 0.014) * dt;
+    if (inZone) r.progress += 0.25 * r.power * dt;
+    else r.progress -= (0.15 + r.difficulty * 0.016) * dt;
     this.tension += ((inZone ? 0.4 : 1) - this.tension) * Math.min(1, dt * 5);
     this.reelTick -= dt;
     if (inZone && this.reelTick <= 0) { sfx('reel'); this.reelTick = 0.12; }

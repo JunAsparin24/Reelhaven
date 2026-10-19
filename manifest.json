@@ -1,11 +1,11 @@
 {
-  "name": "Tide & Town",
-  "short_name": "Tide & Town",
-  "description": "A cozy pixel-art fishing and island-building game.",
+  "name": "Reelhaven",
+  "short_name": "Reelhaven",
+  "description": "A cozy pixel-art island fishing game.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "landscape",
   "background_color": "#247d91",
   "theme_color": "#247d91",
   "icons": [

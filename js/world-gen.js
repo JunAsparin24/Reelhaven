@@ -3,15 +3,21 @@
 // script into a tile grid plus object / fishing-spot lists.
 import { ISLANDS } from '../data/island-data.js';
 
-export const T = { W: 0, S: 1, G: 2, P: 3, D: 4, B: 5, X: 6, O: 7, M: 8, K: 9, N: 10, R: 11 };
-export const TERRAIN_NAMES = ['water', 'sand', 'grass', 'path', 'dock', 'bridge', 'bridgeBroken', 'pond', 'mud', 'darkgrass', 'moongrass', 'reef'];
+export const T = { W: 0, S: 1, G: 2, P: 3, D: 4, B: 5, X: 6, O: 7, M: 8, K: 9, N: 10, R: 11, H: 12 };
+export const TERRAIN_NAMES = ['water', 'sand', 'grass', 'path', 'dock', 'bridge', 'bridgeBroken', 'pond', 'mud', 'darkgrass', 'moongrass', 'reef', 'shallows'];
 
 /** Tiles you can stand on. */
-export const WALKABLE = new Set([T.S, T.G, T.P, T.D, T.B, T.M, T.K, T.N]);
+export const WALKABLE = new Set([T.S, T.G, T.P, T.D, T.B, T.M, T.K, T.N, T.H]);
 /** Tiles that count as water for fishing / bobbers. */
 export const WATERY = new Set([T.W, T.O, T.R]);
 /** Tiles where buildings and decorations may be placed. */
 export const BUILDABLE = new Set([T.S, T.G, T.M, T.K, T.N]);
+
+/** What each walkable terrain sounds like underfoot (see js/footsteps.js). */
+export const SURFACE = {
+  [T.S]: 'sand', [T.G]: 'grass', [T.K]: 'grass', [T.N]: 'grass', [T.P]: 'stone',
+  [T.D]: 'wood', [T.B]: 'wood', [T.M]: 'mud', [T.H]: 'shallow_water',
+};
 
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 

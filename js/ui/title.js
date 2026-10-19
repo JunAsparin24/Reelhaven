@@ -1,19 +1,23 @@
-// Title screen and new-game character creation. The animated island behind
-// it is the real game renderer panning over Sunny Shores.
+// Title screen (menu over the animated sunset diorama in title-scene.js) and
+// new-game character creation.
 import { h, button, confirmModal, modal } from './dom.js';
 import * as Save from '../save.js';
-import { initAudio, sfx } from '../audio.js';
+import { initAudio, sfx, startMusic, setMood } from '../audio.js';
 import { buildPortrait, SKIN_TONES, HAIR_COLORS, SHIRT_COLORS, HAIR_STYLES } from '../art/characters.js';
 import { scaleUp } from '../art/pixel.js';
 import { STARTING_HATS, HATS } from '../../data/item-data.js';
-import { GAME_VERSION } from '../state.js';
+import { GAME_VERSION, GAME_NAME } from '../state.js';
 import { PANELS } from './panels/index.js';
+import { enterLandscape } from './device.js';
+import { spriteUrl } from '../art/sprites.js';
 
 export class TitleUI {
   constructor(ui) {
     this.ui = ui;
     this.root = document.getElementById('title-screen');
     this.visible = false;
+    // The first tap anywhere on the title wakes the audio (browsers require a gesture).
+    this.root.addEventListener('pointerdown', () => { initAudio(); setMood('night'); startMusic(); }, { once: false });
   }
 
   show() {
@@ -23,36 +27,60 @@ export class TitleUI {
     this.loaded = loaded;
     const hasSave = !!loaded.state;
     const name = loaded.state?.player.name;
-    this.root.replaceChildren(
-      h('div.title-inner',
-        h('div.logo', h('span.logo-tide', 'Tide'), h('span.logo-amp', '&'), h('span.logo-town', 'Town')),
-        h('p.tagline', 'Catch fish. Grow your island. Make it home.'),
-        h('div.title-buttons',
-          hasSave ? button(`Continue${name ? ' as ' + name : ''}`, () => this.continueGame(), { cls: 'primary big', sound: null }) : null,
-          button(hasSave ? 'New Game' : 'Play', () => this.newGame(hasSave), { cls: hasSave ? 'big' : 'primary big', sound: null }),
-          button('Settings', () => this.settings(), { cls: 'ghost' })),
-        loaded.error ? h('p.title-warn', { role: 'alert' }, loaded.error) : null,
-        !Save.canPersist ? h('p.title-warn', 'Saving is unavailable in this browser mode (private window?). Progress will be lost when you close the tab.') : null,
-        h('p.version', 'v' + GAME_VERSION)));
+    const account = this.ui.cloud?.statusLabel?.() || null;
+    this.root.replaceChildren(...[
+      h('div.title-top',
+        h('h1.logo', { 'aria-label': GAME_NAME },
+          h('img.logo-fish', { src: spriteUrl('fish_golden_koi', 3), alt: '' }),
+          h('span.logo-reel', 'Reel'), h('span.logo-haven', 'haven')),
+        h('p.tagline', 'A cozy island fishing tale')),
+      h('nav.title-menu', { 'aria-label': 'Main menu' },
+        hasSave ? button('Continue', () => this.continueGame(), { cls: 'title-btn primary', sound: null, title: name ? `Continue as ${name}` : 'Continue' }) : null,
+        button('New Game', () => this.newGame(hasSave), { cls: 'title-btn' + (hasSave ? '' : ' primary'), sound: null }),
+        button(account?.signedIn ? 'Account' : 'Sign In', () => this.ui.openAccount(), { cls: 'title-btn', iconName: 'friends' }),
+        button('Settings', () => this.settings(), { cls: 'title-btn', iconName: 'gear' }),
+        button('Credits', () => this.credits(), { cls: 'title-btn', iconName: 'sparkle' })),
+      h('div.title-foot',
+        h('span.title-status', account ? [h('span.dot' + (account.signedIn ? '.on' : '')), account.text] : [h('span.dot'), 'Playing offline']),
+        hasSave ? h('span.title-save', `${name} · Lv ${loaded.state.player.level}`) : null,
+        h('span.version', 'v' + GAME_VERSION)),
+      loaded.error ? h('p.title-warn', { role: 'alert' }, loaded.error) : null,
+      !Save.canPersist ? h('p.title-warn', 'Saving is unavailable in this browser mode (private window?). Progress will be lost when you close the tab.') : null,
+    ].filter(Boolean));
+    this.root.classList.remove('show');
+    void this.root.offsetWidth;   // restart the entrance animation
     this.root.classList.add('show');
-    setTimeout(() => this.root.querySelector('button')?.focus({ preventScroll: true }), 100);
+    setTimeout(() => this.root.querySelector('.title-btn')?.focus({ preventScroll: true }), 900);
   }
+
+  /** Re-render if the save or account status changed while the title is up. */
+  refresh() { if (this.visible) this.show(); }
 
   hide() {
     this.visible = false;
     this.root.classList.remove('show');
   }
 
-  continueGame() {
-    initAudio(); sfx('quest');
-    this.ui.game.continueGame(this.loaded.state);
+  async continueGame() {
+    initAudio(); sfx('quest'); enterLandscape();
+    // When signed in, make sure we continue from the right copy (local vs cloud).
+    const state = this.ui.cloud ? await this.ui.cloud.resolveBeforePlay(this.loaded.state) : this.loaded.state;
+    if (state) this.ui.game.continueGame(state);
   }
 
   newGame(hasSave) {
     initAudio(); sfx('click');
-    if (hasSave) {
-      confirmModal('Start over?', 'Starting a new game will replace your current island and progress on this device. You can export a backup from Settings first.', 'Start new game', () => this.creator(), { danger: true });
-    } else this.creator();
+    if (!hasSave) { this.creator(); return; }
+    const s = this.loaded.state;
+    const cloudNote = this.ui.cloud?.signedIn?.()
+      ? ' You are signed in, so your cloud save will also switch to the new island the next time it syncs.'
+      : '';
+    confirmModal('Start a new island?',
+      `Your current island (${s.player.name}, level ${s.player.level}) will be kept as a backup on this device — you can restore it any time from Settings → Save data.${cloudNote}`,
+      'Start fresh', () => {
+        Save.archiveSave(s, 'new-game');
+        this.creator();
+      }, { danger: true });
   }
 
   settings() {
@@ -61,6 +89,20 @@ export class TitleUI {
     const body = h('div.sheet-body.in-modal');
     PANELS.settings.render(body, { game: this.ui.game, ui: this.ui, opts: { fromTitle: true, titleSave: this.loaded.state } });
     close = modal(h('div.title-settings', h('h3', 'Settings'), body, h('div.row.end', button('Close', () => close(), { cls: 'primary' }))));
+  }
+
+  credits() {
+    let close;
+    close = modal(h('div.credits',
+      h('h3', GAME_NAME),
+      h('p', 'A cozy island fishing tale.'),
+      h('dl.facts',
+        h('dt', 'Game design, code & art'), h('dd', 'Original work for this project — every sprite is drawn in code as pixel art.'),
+        h('dt', 'Music & sound'), h('dd', 'Original: synthesized with Web Audio; footsteps generated by tools/generate_footsteps.py.'),
+        h('dt', 'Font'), h('dd', 'Pixelify Sans by Stefie Justprince (SIL Open Font License).'),
+        h('dt', 'Online services'), h('dd', 'Accounts, cloud saves and friends use Supabase when configured.')),
+      h('p.muted', 'Thank you for playing!'),
+      h('div.row.end', button('Close', () => close(), { cls: 'primary' }))));
   }
 
   /** Character creation: name, skin, hair, outfit, hat. */
@@ -83,17 +125,20 @@ export class TitleUI {
     const start = () => {
       const name = nameInput.value.trim() || 'Islander';
       close();
+      enterLandscape();
       this.ui.game.newGame({ name, look: { ...look } });
     };
     nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') start(); });
     close = modal(h('div.creator',
       h('h3', 'Create your islander'),
-      h('div.creator-top', h('div.preview-frame', preview), h('div.creator-name', h('label', 'Name'), nameInput)),
-      swatches('Skin', SKIN_TONES, 'skin'),
-      swatches('Hair', HAIR_COLORS, 'hair'),
-      options('Style', HAIR_STYLES, 'hairStyle', v => v[0].toUpperCase() + v.slice(1)),
-      swatches('Outfit', SHIRT_COLORS, 'shirt'),
-      options('Hat', STARTING_HATS, 'hat', v => HATS[v].name),
+      h('div.creator-cols',
+        h('div.creator-top', h('div.preview-frame', preview), h('div.creator-name', h('label', 'Name'), nameInput)),
+        h('div.creator-opts',
+          swatches('Skin', SKIN_TONES, 'skin'),
+          swatches('Hair', HAIR_COLORS, 'hair'),
+          options('Style', HAIR_STYLES, 'hairStyle', v => v[0].toUpperCase() + v.slice(1)),
+          swatches('Outfit', SHIRT_COLORS, 'shirt'),
+          options('Hat', STARTING_HATS, 'hat', v => HATS[v].name))),
       h('div.row.end', button('Back', () => close(), { cls: 'ghost' }), button('Start adventure', start, { cls: 'primary', sound: null }))), { dismissable: false, cls: 'creator-modal' });
     refresh();
     setTimeout(() => nameInput.focus(), 60);

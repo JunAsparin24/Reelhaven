@@ -3,7 +3,8 @@
 // by appending an entry here — the map screen, travel and saving pick it up.
 //
 // Terrain: W water, S sand, G grass, P path, D dock, B bridge, X broken bridge,
-//          O pond/inner water, M mud, K dark grass, N moon grass, R reef water.
+//          O pond/inner water, M mud, K dark grass, N moon grass, R reef water,
+//          H wadeable shallows (walkable, splashy footsteps).
 
 export const ISLAND_ORDER = ['sunny', 'coral', 'mangrove', 'moon'];
 
@@ -17,7 +18,7 @@ export const ISLANDS = {
     unlock: null,
     spawn: { x: 22, y: 33 },
     build(m) {
-      const { W, S, G, P, D, X, O } = m.T;
+      const { W, S, G, P, D, X, O, H } = m.T;
       m.fill(W);
       m.blob(22, 23, 16, 14, S, 0.1, 1);
       m.blob(22, 22, 13, 11, G, 0.1, 2);
@@ -28,6 +29,7 @@ export const ISLANDS = {
       m.rect(33, 10, 2, 4, S);           // east landing
       m.rect(31, 11, 2, 2, X);           // the broken bridge
       m.blob(13, 28, 3, 2.2, O, 0, 5);   // freshwater pond
+      m.blob(32, 36, 3.2, 1.7, H, 0.1, 6); // sandbar shallows you can wade through
       // paths
       m.path([[14, 19], [14, 24], [22, 24]], P, 1);
       m.path([[21, 24], [21, 36]], P, 2);
@@ -69,7 +71,7 @@ export const ISLANDS = {
   },
 
   coral: {
-    id: 'coral', name: 'Coral Cove', size: { w: 44, h: 40 },
+    id: 'coral', name: 'Pearlreef Atoll', size: { w: 44, h: 40 },
     tagline: 'A crescent of white sand wrapped around a living reef.',
     features: ['Reef fishing (Coral Rod bonus)', 'Tide pools with surprises', 'Plentiful shells and sea glass'],
     mapPos: { x: 0.72, y: 0.7 },
@@ -77,12 +79,14 @@ export const ISLANDS = {
     unlock: { level: 3, flag: 'bridgeRepaired', flagText: 'Repair the bridge on Sunny Shores', cost: { coins: 250, wood: 15 }, action: 'Repair Mira’s boat' },
     spawn: { x: 8, y: 18 },
     build(m) {
-      const { W, S, G, P, D, R } = m.T;
+      const { W, S, G, P, D, R, H } = m.T;
       m.fill(W);
       m.blob(22, 18, 15, 12, S, 0.1, 11);
       m.blob(22, 15, 11, 7, G, 0.12, 12);
       m.blob(22, 29, 8, 6, R, 0.08, 13);
       m.rect(19, 33, 7, 6, R);
+      m.blob(10, 27, 2.6, 1.6, H, 0.1, 14);
+      m.blob(34, 27, 2.6, 1.6, H, 0.1, 15);
       m.rect(3, 17, 5, 2, D);
       m.rect(22, 23, 1, 5, D);
       m.path([[8, 18], [16, 18], [16, 20], [28, 20]], P, 1);
@@ -116,7 +120,7 @@ export const ISLANDS = {
     unlock: { level: 5, building: 'fishing_hut', buildingText: 'Build a Fishing Hut', cost: { coins: 600, wood: 20, stone: 10 }, action: 'Chart the misty channel' },
     spawn: { x: 6, y: 14 },
     build(m) {
-      const { W, D, M, K } = m.T;
+      const { W, D, M, K, H } = m.T;
       m.fill(W);
       m.blob(14, 14, 9, 7, M, 0.15, 21); m.blob(14, 14, 7, 5, K, 0.15, 22);
       m.blob(31, 24, 10, 8, M, 0.15, 23); m.blob(31, 24, 7.5, 5.5, K, 0.15, 24);
@@ -124,6 +128,7 @@ export const ISLANDS = {
       m.rect(2, 14, 4, 2, D);
       m.path([[22, 15], [25, 15], [25, 18]], D, 2);
       m.rect(13, 20, 2, 7, D);
+      m.blob(23, 30, 2.4, 1.8, H, 0.15, 27);
       for (const [x, y] of [[10, 10], [18, 11], [28, 20], [35, 22], [31, 28], [12, 29], [16, 16]]) m.obj('mangrove', x, y);
       for (const [x, y] of [[8, 17], [20, 13], [37, 27], [25, 25], [17, 33]]) m.obj('reeds', x, y);
       for (const [x, y] of [[21, 20], [6, 22], [38, 16], [24, 32], [8, 36]]) m.obj('lily', x, y);

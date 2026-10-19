@@ -1,6 +1,9 @@
-// Friends hub (honest offline state + local island profile & postcard) and
-// the player profile / wardrobe.
-import { h, icon, spriteImg, button, refreshSheet, fmt } from '../dom.js';
+// Friends hub (real friends when online; an honest offline state otherwise),
+// island postcards, and the player profile / wardrobe.
+import { h, icon, spriteImg, button, refreshSheet, fmt, confirmModal } from '../dom.js';
+import { friendlyError } from '../../online/auth.js';
+import { scaleUp } from '../../art/pixel.js';
+import { buildPortrait } from '../../art/characters.js';
 import { getState, commit } from '../../state.js';
 import { toast } from '../../events.js';
 import { onlineStatus, PLANNED_FEATURES, islandSnapshot } from '../../multiplayer.js';
@@ -10,28 +13,138 @@ import { ISLANDS } from '../../../data/island-data.js';
 import { FISH } from '../../../data/fish-data.js';
 import { xpToNext, speciesDiscovered } from '../../progression.js';
 
+// Friends data is fetched from the server and cached here between renders.
+const social = { list: null, loading: false, error: null, loadedAt: 0, found: null, finding: false, code: '' };
+
+function loadFriends(online, force = false) {
+  if (social.loading) return;
+  if (!force && social.list && Date.now() - social.loadedAt < 15000) return;
+  social.loading = true;
+  online.social.list()
+    .then(list => { social.list = list; social.error = null; social.loadedAt = Date.now(); })
+    .catch(err => { social.error = friendlyError(err); })
+    .finally(() => { social.loading = false; refreshSheet(); });
+}
+
+function lookMini(look) {
+  if (!look || !look.skin) return spriteImg('icon_friends', 2, 'friend-avatar');
+  return h('img.friend-avatar', { src: scaleUp(buildPortrait(look), 3).toDataURL(), alt: '' });
+}
+
 export const friendsPanel = {
   title: 'Friends', icon: 'friends',
   render(body, ctx) {
-    const st = onlineStatus();
+    const online = ctx.ui.online;
+    const auth = online?.auth;
     const s = getState();
-    const snap = islandSnapshot(s);
-    body.append(h('div.offline-card',
-      h('div.status-dot' + (st.connected ? '.on' : '')),
-      h('div', h('b', st.connected ? 'Online' : 'Offline mode'), h('p', st.message))));
-    body.append(h('h4.section', 'Your island profile'));
-    body.append(h('article.profile-card',
-      spriteImg('portrait_player', 4),
-      h('div',
-        h('h4', snap.name),
-        h('p', `Level ${snap.level} · ${snap.species}/${snap.speciesTotal} species · ${snap.islands.length} island${snap.islands.length === 1 ? '' : 's'}`),
-        h('p.muted', `${snap.islands.reduce((n, i) => n + i.placements.length, 0)} things built`)),
-      button('Save postcard', () => savePostcard(ctx.game), { iconName: 'postcard', cls: 'small' })));
-    body.append(h('p.muted', 'Postcards are images of your island you can share anywhere — no account needed.'));
-    body.append(h('h4.section', 'Coming with online play'));
-    body.append(h('div.list', PLANNED_FEATURES.map(f => h('div.item-row.planned', icon(f.icon, 'item-icon'), h('div.item-main', h('div.item-name', f.title, h('span.tag.soon', 'Planned')), h('div.item-sub', f.text))))));
+    // ---- not configured / offline / signed out: explain honestly
+    if (!auth || auth.status === 'disabled' || auth.status === 'offline' || !auth.signedIn) {
+      const st = !auth || auth.status === 'disabled' ? onlineStatus()
+        : auth.status === 'offline' ? { message: auth.error || 'Online services are unreachable right now.' }
+        : { message: 'Sign in to add friends, see who is online and visit their islands.' };
+      body.append(h('div.offline-card',
+        h('div.status-dot'),
+        h('div', h('b', auth?.status === 'signedOut' ? 'Not signed in' : 'Offline mode'), h('p', st.message),
+          auth && auth.status !== 'disabled' ? button(auth.status === 'offline' ? 'Try again' : 'Sign in', () => ctx.ui.openAccount(), { cls: 'small primary' }) : null)));
+      profileCard(body, ctx, s);
+      body.append(h('h4.section', 'With an account'));
+      body.append(h('div.list', PLANNED_FEATURES.map(f => h('div.item-row.planned', icon(f.icon, 'item-icon'), h('div.item-main', h('div.item-name', f.title, f.live ? null : h('span.tag.soon', 'Planned')), h('div.item-sub', f.text))))));
+      return;
+    }
+    // ---- signed in
+    loadFriends(online);
+    const me = auth.profile || {};
+    body.append(h('div.my-code',
+      h('div', h('small', 'Your friend code'), h('b', me.friend_code || '—')),
+      button('Copy', async () => {
+        try { await navigator.clipboard.writeText(me.friend_code); toast('Friend code copied!', 'check', 'good'); }
+        catch { toast('Your code is ' + me.friend_code, 'friends'); }
+      }, { cls: 'small' }),
+      button('Account', () => ctx.ui.openAccount(), { cls: 'small ghost' })));
+
+    // add friend
+    const input = h('input.field.code-input', { type: 'text', maxlength: '8', placeholder: 'FRIEND CODE', value: social.code, 'aria-label': 'Friend code',
+      on: { input: e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); social.code = e.target.value; } } });
+    const findBtn = button('Find', async () => {
+      const code = input.value.trim();
+      if (code.length !== 8) { toast('Friend codes have 8 letters and numbers.', null, 'error'); return; }
+      social.finding = true; social.found = null; refreshSheet();
+      try {
+        const p = await online.social.find(code);
+        social.found = p || { none: true };
+      } catch (err) { toast(friendlyError(err), null, 'error'); }
+      social.finding = false; refreshSheet();
+    }, { cls: 'small primary' });
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') findBtn.click(); });
+    body.append(h('div.add-friend', input, findBtn));
+    if (social.finding) body.append(h('p.muted', 'Looking for that islander…'));
+    const f = social.found;
+    if (f && f.none) body.append(h('p.muted', 'No islander has that code. Check it and try again.'));
+    else if (f) {
+      const rel = { self: 'This is you!', friend: 'Already friends', outgoing: 'Request sent', incoming: 'They asked to be your friend' }[f.relation];
+      body.append(h('div.item-row.found', lookMini(f.look),
+        h('div.item-main', h('div.item-name', f.display_name), h('div.item-sub', `Level ${f.level}${rel ? ' · ' + rel : ''}`)),
+        f.relation === 'none' || f.relation === 'incoming'
+          ? button(f.relation === 'incoming' ? 'Accept' : 'Add friend', async () => {
+            try {
+              const r = await online.social.request(f.friend_code);
+              toast(r === 'accepted' ? `You and ${f.display_name} are now friends!` : r === 'sent' ? 'Friend request sent!' : r === 'already_friends' ? 'You are already friends.' : 'Request already sent.', 'friends', 'good');
+              social.found = null; social.code = '';
+              loadFriends(online, true);
+            } catch (err) { toast(friendlyError(err), null, 'error'); }
+          }, { cls: 'small primary' })
+          : null));
+    }
+
+    if (social.error) body.append(h('p.form-msg.error', social.error, ' ', button('Retry', () => loadFriends(online, true), { cls: 'small ghost' })));
+    if (!social.list) { body.append(h('p.muted', 'Loading your friends…')); return; }
+    const incoming = social.list.filter(x => x.direction === 'incoming');
+    const outgoing = social.list.filter(x => x.direction === 'outgoing');
+    const friends = social.list.filter(x => x.direction === 'friend')
+      .sort((a, b) => (online.social.isOnline(b.other_id) - online.social.isOnline(a.other_id)) || a.display_name.localeCompare(b.display_name));
+    const act = (fn, okMsg) => async () => { try { await fn(); if (okMsg) toast(okMsg, 'friends', 'good'); loadFriends(online, true); } catch (err) { toast(friendlyError(err), null, 'error'); } };
+
+    if (incoming.length) {
+      body.append(h('h4.section', `Friend requests (${incoming.length})`));
+      body.append(h('div.list', incoming.map(r => h('div.item-row', lookMini(r.look),
+        h('div.item-main', h('div.item-name', r.display_name), h('div.item-sub', 'Level ' + r.level)),
+        button('Accept', act(() => online.social.respond(r.friendship_id, true), `You and ${r.display_name} are now friends!`), { cls: 'small primary' }),
+        button('Decline', act(() => online.social.respond(r.friendship_id, false)), { cls: 'small ghost' })))));
+    }
+    body.append(h('h4.section', `Friends (${friends.length})`));
+    if (!friends.length) body.append(h('div.empty', icon('friends', 'big'), h('p', 'No friends yet. Share your friend code, or enter someone else’s above.')));
+    else body.append(h('div.list', friends.map(fr => {
+      const on = online.social.isOnline(fr.other_id);
+      const pres = online.social.online.get(fr.other_id);
+      const where = !on ? 'Offline' : pres?.status === 'visiting' ? 'Online · visiting an island' : 'Online';
+      return h('div.item-row.friend', h('span.presence' + (on ? '.on' : ''), { title: where }), lookMini(fr.look),
+        h('div.item-main', h('div.item-name', fr.display_name), h('div.item-sub', `${where} · Level ${fr.level}`)),
+        button('Visit', () => ctx.ui.visitFriend(fr), { cls: 'small primary', iconName: 'boat', disabled: !fr.allow_visits, title: fr.allow_visits ? 'Visit their island' : 'They have island visits turned off' }),
+        button('Remove', () => {
+          confirmModal('Remove friend?', `Remove ${fr.display_name} from your friends?`, 'Remove', act(() => online.social.remove(fr.friendship_id), 'Friend removed.'), { danger: true });
+        }, { cls: 'small ghost' }));
+    })));
+    if (outgoing.length) {
+      body.append(h('h4.section', 'Sent requests'));
+      body.append(h('div.list', outgoing.map(r => h('div.item-row', lookMini(r.look),
+        h('div.item-main', h('div.item-name', r.display_name), h('div.item-sub', 'Waiting for them to accept')),
+        button('Cancel', act(() => online.social.remove(r.friendship_id), 'Request cancelled.'), { cls: 'small ghost' })))));
+    }
+    profileCard(body, ctx, s);
   },
 };
+
+function profileCard(body, ctx, s) {
+  const snap = islandSnapshot(s);
+  body.append(h('h4.section', 'Your island'));
+  body.append(h('article.profile-card',
+    spriteImg('portrait_player', 4),
+    h('div',
+      h('h4', snap.name),
+      h('p', `Level ${snap.level} · ${snap.species}/${snap.speciesTotal} species · ${snap.islands.length} island${snap.islands.length === 1 ? '' : 's'}`),
+      h('p.muted', `${snap.islands.reduce((n, i) => n + i.placements.length, 0)} things built`)),
+    button('Save postcard', () => savePostcard(ctx.game), { iconName: 'postcard', cls: 'small' })));
+}
 
 /** Render the whole current island to a PNG and download it. */
 function savePostcard(game) {
@@ -59,12 +172,12 @@ function savePostcard(game) {
   bg.drawImage(c, 0, 0, big.width, big.height);
   bg.fillStyle = '#2c2433';
   bg.font = '28px "Pixelify Sans", monospace';
-  bg.fillText(`${getState().player.name}'s ${ISLANDS[w.id].name} — Tide & Town`, pad * 2, big.height - 18);
+  bg.fillText(`${getState().player.name}'s ${ISLANDS[w.id].name} — Reelhaven`, pad * 2, big.height - 18);
   big.toBlob(blob => {
     if (!blob) { toast('Could not create the postcard.', null, 'error'); return; }
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `tide-and-town-${w.id}-postcard.png`;
+    a.download = `reelhaven-${w.id}-postcard.png`;
     document.body.append(a); a.click();
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
     toast('Postcard saved!', 'postcard', 'good');

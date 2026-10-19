@@ -35,7 +35,7 @@ export const settingsPanel = {
       h('span', label, help ? h('small', help) : null),
       h('input', { type: 'checkbox', checked: !!set[key], on: { change: e => { set[key] = e.target.checked; apply(); } } }));
 
-    body.append(h('h4.section', 'Audio'), slider('Music', 'music'), slider('Sound effects', 'sfx'));
+    body.append(h('h4.section', 'Audio'), slider('Master', 'master'), slider('Music', 'music'), slider('Sound effects', 'sfx'), slider('Footsteps', 'footsteps'), slider('Ambience', 'ambience'));
     body.append(h('h4.section', 'Accessibility & controls'),
       toggle('Reduced motion', 'reducedMotion', 'Calmer water, no screen flashes or bouncing.'),
       toggle('Tap to move', 'tapToMove', 'Tap the island to walk there. Dragging always steers.'),
@@ -56,7 +56,7 @@ export const settingsPanel = {
         h('h4.section', 'Danger zone'),
         button('Reset all progress', () => resetFlow(), { cls: 'danger', iconName: 'close' }));
     }
-    body.append(h('p.version', `Tide & Town v${GAME_VERSION} · save format v${SAVE_VERSION}${Save.canPersist ? '' : ' (storage unavailable)'}`));
+    body.append(h('p.version', `Reelhaven v${GAME_VERSION} · save format v${SAVE_VERSION}${Save.canPersist ? '' : ' (storage unavailable)'}`));
   },
 };
 
@@ -73,7 +73,7 @@ function importFlow() {
         location.reload();
       }, { danger: true });
     } catch (err) {
-      toast(err.message || 'That file is not a valid Tide & Town save.', null, 'error');
+      toast(err.message || 'That file is not a valid Reelhaven save.', null, 'error');
     }
   });
   input.click();

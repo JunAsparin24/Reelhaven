@@ -15,7 +15,7 @@ export const NPCS = {
       ] },
       { when: c => c.quest === 'q_set_sail', lines: [
         'My boat’s been leaking since the great seagull incident. Don’t ask.',
-        'Bring me some wood and coins and we’ll patch her up. Coral Cove is just over the horizon!',
+        'Bring me some wood and coins and we’ll patch her up. Pearlreef Atoll is just over the horizon!',
       ], action: 'map' },
       { when: c => c.isNight, lines: ['Night fishing is magic. Moon Jellies drift up to say hi after sunset.'] },
       { when: c => c.quest === 'q_hut', lines: ['A Fishing Hut would let me sell you fancy bait. Rowan can help — open Build mode with the hammer!'] },
@@ -78,7 +78,7 @@ export const NPCS = {
     look: { skin: '#6e4a33', hair: '#e8e2d0', hairStyle: 'short', shirt: '#69cfc9', pants: '#247d91', hat: 'bandana' },
     dialogue: [
       { when: () => true, lines: [
-        'Welcome to the Cove! The reef fish are fast — a Coral Rod helps a lot out here.',
+        'Welcome to the Atoll! The reef fish are fast — a Coral Rod helps a lot out here.',
         'Tide pools refill with goodies every few minutes. Check them whenever you pass!',
         'Shells and sea glass wash up all the time here. Perfect for decorating!',
       ], random: true },

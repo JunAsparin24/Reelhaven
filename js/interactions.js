@@ -11,19 +11,21 @@ import { sfx } from './audio.js';
 
 export const BRIDGE_COST = { coins: 100, wood: 15, stone: 6 };
 
-/** Build the list of interactables for the current world (cheap; run per frame). */
 /**
+ * Everything the player can use from where they stand, closest first.
  * rangeBoost > 1 widens every range (used when arriving after a tap);
  * only(it) restricts the search to the thing the player tapped.
+ * game.canUse(it), if present, filters by mode (e.g. visiting a friend).
  */
-export function findInteractable(game, rangeBoost = 1, only = null) {
+function collectInteractables(game, rangeBoost = 1, only = null) {
   const { world: w, player: p } = game;
-  if (!w || !p) return null;
-  let best = null, bestD = Infinity;
+  if (!w || !p) return [];
+  const found = [];
   const consider = (it, x, y, range) => {
-    const d = Math.hypot(p.x - x, p.y - 4 - y);
     if (only && !only(it)) return;
-    if (d < range * rangeBoost && d < bestD) { bestD = d; best = it; }
+    if (game.canUse && !game.canUse(it)) return;
+    const d = Math.hypot(p.x - x, p.y - 4 - y);
+    if (d < range * rangeBoost) { it.d = d; found.push(it); }
   };
   for (const s of w.spots) {
     if (s.hidden && !game.revealedSpots.has(s.id)) continue;
@@ -56,7 +58,26 @@ export function findInteractable(game, rangeBoost = 1, only = null) {
     const spr = sprite(pl.type === 'crop_garden' ? 'crop_garden_3' : pl.type);
     consider({ kind: 'building', placement: pl, verb: verbs[pl.type] || 'Look', label: pl.def.name, mx: cx, my: (pl.y + pl.fh) * TILE - (spr ? spr.height : 32) - 2 }, cx, cy, 22);
   }
-  return best;
+  return found.sort((x, y) => x.d - y.d);
+}
+
+/** The single closest interactable (used by the E key and tap-to-use). */
+export function findInteractable(game, rangeBoost = 1, only = null) {
+  return collectInteractables(game, rangeBoost, only)[0] || null;
+}
+
+/** Up to `max` distinct nearby interactables for the contextual action panel. */
+export function nearbyInteractables(game, max = 3) {
+  const seen = new Set();
+  const out = [];
+  for (const it of collectInteractables(game)) {
+    const key = it.kind + it.label;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(it);
+    if (out.length >= max) break;
+  }
+  return out;
 }
 
 function nodeLabel(o) {

@@ -24,6 +24,11 @@ const MIGRATIONS = {
     s.stats.talked = s.stats.talked || {};
     return s;
   },
+  3: s => {
+    // v3 -> v4: master / footstep / ambience volumes
+    s.settings = { ...defaultSettings(), ...(s.settings || {}) };
+    return s;
+  },
 };
 
 function storageAvailable() {
@@ -111,7 +116,7 @@ export function save(state) {
   if (!canPersist || !state) return false;
   try {
     state.savedAt = Date.now();
-    const raw = JSON.stringify({ app: 'tide-and-town', data: state });
+    const raw = JSON.stringify({ app: 'reelhaven', data: state });
     const prev = localStorage.getItem(KEY);
     // Rotate the backup at most once a minute so it trails the main save.
     if (prev && Date.now() - lastWrite > 60_000) localStorage.setItem(BACKUP_KEY, prev);
@@ -133,11 +138,11 @@ export function wipe() {
 }
 
 export function exportSave(state) {
-  const blob = new Blob([JSON.stringify({ app: 'tide-and-town', data: state }, null, 1)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({ app: 'reelhaven', data: state }, null, 1)], { type: 'application/json' });
   const a = document.createElement('a');
   const stamp = new Date().toISOString().slice(0, 10);
   a.href = URL.createObjectURL(blob);
-  a.download = `tide-and-town-${stamp}.json`;
+  a.download = `reelhaven-${stamp}.json`;
   document.body.appendChild(a);
   a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
@@ -157,3 +162,47 @@ export function createAutosaver(getState) {
     flush,
   };
 }
+
+// ------------------------------------------------------------- archives
+// Old islands are never thrown away by "New Game" or account switches: they
+// are copied here first and can be restored from Settings → Save data.
+const ARCHIVE_PREFIX = 'tidetown.archive.';
+
+export function archiveSave(state, reason = 'manual') {
+  if (!canPersist || !state) return null;
+  try {
+    const key = ARCHIVE_PREFIX + Date.now();
+    localStorage.setItem(key, JSON.stringify({ reason, at: Date.now(), data: state }));
+    return key;
+  } catch (err) {
+    console.warn('Could not archive save', err);
+    return null;
+  }
+}
+
+/** [{ key, reason, at, name, level }] newest first. */
+export function listArchives() {
+  if (!canPersist) return [];
+  const out = [];
+  for (const key of Object.keys(localStorage)) {
+    if (!key.startsWith(ARCHIVE_PREFIX)) continue;
+    try {
+      const a = JSON.parse(localStorage.getItem(key));
+      out.push({ key, reason: a.reason, at: a.at, name: a.data?.player?.name, level: a.data?.player?.level });
+    } catch { /* unreadable archive: leave it alone */ }
+  }
+  return out.sort((a, b) => b.at - a.at);
+}
+
+/** Make an archived island the active save (the current one is archived first). */
+export function restoreArchive(key, current) {
+  const raw = localStorage.getItem(key);
+  if (!raw) throw new Error('That backup no longer exists.');
+  const state = parse(raw);
+  if (current) archiveSave(current, 'before-restore');
+  save(state);
+  localStorage.removeItem(key);
+  return state;
+}
+
+export function deleteArchive(key) { localStorage.removeItem(key); }

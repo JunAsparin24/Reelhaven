@@ -1,7 +1,7 @@
 // Smooth-follow camera clamped to the world, snapped to whole pixels so the
 // pixel art never shimmers.
 export class Camera {
-  constructor() { this.x = 0; this.y = 0; this.viewW = 200; this.viewH = 300; this.fx = 0; this.fy = 0; this.extraBottom = 0; }
+  constructor() { this.x = 0; this.y = 0; this.viewW = 200; this.viewH = 300; this.fx = 0; this.fy = 0; this.extraBottom = 0; this.extraRight = 0; }
 
   resize(w, h) { this.viewW = w; this.viewH = h; }
 
@@ -22,7 +22,7 @@ export class Camera {
     let cx = this.fx - this.viewW / 2, cy = this.fy - this.viewH / 2;
     const m = Camera.MARGIN;
     if (world.pxW + m * 2 <= this.viewW) cx = (world.pxW - this.viewW) / 2;
-    else cx = Math.max(-m, Math.min(world.pxW + m - this.viewW, cx));
+    else cx = Math.max(-m, Math.min(world.pxW + m + this.extraRight - this.viewW, cx));
     if (world.pxH + m * 2 <= this.viewH) cy = (world.pxH - this.viewH) / 2;
     else cy = Math.max(-m, Math.min(world.pxH + m + this.extraBottom - this.viewH, cy));
     this.x = Math.round(cx);

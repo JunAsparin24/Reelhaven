@@ -15,6 +15,8 @@ export class Player {
     this.poseTimer = 0;
     this.path = null;
     this.onArrive = null;
+    this.lastFrame = 0;
+    this.onStep = null;   // set by the footstep system
   }
 
   get tileX() { return Math.floor(this.x / TILE); }
@@ -56,15 +58,26 @@ export class Player {
     const slow = world.slow[this.tileY * world.w + this.tileX] ? 0.65 : 1;
     const sp = SPEED * slow * dt;
     // Axis-separated movement lets the player slide along walls.
+    const ox = this.x, oy = this.y;
     const nx = this.x + dx * sp;
     if (world.boxFree(nx, this.y - HALF_H, HALF_W, HALF_H)) this.x = nx;
     const ny = this.y + dy * sp;
     if (world.boxFree(this.x, ny - HALF_H, HALF_W, HALF_H)) this.y = ny;
+    // Facing still follows input, but walking into a wall is not "moving":
+    // no walk animation and no footsteps.
+    const moved = Math.hypot(this.x - ox, this.y - oy) > sp * 0.2;
     // Facing follows the dominant axis.
     if (Math.abs(dx) > Math.abs(dy)) this.facing = dx > 0 ? 'right' : 'left';
     else this.facing = dy > 0 ? 'down' : 'up';
+    if (!moved) { this.moving = false; this.anim = 0; this.lastFrame = 0; return false; }
     this.moving = true;
     this.anim += dt * 8 * slow;
+    // Frames 1 and 3 of the 4-frame walk cycle are the feet touching down.
+    const frame = Math.floor(this.anim) % 4;
+    if (frame !== this.lastFrame) {
+      this.lastFrame = frame;
+      if (frame === 1 || frame === 3) this.onStep?.(this);
+    }
     return true;
   }
 

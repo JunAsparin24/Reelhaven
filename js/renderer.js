@@ -7,6 +7,7 @@ import { makeCanvas } from './art/pixel.js';
 import { C } from './art/palette.js';
 import { T, WATERY } from './world-gen.js';
 import { lighting } from './weather.js';
+import { TitleScene } from './title-scene.js';
 
 const GRASSY = new Set([T.G, T.K, T.N]);
 const FLAT_OBJECTS = new Set(['shells', 'seaglass', 'tidepool', 'flowers', 'lily', 'coral', 'driftwood', 'reeds']);
@@ -31,6 +32,8 @@ export class Renderer {
     this.time = 0;
     this.reducedMotion = false;
     this.texts = [];          // floating world texts
+    this.titleScene = new TitleScene();
+    this.titleT = 0;
     this.resize();
   }
 
@@ -103,14 +106,16 @@ export class Renderer {
     for (let y = 0; y < w.h; y++) for (let x = 0; x < w.w; x++) {
       const k = y * w.w + x, t = w.terrain[k];
       this.waterVar[k] = (x * 7 + y * 13) % 4;
-      if (t === T.O) this.waterStyle[k] = th.pond;
+      if (t === T.H) this.waterStyle[k] = 'wade';
+      else if (t === T.O) this.waterStyle[k] = th.pond;
       else if (t === T.R) this.waterStyle[k] = th.reef;
       else {
         const d = dist[k];
         this.waterStyle[k] = d <= 1 ? th.shallow : d <= 3 ? th.near : th.deep;
       }
-      if (WATERY.has(t)) {
-        const landAt = (xx, yy) => { const tt = w.tile(xx, yy); return !WATERY.has(tt) && tt !== T.D && tt !== T.B && tt !== T.X; };
+      if (WATERY.has(t) || t === T.H) {
+        // Shallows count as water here, so surf breaks on sand, not between depths.
+        const landAt = (xx, yy) => { const tt = w.tile(xx, yy); return !WATERY.has(tt) && tt !== T.D && tt !== T.B && tt !== T.X && tt !== T.H; };
         if (landAt(x, y - 1)) this.foam.push(x, y, 0);
         if (landAt(x, y + 1)) this.foam.push(x, y, 1);
         if (landAt(x - 1, y)) this.foam.push(x, y, 2);
@@ -123,13 +128,14 @@ export class Renderer {
     const dg = dither.getContext('2d');
     for (let y = 0; y < w.h; y++) for (let x = 0; x < w.w; x++) {
       const k = y * w.w + x;
-      if (!WATERY.has(w.terrain[k])) continue;
+      const wet = i => WATERY.has(w.terrain[i]) || w.terrain[i] === T.H;
+      if (!wet(k)) continue;
       const a = this.waterStyle[k];
       for (const [dx, dy] of [[1, 0], [0, 1]]) {
         const nx = x + dx, ny = y + dy;
         if (nx >= w.w || ny >= w.h) continue;
         const nk = ny * w.w + nx;
-        if (!WATERY.has(w.terrain[nk])) continue;
+        if (!wet(nk)) continue;
         const b = this.waterStyle[nk];
         if (a === b) continue;
         const ca = WATER_STYLES[a][0], cb = WATER_STYLES[b][0];
@@ -147,6 +153,13 @@ export class Renderer {
     for (let y = 0; y < w.h; y++) for (let x = 0; x < w.w; x++) {
       const t = w.tile(x, y), px = x * TILE, py = y * TILE;
       if (WATERY.has(t)) continue;
+      if (t === T.H) {
+        // Wadeable shallows: a faint sandy bottom showing through the water.
+        g.globalAlpha = 0.28;
+        g.drawImage(pick(underSand, x, y), px, py);
+        g.globalAlpha = 1;
+        continue;
+      }
       if (t === T.D) {
         g.drawImage(pick(ts.dock, x, y), px, py);
         if (WATERY.has(w.tile(x, y + 1))) {
@@ -181,10 +194,11 @@ export class Renderer {
         if (notG(0, -1)) { g.fillStyle = t === T.N ? '#b4dcc0' : C.mint; g.fillRect(px + 1, py, 14, 1); }
       } else if (t === T.S || t === T.M) {
         g.fillStyle = t === T.M ? C.mud2 : C.wetsand;
-        if (WATERY.has(nb(0, 1))) g.fillRect(px, py + 13, 16, 3);
-        if (WATERY.has(nb(0, -1))) g.fillRect(px, py, 16, 2);
-        if (WATERY.has(nb(-1, 0))) g.fillRect(px, py, 2, 16);
-        if (WATERY.has(nb(1, 0))) g.fillRect(px + 14, py, 2, 16);
+        const wet = (dx, dy) => WATERY.has(nb(dx, dy)) || nb(dx, dy) === T.H;
+        if (wet(0, 1)) g.fillRect(px, py + 13, 16, 3);
+        if (wet(0, -1)) g.fillRect(px, py, 16, 2);
+        if (wet(-1, 0)) g.fillRect(px, py, 2, 16);
+        if (wet(1, 0)) g.fillRect(px + 14, py, 2, 16);
       } else if (t === T.P) {
         g.fillStyle = C.path2;
         if (GRASSY.has(nb(0, -1))) g.fillRect(px, py, 16, 1);
@@ -241,6 +255,16 @@ export class Renderer {
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = '#1d6878';
     ctx.fillRect(0, 0, this.viewW, this.viewH);
+    if (scene.title) {
+      // Title screen: sunset diorama, fading in from night on first show.
+      this.titleT += dt;
+      this.titleScene.render(ctx, this.viewW, this.viewH, this.time, this.reducedMotion);
+      const a = this.reducedMotion ? 0 : Math.max(0, 1 - this.titleT / 1.1);
+      if (a > 0) { ctx.fillStyle = `rgba(20,22,48,${a})`; ctx.fillRect(0, 0, this.viewW, this.viewH); }
+      this.present(scene);
+      return;
+    }
+    this.titleT = 0;
     if (!w) { this.present(scene); return; }
 
     const x0 = Math.max(0, Math.floor(cam.x / TILE) - 1), y0 = Math.max(0, Math.floor(cam.y / TILE) - 1);
@@ -254,7 +278,7 @@ export class Renderer {
         if (x < 0 || y < 0 || x >= w.w || y >= w.h) { style = w.def.theme.deep; v = (((x * 7 + y * 13) % 4) + 4) % 4; }
         else {
           const k = y * w.w + x;
-          if (!WATERY.has(w.terrain[k]) && w.terrain[k] !== T.X && w.terrain[k] !== T.D && w.terrain[k] !== T.B) continue;
+          if (!WATERY.has(w.terrain[k]) && w.terrain[k] !== T.X && w.terrain[k] !== T.D && w.terrain[k] !== T.B && w.terrain[k] !== T.H) continue;
           style = this.waterStyle[k]; v = this.waterVar[k];
         }
         ctx.drawImage(water[style][v][(wf + v * 2) % WATER_FRAMES], x * TILE - cam.x, y * TILE - cam.y);
@@ -332,20 +356,40 @@ export class Renderer {
       const spr = n.moving ? frames[Math.floor(n.anim) % 4] : frames[0];
       drawList.push({ y: n.y, spr, x: n.x, by: n.y + 1, npc: n });
     }
+    this.nameTags = [];
+    for (const r of scene.remotes || []) {
+      if (!r.sprites) continue;
+      const frames = r.sprites[r.f] || r.sprites.down;
+      const spr = r.moving ? frames[Math.floor(r.anim) % 4] : frames[0];
+      drawList.push({ y: r.y, spr, x: r.x, by: r.y + 1, remote: true });
+      this.nameTags.push({ text: r.name || 'Islander', x: r.x, y: r.y - spr.height - 1, host: r.host });
+    }
     if (scene.player && !scene.title) {
       const p = scene.player;
-      drawList.push({ y: p.y, spr: p.frame(scene.playerSprite), x: p.x, by: p.y + 1, player: true });
+      const wading = w.tile(Math.floor(p.x / TILE), Math.floor((p.y - 2) / TILE)) === T.H;
+      drawList.push({ y: p.y, spr: p.frame(scene.playerSprite), x: p.x, by: p.y + 1, player: true, wading });
     }
     drawList.sort((a, b) => a.y - b.y);
     for (const d of drawList) {
       let bob = 0;
       if ((d.player && !scene.player.moving) || (d.npc && !d.npc.moving)) bob = this.reducedMotion ? 0 : (Math.sin(t * 2.4 + (d.npc ? d.npc.homeX : 0)) > 0.6 ? 1 : 0);
-      if (d.player || d.npc) {
+      if (d.wading) {
+        // Feet hidden under the water line, with a little ring of ripples.
+        const sx = Math.round(d.x - d.spr.width / 2 - cam.x), sy = Math.round(d.by - d.spr.height - cam.y + 2 + bob);
+        const cut = 5;
+        ctx.drawImage(d.spr, 0, 0, d.spr.width, d.spr.height - cut, sx, sy, d.spr.width, d.spr.height - cut);
+        const rf = this.reducedMotion ? 1 : Math.floor((t * 3) % 4);
+        ctx.globalAlpha = 0.8;
+        ctx.drawImage(sprite('ripple_' + rf), Math.round(d.x - 10 - cam.x), Math.round(d.by - 7 - cam.y));
+        ctx.globalAlpha = 1;
+        continue;
+      }
+      if (d.player || d.npc || d.remote) {
         ctx.fillStyle = 'rgba(30,30,50,0.22)';
         ctx.fillRect(Math.round(d.x - 5 - cam.x), Math.round(d.by - 2 - cam.y), 10, 2);
         ctx.fillRect(Math.round(d.x - 4 - cam.x), Math.round(d.by - 3 - cam.y), 8, 1);
       }
-      ctx.drawImage(d.spr, Math.round(d.x - d.spr.width / 2 - cam.x), Math.round(d.by - d.spr.height - cam.y + bob + (d.player || d.npc ? 2 : 0)));
+      ctx.drawImage(d.spr, Math.round(d.x - d.spr.width / 2 - cam.x), Math.round(d.by - d.spr.height - cam.y + bob + (d.player || d.npc || d.remote ? 2 : 0)));
       if (d.npc && scene.questGiver === d.npc.id) {
         const m = sprite('marker');
         const hop = this.reducedMotion ? 0 : Math.round(Math.abs(Math.sin(t * 3)) * 3);
@@ -677,6 +721,20 @@ export class Renderer {
         ctx.fillText(tx.text, x, y);
       }
       ctx.globalAlpha = 1;
+    }
+    // Other players' name tags (crisp text drawn after upscaling).
+    if (this.nameTags?.length && scene.camera) {
+      const cam = scene.camera;
+      ctx.textAlign = 'center';
+      ctx.font = `600 ${Math.round(11 * this.dpr)}px "Pixelify Sans", monospace`;
+      for (const n of this.nameTags) {
+        const x = (n.x - cam.x) * s, y = (n.y - cam.y) * s;
+        const w = ctx.measureText(n.text).width + 10 * this.dpr;
+        ctx.fillStyle = n.host ? 'rgba(240,193,75,0.92)' : 'rgba(30,44,70,0.85)';
+        ctx.fillRect(x - w / 2, y - 14 * this.dpr, w, 15 * this.dpr);
+        ctx.fillStyle = n.host ? '#2c2433' : '#fff5df';
+        ctx.fillText(n.text, x, y - 3 * this.dpr);
+      }
     }
     const st = scene.stick;
     if (st) {

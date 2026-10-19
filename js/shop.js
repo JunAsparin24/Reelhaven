@@ -7,6 +7,7 @@ import { RODS, BAIT, HATS } from '../data/item-data.js';
 import { DECOR, BUILDINGS } from '../data/building-data.js';
 import { hasBuilding } from './building-count.js';
 import { sfx } from './audio.js';
+import { ISLANDS } from '../data/island-data.js';
 
 export const MATERIALS = {
   wood: { id: 'wood', name: 'Wood Bundle', qty: 5, price: 30, icon: 'wood' },
@@ -32,7 +33,7 @@ export function requirement(kind, id) {
   const need = def => {
     if (def.minLevel && lvl < def.minLevel) return `Reach level ${def.minLevel}`;
     if (def.requiresBuilding && !hasBuilding(def.requiresBuilding)) return `Build a ${BUILDINGS[def.requiresBuilding].name}`;
-    if (def.requiresIsland && !s.islands[def.requiresIsland]?.unlocked) return 'Discover Coral Cove';
+    if (def.requiresIsland && !s.islands[def.requiresIsland]?.unlocked) return 'Discover ' + ISLANDS[def.requiresIsland].name;
     return null;
   };
   switch (kind) {

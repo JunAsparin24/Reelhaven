@@ -1,6 +1,6 @@
 {
-  "name": "tide-and-town",
-  "version": "1.0.0",
+  "name": "reelhaven",
+  "version": "2.0.0",
   "description": "A cozy pixel-art fishing and island-building browser game.",
   "private": true,
   "type": "module",

@@ -1,6 +1,6 @@
 // Service worker: network-first for the game's own files (so updates appear
 // immediately during development), with a cache fallback for offline play.
-const CACHE = 'tide-and-town-v1';
+const CACHE = 'reelhaven-v2';
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html', './manifest.json'])).catch(() => {}));

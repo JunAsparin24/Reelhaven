@@ -9,6 +9,7 @@ import { hasBlueprint } from './shop.js';
 import { sprite } from './art/sprites.js';
 import { addXp, checkAchievements } from './progression.js';
 import { sfx } from './audio.js';
+import { ISLANDS } from '../data/island-data.js';
 
 /** Why the player can't build this right now (null if they can). */
 export function buildBlocker(type) {
@@ -18,7 +19,7 @@ export function buildBlocker(type) {
   if (def.minLevel && s.player.level < def.minLevel) return `Reach level ${def.minLevel}`;
   if (def.maxCount && countBuilt(type) >= def.maxCount) return def.maxCount === 1 ? 'Already built' : `Limit ${def.maxCount}`;
   if (def.kind === 'building' && !hasBlueprint(type)) return 'Buy blueprint at Nori’s';
-  if (def.requiresIsland && !s.islands[def.requiresIsland]?.unlocked) return 'Discover Coral Cove';
+  if (def.requiresIsland && !s.islands[def.requiresIsland]?.unlocked) return 'Discover ' + ISLANDS[def.requiresIsland].name;
   return null;
 }
 

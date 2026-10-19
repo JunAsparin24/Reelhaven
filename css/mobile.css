@@ -1,50 +1,70 @@
-/* Responsive adjustments. Portrait phones are the primary target; these rules
-   adapt the layout for small phones, landscape, tablets and desktop. */
+/* Responsive rules. Landscape is the primary layout (game.css); these adapt it
+   to portrait phones, short screens, tablets and desktop. */
 
-/* Very small phones */
-@media (max-width: 370px) {
-  .pinfo { max-width: 90px; }
+/* ---------- portrait phones: menu docks to the bottom edge */
+@media (orientation: portrait) {
+  #nav {
+    top: auto; right: var(--edge-r); left: var(--edge-l); bottom: var(--edge-b);
+    justify-content: space-between; gap: 2px;
+  }
+  .nav-btn { flex: 1 1 0; max-width: 64px; width: auto; height: 48px; }
+  .nav-sep { display: none; }
+  #hud-top { max-width: calc(100% - 2 * var(--pad)); }
+  #action-region { bottom: calc(var(--edge-b) + var(--menu-h) + 10px); }
+  #fishing-ui, #dialogue, #build-bar { bottom: calc(var(--edge-b) + var(--menu-h) + 8px); }
+  #fishing-ui { grid-template-columns: 1fr 104px; }
+  .fish-head .chip.static { display: none; }
+  #toasts { width: calc(100% - 24px); }
+  /* gentle nudge to rotate, never blocking */
+  .rotate-hint {
+    display: flex; align-items: center; gap: 6px; padding: 4px 8px; font-size: 0.72rem; font-weight: 600;
+  }
+}
+
+/* ---------- very narrow portrait phones */
+@media (orientation: portrait) and (max-width: 370px) {
+  .pinfo { width: 70px; }
   .pill.clock .clock-text { display: none; }
-  .pill { padding: 2px 6px 2px 3px; font-size: 0.9rem; }
-  .fab { width: 52px; min-height: 52px; }
-  .fab span { display: none; }
-  #interact-btn { width: 76px; height: 76px; }
-  .ency-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .nav-btn { font-size: 0.55rem; }
 }
 
-@media (max-width: 480px) {
+/* ---------- short landscape phones: trim the status card */
+@media (orientation: landscape) and (max-height: 430px) {
+  .pinfo { width: 80px; }
   .clock-text .ampm { display: none; }
-  .pill.clock { padding-right: 6px; }
-  .pill.clock .save-dot { position: absolute; top: 2px; right: 2px; margin: 0; }
+  .nav-btn { width: 42px; height: 42px; font-size: 0.55rem; }
+  .nav-btn .px-icon { width: 22px; height: 22px; }
+  #fishing-ui { grid-template-columns: 1fr 112px; padding: 6px 8px; }
 }
 
-/* Short landscape phones: shrink chrome so the island stays visible */
-@media (max-height: 500px) and (orientation: landscape) {
-  #hud-top { padding-top: calc(3px + var(--safe-top)); padding-bottom: 4px; }
-  .nav-btn { min-height: 44px; flex-direction: row; gap: 6px; }
-  .nav-btn .px-icon { width: 24px; height: 24px; }
-  #side-buttons { top: 8px; gap: 8px; }
-  .fab { min-height: 48px; }
-  .sheet { max-height: calc(100% - 10px); left: 15%; right: 15%; }
-  #fishing-ui, #dialogue, #build-bar { max-width: 560px; }
-  .fish-msg { min-height: 1.4em; }
-  .action-btn { min-height: 54px; }
-  .quest-chip { top: 6px; }
+/* ---------- narrow landscape: the menu and status card must not collide */
+@media (orientation: landscape) and (max-width: 700px) {
+  .nav-btn span { display: none; }
+  .nav-btn { width: 38px; }
+  .pill.pearls { display: none; }
 }
 
-/* Tablets and desktop: centred sheets that do not span the whole width */
-@media (min-width: 760px) {
-  .sheet { left: 50%; right: auto; width: min(640px, 92vw); transform: translate(-50%, 105%); bottom: 16px; max-height: calc(100% - 32px); }
-  .sheet.wide { width: min(860px, 94vw); }
-  .sheet.in { transform: translate(-50%, 0); }
-  .sheet.out { transform: translate(-50%, 105%); }
-  #nav { justify-content: center; grid-template-columns: repeat(4, minmax(90px, 140px)); }
-  #side-buttons { top: 64px; }
-  .quest-chip { max-width: 420px; }
-  .map-board { height: 360px; }
+/* ---------- tablets & desktop: more breathing room, bigger HUD */
+@media (min-width: 1000px) and (min-height: 600px) {
+  #app { --pad: 14px; }
+  .nav-btn { width: 54px; height: 54px; font-size: 0.66rem; }
+  .nav-btn .px-icon { width: 28px; height: 28px; }
+  .pinfo { width: 130px; }
+  .pname { font-size: 0.95rem; }
+  .pill { font-size: 0.95rem; min-height: 46px; }
+  .portrait { width: 38px; height: 34px; }
+  .quest-chip { font-size: 0.85rem; min-height: 36px; }
+  #fishing-ui { width: 620px; grid-template-columns: 1fr 150px; }
+  #dialogue, #build-bar { width: 640px; }
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .ency-card:hover, .build-card:hover:not(:disabled), .item-row.selectable:hover { filter: brightness(1.04); }
-  .nav-btn:hover:not(.active) { background: rgba(255, 255, 255, 0.06); }
+  .ency-card:hover, .build-card:hover:not(:disabled), .item-row.selectable:hover, .nav-btn:hover, .act:hover { filter: brightness(1.05); }
+}
+
+/* Large desktop screens: scale the rem-based UI up a little. */
+@media (min-width: 1280px) and (min-height: 720px) and (pointer: fine) {
+  html { font-size: 18px; }
+  .sheet { width: min(520px, 42%); }
+  .sheet.wide { width: min(720px, 55%); }
 }

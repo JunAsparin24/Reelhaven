@@ -53,7 +53,9 @@ export class FishingUI {
     this.el.close = h('button.icon-btn.close', { type: 'button', 'aria-label': 'Stop fishing', on: { click: () => this.ui.game.stopFishing() } }, icon('close'));
     this.root.append(
       h('div.fish-head', icon('rod'), this.el.title, this.el.rod, this.el.baitBtn, this.el.close),
-      this.el.msg, this.el.meter, this.el.reelBox, this.el.action);
+      this.el.msg,
+      h('div.fish-play', this.el.meter, this.el.reelBox),
+      this.el.action);
     // Hold-style input that works for touch, mouse and pen.
     const btn = this.el.action;
     const down = e => { e.preventDefault(); if (this.pointer != null) return; this.pointer = e.pointerId; btn.setPointerCapture?.(e.pointerId); btn.classList.add('held'); this.session?.press(); };

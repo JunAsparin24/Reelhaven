@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, interactive-widget=resizes-content">
   <meta name="theme-color" content="#247d91">
-  <meta name="description" content="Tide & Town — a cozy pixel-art fishing and island-building game.">
+  <meta name="description" content="Reelhaven — a cozy pixel-art island fishing game.">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>Tide &amp; Town</title>
+  <title>Reelhaven</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" type="image/png" href="assets/icons/icon-192.png">
   <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
@@ -18,26 +18,32 @@
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/game.css">
   <link rel="stylesheet" href="css/ui.css">
+  <link rel="stylesheet" href="css/title.css">
   <link rel="stylesheet" href="css/mobile.css">
 </head>
 <body>
   <div id="app" class="on-title">
-    <header id="hud-top" aria-label="Status"></header>
     <main id="stage">
       <canvas id="world" aria-label="Island world. Drag to move, tap to walk or interact."></canvas>
-      <div id="toasts" aria-live="polite"></div>
+      <!-- HUD regions: status (top-left), menu (top-right / bottom in portrait),
+           info (under status), actions (bottom-right). See js/ui/layout.js. -->
+      <div id="hud" aria-label="Game controls">
+        <header id="hud-top" class="hud-region" aria-label="Status"></header>
+        <nav id="nav" class="hud-region" aria-label="Menu"></nav>
+        <div id="hud-info" class="hud-region"></div>
+        <div id="action-region" class="hud-region" aria-live="polite"></div>
+        <div id="toasts" aria-live="polite"></div>
+      </div>
       <section id="fishing-ui" aria-label="Fishing"></section>
       <section id="build-bar" aria-label="Build mode"></section>
       <section id="dialogue" role="dialog" aria-label="Conversation"></section>
-      <!-- menus live inside the stage so the top bar and nav stay tappable -->
       <div id="sheet-layer"></div>
     </main>
-    <nav id="nav" aria-label="Main"></nav>
     <div id="modal-layer"></div>
     <section id="title-screen" aria-label="Title screen"></section>
     <div id="fade" aria-hidden="true"><span class="fade-label"></span></div>
     <div id="boot-error" role="alert" hidden></div>
-    <noscript><p class="noscript">Tide &amp; Town needs JavaScript to run.</p></noscript>
+    <noscript><p class="noscript">Reelhaven needs JavaScript to run.</p></noscript>
   </div>
   <script type="module" src="js/main.js"></script>
 </body>

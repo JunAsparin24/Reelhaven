@@ -61,13 +61,13 @@ export const MAIN_QUESTS = [
   },
   {
     id: 'q_set_sail', title: 'Set Sail', giver: 'mira',
-    desc: 'Fix up Mira’s boat at the dock (or from the Map) to unlock Coral Cove.',
+    desc: 'Fix up Mira’s boat at the dock (or from the Map) to unlock Pearlreef Atoll.',
     objective: { type: 'island_unlocked', island: 'coral', count: 1 },
     reward: { coins: 100, xp: 80 },
   },
   {
     id: 'q_reef', title: 'Reef Explorer', giver: 'pip',
-    desc: 'Catch 4 fish at the reef spots of Coral Cove.',
+    desc: 'Catch 4 fish at the reef spots of Pearlreef Atoll.',
     objective: { type: 'zone_catch', zone: 'reef', count: 4 },
     reward: { xp: 80, coins: 80, items: { shell: 6 } },
   },
