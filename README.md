@@ -1,6 +1,6 @@
-# Tide & Town
+# Reelhaven
 
-A cozy pixel-art fishing and island-building game for mobile browsers (and desktop).
+*(formerly “Tide & Town”)* — a cozy pixel-art island fishing game for mobile browsers and desktop, designed for **landscape** play.
 Catch fish, sell your haul, upgrade your rod, build up your island, sail to new
 islands and fill out the fish encyclopedia.
 
@@ -62,15 +62,19 @@ building placement, shop, quests, orders, gardens, levels and travel.
 
 ## How to play
 
+- **Hold your phone sideways** — the game is built for landscape (portrait works too).
 - **Move:** drag anywhere on the island (a joystick appears under your thumb),
   tap a spot to walk there, or use WASD / arrow keys.
-- **Interact:** walk up to things and tap the round **A** button (or press E / Space).
+- **Interact:** walk up to things — the action buttons in the bottom-right show
+  only what's nearby (Fish, Talk, Shop…). Press E / Space on a keyboard.
   Tapping a tree, NPC or fishing spot walks you there and uses it.
 - **Fish:** at a dock or shore spot, hold the button and release in the gold
   zone for a perfect cast. When the bobber splashes, tap fast. Then hold and
   release to keep the fish inside the green zone until the bar fills.
-- **Bag / Quests / Build:** buttons on the right. **Fish / Map / Friends:**
-  bottom tabs. Rest in your cottage to skip to morning, evening or night.
+- **Menu (top-right):** Bag, Quests, Build, Fish, Map, Friends, Settings.
+  Rest in your cottage to skip to morning, evening or night.
+- **Sound:** footsteps change with the ground (grass, sand, wood, stone, mud,
+  shallow water); master / music / effects / footsteps / ambience volumes in Settings.
 
 ## Project structure
 
@@ -178,25 +182,68 @@ in `measure()` in `js/quests.js`. Add a case there for a new type.
 - **Settings → Save data** has Save now, Export (download a `.json`), Import, and
   a two-step Reset.
 
-## Multiplayer: implemented vs planned
+## Online setup (accounts, cloud saves, friends, island visits)
 
-**Implemented now (single-player, offline):**
-- The Friends tab shows an honest **Offline mode** status, your real island
-  profile, and a **Save postcard** button that exports a PNG of your island to
-  share anywhere.
-- `js/multiplayer.js` defines the online-service boundary (`onlineStatus()`) and
-  the public island snapshot format (`islandSnapshot()`) a server would store.
-- Weekend Market / Full Moon events are **local** calendar events
-  (`js/world-events.js`). They are clearly labelled and not synchronised between players.
+Online features use **Supabase** (free tier is fine). Without it the game runs
+fully offline with local saves — nothing breaks.
 
-**Planned (needs a backend, not built):** accounts, cloud saves, friend lists,
-island visits, trading, competitions and community goals. The recommended path is
-Supabase (auth + Postgres + Realtime) or similar. Currency, inventory, trades and
-rewards must then be validated server-side. Never trust the client. Daily goals
-should use server time once a backend exists.
+1. Create a project at <https://supabase.com>.
+2. **Database:** open *SQL Editor*, paste the contents of
+   `supabase/migrations/20261019000000_reelhaven_init.sql`, and run it
+   (or `supabase db push` with the Supabase CLI). This creates the tables,
+   row-level security policies and server-side friend functions.
+3. **Auth:** *Authentication → URL Configuration* — set *Site URL* to your game
+   URL (e.g. `https://tide-and-town.onrender.com`) and add it (and
+   `http://localhost:5173`) to *Redirect URLs*. Email sign-in is on by default.
+   Optional: enable *Google* under *Providers*, then set `GOOGLE_AUTH_ENABLED=true`.
+4. **Keys:** *Project Settings → API* — copy the **Project URL** and the
+   **anon public** key. (Never use the `service_role` key in the game.)
+5. **Render:** in your static site → *Environment*, add `SUPABASE_URL` and
+   `SUPABASE_ANON_KEY`, then redeploy. The build writes them into `config.json`.
+6. **Local development:** copy `config.example.json` to `config.json` and fill in
+   the two values (`config.json` is git-ignored).
+
+**Testing with two accounts:** open the game in a normal window and a private
+window (or two browsers/devices), create an account in each, copy one friend
+code (Friends tab or Account), add it from the other account, accept, then tap
+**Visit**. Each player sees the other walking around in real time.
+
+### What's implemented vs planned
+
+| Feature | Status |
+| --- | --- |
+| Email + password accounts, email sign-in link, password reset | Implemented |
+| Google sign-in | Implemented, off until you enable the provider |
+| Cloud saves with revision-checked sync, conflict choice, offline retry | Implemented |
+| Profiles, friend codes, requests (send / accept / decline / cancel), remove | Implemented (server-validated functions) |
+| Online presence for friends | Implemented (Supabase Realtime presence) |
+| Visiting a friend's island (read-only snapshot) with live movement | Implemented |
+| Trading, competitions, community goals | Planned — not built yet |
+
+**How saves stay safe:** the local save is always what you play. When signed in,
+each upload says which cloud revision it was based on; the database only accepts
+the next revision, so two devices can't silently overwrite each other — you're
+asked which island to keep, and the other copy is archived on the device
+(*Settings → Save data*). Switching accounts never mixes islands.
+
+**Security notes:** row-level security limits saves and snapshots to their owner
+(snapshots are readable by accepted friends only, and only if visits are on).
+Friendships are created/accepted through `SECURITY DEFINER` functions that check
+every step. Visits load a public snapshot (no email, coins or inventory) and can't
+change the host's data. Presence and island channels use public Realtime topics
+(they share only user ids and positions); switching them to private Realtime
+channels with RLS is a recommended hardening step. Single-player progress is
+client-side by nature; any future trading must be validated by the server.
+
+**Verified so far:** the SQL migration parses with the real PostgreSQL parser;
+the sync engine passes 9 scenario tests against an in-memory stand-in for the
+`saves` table; offline mode and island visits were tested in the browser.
+**Not yet verified against a live Supabase project** (needs your credentials):
+sign-up/sign-in emails, real cloud uploads, friend requests, presence and live
+movement between two real accounts.
 
 ## Credits
 
 All code, pixel art (procedural), sounds (Web Audio synthesis) and writing are
-original to this project. Font: [Pixelify Sans](https://fonts.google.com/specimen/Pixelify+Sans)
+original to this project (footsteps: `tools/generate_footsteps.py`). Font: [Pixelify Sans](https://fonts.google.com/specimen/Pixelify+Sans)
 (SIL Open Font License) via Google Fonts, with a system fallback.

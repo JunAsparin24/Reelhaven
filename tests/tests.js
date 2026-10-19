@@ -16,6 +16,8 @@ import { harvestGarden } from '../js/interactions.js';
 import { unlockIsland, travelTo } from '../js/islands.js';
 import { ISLANDS, ISLAND_ORDER } from '../data/island-data.js';
 import { buildAllSprites } from '../js/art/sprites.js';
+import { CloudSync } from '../js/online/cloud-sync.js';
+import * as Save from '../js/save.js';
 
 const results = [];
 const tests = [];
@@ -271,6 +273,126 @@ test('gardens produce over time and cap their output', () => {
   assert(harvestGarden(game, { ...pl, fw: 3, fh: 2 }).ok, 'harvest');
   eq(itemCount('flower'), 6, 'capped at 3 cycles x 2');
 });
+
+// ---------------------------------------------------------------- cloud sync
+// These run the real CloudSync logic against an in-memory stand-in for the
+// Supabase `saves` table (same optimistic-revision rules as the SQL trigger).
+// They do NOT talk to a real server.
+class MemoryBackend {
+  constructor(row = null) { this.row = row; this.offline = false; }
+  async fetch() { if (this.offline) throw new TypeError('Failed to fetch'); return this.row && JSON.parse(JSON.stringify(this.row)); }
+  async insert(row) { if (this.offline) throw new TypeError('Failed to fetch'); if (this.row) return null; this.row = { ...row, revision: 1, updated_at: new Date().toISOString() }; return { revision: 1 }; }
+  async update(row, exp) {
+    if (this.offline) throw new TypeError('Failed to fetch');
+    if (!this.row || this.row.revision !== exp) return null;
+    this.row = { ...row, revision: exp + 1, updated_at: new Date().toISOString() };
+    return { revision: exp + 1 };
+  }
+  async publishSnapshot() {}
+}
+
+async function withCloud(fn) {
+  const keep = {};
+  for (const k of Object.keys(localStorage)) if (k.startsWith('tidetown.')) keep[k] = localStorage.getItem(k);
+  for (const k of Object.keys(localStorage)) if (k.startsWith('tidetown.')) localStorage.removeItem(k);
+  try { await fn(); }
+  finally {
+    for (const k of Object.keys(localStorage)) if (k.startsWith('tidetown.')) localStorage.removeItem(k);
+    for (const [k, v] of Object.entries(keep)) localStorage.setItem(k, v);
+  }
+}
+
+function makeCloud(backend, uid = 'user-a', answers = {}) {
+  const asked = [];
+  const auth = { signedIn: true, enabled: true, status: 'signedIn', user: { id: uid }, profile: { display_name: 'T' } };
+  const cloud = new CloudSync({
+    auth, makeBackend: () => backend,
+    prompt: {
+      chooseSave: async (l, c, why) => { asked.push('choose:' + why); return answers.choose || 'later'; },
+      confirmUpload: async () => { asked.push('upload'); return answers.upload || 'upload'; },
+    },
+  });
+  return { cloud, asked, auth };
+}
+
+const island = (name, level, fish = 0) => { const s = createNewState({ name, look: {} }); s.player.level = level; s.stats.fishCaught = fish; return s; };
+
+test('cloud: brand-new account with no saves anywhere', () => withCloud(async () => {
+  const be = new MemoryBackend();
+  const { cloud } = makeCloud(be);
+  const res = await cloud.reconcile();
+  eq(res.state, null); eq(cloud.status, 'synced'); eq(be.row, null);
+}));
+test('cloud: guest progress uploads to an empty account after asking', () => withCloud(async () => {
+  save(island('Guest', 4));
+  const be = new MemoryBackend();
+  const { cloud, asked } = makeCloud(be);
+  const res = await cloud.reconcile();
+  eq(asked.join(), 'upload'); eq(res.state.player.name, 'Guest');
+  eq(be.row.revision, 1); eq(be.row.data.player.name, 'Guest'); eq(cloud.meta.userId, 'user-a');
+}));
+test('cloud: a new device downloads the cloud island', () => withCloud(async () => {
+  const be = new MemoryBackend({ data: island('Cloudy', 7), revision: 3 });
+  const { cloud, asked } = makeCloud(be);
+  const res = await cloud.reconcile();
+  eq(asked.length, 0); eq(res.state.player.name, 'Cloudy'); eq(load().state.player.name, 'Cloudy'); eq(cloud.meta.revision, 3);
+}));
+test('cloud: local changes push with the next revision', () => withCloud(async () => {
+  const be = new MemoryBackend({ data: island('Me', 2), revision: 1 });
+  const { cloud } = makeCloud(be);
+  await cloud.reconcile();
+  const s = load().state; s.player.level = 3; save(s); cloud.noteLocalSave();
+  eq(cloud.meta.dirty, true);
+  await cloud.push();
+  eq(be.row.revision, 2); eq(be.row.data.player.level, 3); eq(cloud.meta.dirty, false); eq(cloud.status, 'synced');
+}));
+test('cloud: two devices changed → player chooses, loser is archived', () => withCloud(async () => {
+  const be = new MemoryBackend({ data: island('Me', 2), revision: 1 });
+  const { cloud, asked } = makeCloud(be, 'user-a', { choose: 'cloud' });
+  await cloud.reconcile();
+  be.row = { data: island('Me', 9, 50), revision: 2 };            // other device pushed
+  const s = load().state; s.player.level = 4; save(s); cloud.noteLocalSave();   // this device changed too
+  const res = await cloud.reconcile();
+  eq(asked.join(), 'choose:both'); eq(res.state.player.level, 9);
+  assert(Save.listArchives().some(a => a.level === 4), 'device copy archived');
+}));
+test('cloud: a stale push never overwrites newer cloud data', () => withCloud(async () => {
+  const be = new MemoryBackend({ data: island('Me', 2), revision: 1 });
+  const { cloud, asked } = makeCloud(be, 'user-a', { choose: 'later' });
+  await cloud.reconcile();
+  be.row = { data: island('Me', 8, 30), revision: 2 };
+  const s = load().state; s.player.level = 5; save(s); cloud.noteLocalSave();
+  await cloud.push();
+  eq(be.row.revision, 2, 'server copy untouched'); eq(be.row.data.player.level, 8);
+  assert(asked.includes('choose:both'), 'player asked');
+}));
+test('cloud: offline keeps the local save and marks status offline', () => withCloud(async () => {
+  save(island('Local', 3));
+  const be = new MemoryBackend(); be.offline = true;
+  const { cloud } = makeCloud(be);
+  const res = await cloud.reconcile();
+  eq(res.state.player.name, 'Local'); eq(cloud.status, 'offline');
+  clearTimeout(cloud.pushTimer);
+}));
+test('cloud: another account’s synced island is not mixed in', () => withCloud(async () => {
+  save(island('Alice', 6));
+  localStorage.setItem('tidetown.sync', JSON.stringify({ userId: 'user-alice', revision: 4, dirty: false }));
+  const be = new MemoryBackend({ data: island('Bob', 2), revision: 1 });
+  const { cloud, asked } = makeCloud(be, 'user-bob');
+  const res = await cloud.reconcile();
+  eq(asked.length, 0); eq(res.state.player.name, 'Bob');
+  assert(!Save.listArchives().some(a => a.name === 'Alice'), 'synced Alice save not left on device');
+}));
+test('cloud: sign-out with unsynced progress keeps an archive', () => withCloud(async () => {
+  const be = new MemoryBackend({ data: island('Me', 2), revision: 1 });
+  const { cloud } = makeCloud(be);
+  await cloud.reconcile();
+  const s = load().state; s.player.level = 6; save(s); cloud.noteLocalSave();
+  be.offline = true;
+  cloud.afterSignOut(false);
+  eq(load().state, null);
+  assert(Save.listArchives().some(a => a.level === 6), 'unsynced progress archived');
+}));
 
 // ---------------------------------------------------------------- run
 buildAllSprites();

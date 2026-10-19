@@ -1,20 +1,30 @@
-# Render Blueprint — deploys Tide & Town as a free Static Site.
-# In Render: New + → Blueprint → pick this repository. (Or New + → Static Site
-# with the same build command and publish directory.)
+# Render Blueprint — deploys Reelhaven as a free Static Site.
+# In Render: New + → Blueprint → pick this repository.
+# Online features: set SUPABASE_URL and SUPABASE_ANON_KEY under Environment
+# (see README → Online setup). Without them the game runs offline.
 services:
   - type: web
     name: tide-and-town
     runtime: static
-    # No compile step: copy only the files the game needs into dist/.
-    buildCommand: mkdir -p dist && cp -r index.html manifest.json service-worker.js css js data assets dist/
+    # No compile step: copy the game files into dist/ and write config.json.
+    buildCommand: mkdir -p dist && cp -r index.html manifest.json service-worker.js css js data assets dist/ && sh tools/write-config.sh dist/config.json
     staticPublishPath: dist
     pullRequestPreviewsEnabled: false
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: GOOGLE_AUTH_ENABLED
+        value: "false"
     headers:
-      # The service worker must always be re-checked so updates reach players.
       - path: /service-worker.js
         name: Cache-Control
         value: no-cache
       - path: /index.html
+        name: Cache-Control
+        value: no-cache
+      - path: /config.json
         name: Cache-Control
         value: no-cache
       - path: /*

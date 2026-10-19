@@ -26,6 +26,7 @@ export class Online {
       onStateReplaced: state => this.applyState(state),
     });
     on('saved', () => this.cloud.noteLocalSave());
+    this.cloud.on(() => ui.refreshSync?.());
     this.auth.on(async (type) => {
       if (type === 'signedIn') {
         this.social.joinPresence();

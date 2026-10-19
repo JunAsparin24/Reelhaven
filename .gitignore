@@ -5,3 +5,6 @@ Thumbs.db
 *.log
 .vscode/*
 !.vscode/extensions.json
+# local online configuration (contains your project keys)
+config.json
+.env

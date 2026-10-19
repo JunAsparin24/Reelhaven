@@ -17,7 +17,11 @@ self.addEventListener('fetch', event => {
   const url = new URL(req.url);
   const sameOrigin = url.origin === self.location.origin;
   const isFont = url.hostname.endsWith('fonts.googleapis.com') || url.hostname.endsWith('fonts.gstatic.com');
-  if (!sameOrigin && !isFont) return;
+  // The Supabase client library (pinned version) is cached for offline starts;
+  // API calls to Supabase itself are never cached.
+  const isLib = url.hostname === 'cdn.jsdelivr.net' && url.pathname.startsWith('/npm/@supabase/');
+  if (!sameOrigin && !isFont && !isLib) return;
+  if (sameOrigin && url.pathname.endsWith('/config.json')) return;
   event.respondWith(
     fetch(req).then(res => {
       if (res && (res.ok || res.type === 'opaque')) {
