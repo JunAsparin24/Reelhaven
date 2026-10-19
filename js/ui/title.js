@@ -2,7 +2,7 @@
 // new-game character creation.
 import { h, button, confirmModal, modal } from './dom.js';
 import * as Save from '../save.js';
-import { initAudio, sfx, startMusic, setMood } from '../audio.js';
+import { initAudio, sfx, startMusic, setMood, tryAutoStart } from '../audio.js';
 import { buildPortrait, SKIN_TONES, HAIR_COLORS, SHIRT_COLORS, HAIR_STYLES } from '../art/characters.js';
 import { scaleUp } from '../art/pixel.js';
 import { STARTING_HATS, HATS } from '../../data/item-data.js';
@@ -50,7 +50,37 @@ export class TitleUI {
     this.root.classList.remove('show');
     void this.root.offsetWidth;   // restart the entrance animation
     this.root.classList.add('show');
+    this.maybeTapToStart();
     setTimeout(() => this.root.querySelector('.title-btn')?.focus({ preventScroll: true }), 900);
+  }
+
+  /**
+   * Browsers block sound until the first tap/click. On first load we try to
+   * start anyway; if that's blocked, a "Tap anywhere to start" screen turns the
+   * first touch into the moment the music begins.
+   */
+  async maybeTapToStart() {
+    if (this.started) return;
+    if (await tryAutoStart()) { this.begin(); return; }
+    if (this.started || this.root.querySelector('.tap-start')) return;
+    this.root.classList.add('awaiting-tap');
+    const overlay = h('button.tap-start', { type: 'button', 'aria-label': 'Tap anywhere to start' }, h('span', 'Tap anywhere to start'));
+    const go = () => {
+      initAudio();
+      this.begin();
+      overlay.remove();
+      this.root.classList.remove('awaiting-tap');
+      setTimeout(() => this.root.querySelector('.title-btn')?.focus({ preventScroll: true }), 100);
+    };
+    overlay.addEventListener('click', go);
+    window.addEventListener('keydown', function once(e) { if (!overlay.isConnected) { window.removeEventListener('keydown', once); return; } if (['Enter', ' ', 'Spacebar'].includes(e.key)) { window.removeEventListener('keydown', once); go(); } });
+    this.root.append(overlay);
+  }
+
+  begin() {
+    this.started = true;
+    setMood('night');
+    startMusic();
   }
 
   /** Re-render if the save or account status changed while the title is up. */

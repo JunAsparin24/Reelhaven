@@ -206,6 +206,17 @@ export function installAudioUnlock() {
   for (const ev of ['touchend', 'click', 'keydown', 'pointerup']) document.addEventListener(ev, unlock, opts);
 }
 
+/**
+ * Try to start sound with no tap at all. Browsers only allow this in a few
+ * cases (e.g. desktop sites you visit often); returns true if it worked.
+ */
+export async function tryAutoStart() {
+  initAudio();
+  if (!ctx) return false;
+  try { await Promise.race([ctx.resume(), new Promise(r => setTimeout(r, 300))]); } catch { /* blocked */ }
+  return ctx.state === 'running';
+}
+
 /** For diagnostics: 'none' | 'suspended' | 'running' | 'closed'. */
 export function audioState() { return ctx ? ctx.state : 'none'; }
 

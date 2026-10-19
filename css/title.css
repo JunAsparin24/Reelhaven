@@ -86,3 +86,17 @@
   .creator-cols .preview-frame { width: 100%; height: 110px; }
   .creator-cols .creator-preview { width: 120px; }
 }
+
+/* "Tap anywhere to start": browsers allow sound only after the first touch. */
+.tap-start {
+  position: absolute; inset: 0; z-index: 2; border: 0; background: transparent; cursor: pointer;
+  display: flex; align-items: flex-end; justify-content: center; padding-bottom: calc(18vh + var(--safe-bottom));
+  font: inherit; color: #fff4dc;
+}
+.tap-start span {
+  font-size: clamp(1rem, 3.4vh, 1.4rem); font-weight: 700; letter-spacing: 0.08em; text-shadow: 2px 2px 0 var(--ink);
+  background: rgba(30, 20, 50, 0.45); padding: 8px 18px; box-shadow: 0 0 0 2px rgba(44, 36, 51, 0.6);
+  animation: tap-pulse 1.4s ease-in-out infinite;
+}
+@keyframes tap-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.55; transform: scale(0.97); } }
+#title-screen.awaiting-tap .title-menu, #title-screen.awaiting-tap .title-foot { visibility: hidden; animation: none; }
