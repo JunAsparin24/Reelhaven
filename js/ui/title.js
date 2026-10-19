@@ -17,7 +17,7 @@ export class TitleUI {
     this.root = document.getElementById('title-screen');
     this.visible = false;
     // The first tap anywhere on the title wakes the audio (browsers require a gesture).
-    this.root.addEventListener('pointerdown', () => { initAudio(); setMood('night'); startMusic(); }, { once: false });
+    this.root.addEventListener('pointerup', () => { initAudio(); setMood('night'); startMusic(); });
   }
 
   show() {

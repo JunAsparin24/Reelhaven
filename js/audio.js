@@ -148,8 +148,66 @@ function cricket(t) {
   for (let i = 0; i < 6; i++) tone(4600, t + i * 0.045, 0.025, { type: 'square', vol: 0.012, dest: ambGain });
 }
 
-export function pauseAudio() { if (ctx && ctx.state === 'running') ctx.suspend(); }
-export function resumeAudio() { if (ctx && ctx.state === 'suspended') ctx.resume(); }
+export function pauseAudio() {
+  if (ctx && ctx.state === 'running') ctx.suspend();
+  if (mediaKeepAlive) mediaKeepAlive.pause();
+}
+export function resumeAudio() { if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {}); }
+
+// ------------------------------------------------------------- mobile unlock
+// Phones only let audio start inside a "real" user gesture (touchend / click /
+// keydown — not pointerdown or touchstart on iOS), and they suspend it again
+// when you switch apps. So every tap re-unlocks it if needed. iPhones also mute
+// Web Audio with the ring/silent switch unless the page is treated as media
+// playback, so we ask for that.
+let mediaKeepAlive = null;
+
+function silentWavUrl() {
+  // 0.25 s of 8 kHz mono silence as a tiny WAV file.
+  const n = 2000, buf = new ArrayBuffer(44 + n), v = new DataView(buf);
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); v.setUint32(4, 36 + n, true); str(8, 'WAVE'); str(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true);
+  str(36, 'data'); v.setUint32(40, n, true);
+  for (let i = 0; i < n; i++) v.setUint8(44 + i, 128);
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+}
+
+function unlock() {
+  initAudio();
+  if (!ctx) return;
+  if (ctx.state !== 'running') ctx.resume().catch(() => {});
+  // Older iOS also needs a sound started inside the gesture.
+  try {
+    const src = ctx.createBufferSource();
+    src.buffer = ctx.createBuffer(1, 1, 22050);
+    src.connect(ctx.destination);
+    src.start(0);
+  } catch { /* fine */ }
+  // iPhone silent switch: Safari 17+ lets us say "this is media playback".
+  if (navigator.audioSession) {
+    try { navigator.audioSession.type = 'playback'; } catch { /* unsupported */ }
+  } else if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+    // Older iOS: a silent looping <audio> element moves the page into the
+    // media category, which the silent switch doesn't mute.
+    if (!mediaKeepAlive) {
+      mediaKeepAlive = new Audio(silentWavUrl());
+      mediaKeepAlive.loop = true;
+      mediaKeepAlive.setAttribute('playsinline', '');
+    }
+    if (mediaKeepAlive.paused) mediaKeepAlive.play().catch(() => {});
+  }
+}
+
+/** Install once at startup: any tap, click or key unlocks / resumes audio. */
+export function installAudioUnlock() {
+  const opts = { capture: true, passive: true };
+  for (const ev of ['touchend', 'click', 'keydown', 'pointerup']) document.addEventListener(ev, unlock, opts);
+}
+
+/** For diagnostics: 'none' | 'suspended' | 'running' | 'closed'. */
+export function audioState() { return ctx ? ctx.state : 'none'; }
 
 // ------------------------------------------------------------- synth helpers
 function tone(freq, start, dur, { type = 'triangle', vol = 0.3, attack = 0.005, slide = 0, dest = sfxGain } = {}) {

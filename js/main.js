@@ -4,6 +4,7 @@ import { UI } from './ui/index.js';
 import { Game } from './game.js';
 import { buildAllSprites } from './art/sprites.js';
 import { installWebPageGuards } from './ui/device.js';
+import { installAudioUnlock } from './audio.js';
 import { Online } from './online/index.js';
 
 function showBootError(err) {
@@ -18,6 +19,7 @@ window.addEventListener('unhandledrejection', e => console.error('Unhandled prom
 
 try {
   installWebPageGuards();
+  installAudioUnlock();
   buildAllSprites();   // sprites must exist before the UI builds its icons
   const ui = new UI();
   const game = new Game({ canvas: document.getElementById('world'), ui });
