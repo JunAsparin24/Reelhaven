@@ -41,12 +41,11 @@ export const settingsPanel = {
     body.append(h('h4.section', 'Audio'), slider('Master', 'master'), slider('Music', 'music'), slider('Sound effects', 'sfx'), slider('Footsteps', 'footsteps'), slider('Ambience', 'ambience'));
     body.append(h('h4.section', 'Accessibility & controls'),
       toggle('Reduced motion', 'reducedMotion', 'Calmer water, no screen flashes or bouncing.'),
-      toggle('Tap to move', 'tapToMove', 'Tap the island to walk there. Dragging always steers.'),
       toggle('Vibration', 'haptics', 'Buzz on bites (phones that support it).'));
     body.append(h('div.controls-help',
       h('b', 'Controls'),
-      h('p', 'Touch: drag anywhere to steer, tap to walk/interact, use the A button for actions.'),
-      h('p', 'Keyboard: WASD / arrows to move, E or Space to interact and fish, R to rotate in Build mode, Esc to close.')));
+      h('p', 'Touch: drag anywhere to steer. Tap the island to use what you’re holding. The buttons at the bottom right talk, open, fish and more.'),
+      h('p', 'PC: WASD / arrows to move. Left click uses the item in your hand, right click (or E / Space) talks, opens and fishes. 1–0, -, = pick a hotbar slot. R rotates in Build mode, Esc closes.')));
 
     if (!ctx.opts?.fromTitle && s) {
       const saved = s.savedAt ? new Date(s.savedAt).toLocaleString() : 'never';

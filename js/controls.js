@@ -51,6 +51,14 @@ export class Controls {
 
     const c = this.canvas;
     this.listen(c, 'pointerdown', e => {
+      // Right mouse button: interact with what you clicked (left click uses your tool).
+      if (e.pointerType === 'mouse' && e.button === 2) {
+        const r = c.getBoundingClientRect();
+        if (!this.h.isBlocked()) this.h.onAltTap?.(e.clientX - r.left, e.clientY - r.top);
+        e.preventDefault();
+        return;
+      }
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
       if (this.stick || this.h.isBlocked()) return;
       c.setPointerCapture?.(e.pointerId);
       this.stick = { id: e.pointerId, ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY, active: false, t: performance.now() };

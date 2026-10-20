@@ -167,7 +167,7 @@ export class UI {
       on: { click: e => { e.stopPropagation(); const cur = this.actionList?.[i]; if (cur) g.interact(cur); } },
     },
     h('span.key', icon(actionIcon(it))),
-    h('span.txt', h('span.verb', it.verb, i === 0 && kb ? h('kbd', 'E') : null), h('span.what', it.label))));
+    h('span.txt', h('span.verb', it.verb, kb && ['clear', 'mine', 'attack', 'swing'].includes(it.kind) ? h('kbd', 'Click') : i === 0 && kb ? h('kbd', 'E') : null), h('span.what', it.label))));
     this.el.actions.replaceChildren(...nodes.reverse());
   }
 
@@ -182,7 +182,7 @@ export class UI {
     this.navTo('island');
     const s = getState();
     if (s.stats.fishCaught === 0 && s.quests.index === 0) {
-      setTimeout(() => toast('Tip: drag anywhere to walk, or tap where you want to go.', 'island'), 900);
+      setTimeout(() => toast(matchMedia('(pointer: coarse)').matches ? 'Tip: drag anywhere to walk. Tap to use what you’re holding.' : 'Tip: WASD to walk. Left click uses what you’re holding, right click talks and opens.', 'island'), 900);
     }
   }
 

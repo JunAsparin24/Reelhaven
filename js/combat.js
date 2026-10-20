@@ -66,7 +66,7 @@ export function swing(game, tool = getState().inventory.held) {
   if (tool === 'watering_can') { const t = frontTile(p); water(game, t.x, t.y); return true; }
   if (tool === 'axe') {
     const o = nearest(o => o.type === 'debris_tree' || o.type === 'debris_twig' || o.type === 'debris_stump');
-    if (o) hitDebris(game, o, toolTier('axe').power); else sfx('swing');
+    if (o) hitDebris(game, o, toolTier('axe').power); else missed(game);
     return true;
   }
   if (tool === 'scythe') {
@@ -78,7 +78,7 @@ export function swing(game, tool = getState().inventory.held) {
     }
     const t = frontTile(p);
     if (harvest(game, t.x, t.y)) hit = true;
-    if (!hit) sfx('swing');
+    if (!hit) missed(game);
     return true;
   }
   const crate = (tool === 'pickaxe' || tool === 'sword') && nearest(o => o.type === 'mine_crate');
@@ -87,7 +87,7 @@ export function swing(game, tool = getState().inventory.held) {
     const best = nearest(o => o.type === 'mine_rock' || o.type === 'debris_stone');
     if (best?.type === 'mine_rock') hitRock(game, best, toolTier('pickaxe').power);
     else if (best) hitDebris(game, best, toolTier('pickaxe').power);
-    else sfx('swing');
+    else missed(game);
   } else {
     let hit = false;
     for (const m of w.monsters) {
@@ -107,6 +107,13 @@ function roll([, min, max, chance]) {
 function hitRock(game, o, power) {
   const w = game.world;
   const def = ROCKS[o.kind] || ROCKS.stone;
+  // tougher rocks need an upgraded pickaxe
+  if ((getState().inventory.tools.pickaxe || 0) < (def.minTier || 0)) {
+    o.shake = 0.5;
+    sfx('pick');
+    toast('You need a better pickaxe.', 'pickaxe');
+    return;
+  }
   if (o.hp == null) o.hp = def.hp;
   o.hp -= power;
   o.shake = 1;
@@ -170,6 +177,22 @@ function hitCrate(game, o) {
   maybeSwordDrop(game, level, 0.05, cx, cy);
   w.rebuild();
   commit('crate', false);
+}
+
+/**
+ * A swing that hit nothing: if what's in front of you needs a different
+ * tool, say so ("You need a pickaxe.").
+ */
+function missed(game) {
+  sfx('swing');
+  const w = game.world, t = frontTile(game.player);
+  const o = w.objects.find(x => x.x === t.x && x.y === t.y && !w.objectHidden(x) && (x.def.tool || x.type === 'mine_rock'));
+  if (!o) return;
+  const need = o.type === 'mine_rock' ? 'pickaxe' : o.def.tool;
+  if (need && need !== getState().inventory.held) {
+    const name = { axe: 'axe', pickaxe: 'pickaxe', scythe: 'scythe' }[need] || need;
+    toast(`You need ${/^[aeiou]/.test(name) ? 'an' : 'a'} ${name}.`, need);
+  }
 }
 
 /** Monster stats scaled for the current floor. */

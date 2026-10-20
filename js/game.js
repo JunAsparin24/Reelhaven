@@ -12,7 +12,17 @@ import { Renderer } from './renderer.js';
 import { Controls } from './controls.js';
 import { FishingSession } from './fishing.js';
 import { BuildMode } from './building.js';
-import { findInteractable, gather } from './interactions.js';
+import { findInteractable, nearbyInteractables, gather } from './interactions.js';
+
+/** "You need a pickaxe." / "You need a better pickaxe." */
+export function needToolText(tool, better = false) {
+  const name = { axe: 'axe', pickaxe: 'pickaxe', scythe: 'scythe', sword: 'sword', hoe: 'hoe', watering_can: 'watering can' }[tool] || tool;
+  if (better) return `You need a better ${name}.`;
+  return `You need ${/^[aeiou]/.test(name) ? 'an' : 'a'} ${name}.`;
+}
+
+/** Interactions that are really "use your tool" (left click / tap, never E). */
+const TOOL_KINDS = new Set(['clear', 'mine', 'attack', 'swing']);
 import { tick as tickWeather, lighting, currentWeather, currentPhase } from './weather.js';
 import { initQuests, ensureOrders, ensureDaily, currentQuest } from './quests.js';
 import { travelTo } from './islands.js';
@@ -86,6 +96,7 @@ export class Game {
       isBlocked: () => this.inputBlocked(),
       mode: () => (this.build.active ? 'build' : this.mode),
       onTap: (x, y) => this.onTap(x, y),
+      onAltTap: (x, y) => this.onAltTap(x, y),
       onInteractKey: e => this.onInteractKey(e),
       onEscape: () => this.onEscape(),
       onRotateKey: () => { if (this.build.active && this.build.type) this.build.rotate(); },
@@ -518,33 +529,20 @@ export class Game {
     const wpt = this.camera.toWorld(b.x, b.y);
     const tx = Math.floor(wpt.x / TILE), ty = Math.floor(wpt.y / TILE);
     if (this.build.active) { this.build.tapTile(tx, ty); return; }
-    // Phones: a tap on the right half of the screen uses what you're holding.
-    if (this.tapToUse(cssX, wpt)) return;
-    if (!getState().settings.tapToMove) return;
-    // Tapped something interactable? Walk next to it and use it.
+    // A left click / tap uses what you're holding (no tap-to-walk: steer with
+    // the joystick or WASD / arrow keys).
+    this.useHeld(wpt);
+  }
+
+  /** Right click (mouse): talk to, open or pick up what you clicked, or what's nearest. */
+  onAltTap(cssX, cssY) {
+    if (this.mode !== 'play' || !this.world || this.build.active || this.inputBlocked()) return;
+    initAudio();
+    const b = this.renderer.cssToBuffer(cssX, cssY);
+    const wpt = this.camera.toWorld(b.x, b.y);
     const target = this.interactableNear(wpt.x, wpt.y);
-    const p = this.player;
-    if (target) {
-      const goal = target.npc ? this.besideTile(target.tx, target.ty) : this.world.nearestWalkable(target.tx, target.ty, p.tileX, p.tileY);
-      const useTapped = () => {
-        // Use exactly what was tapped (not just whatever is nearest on arrival).
-        this.interactTarget = findInteractable(this, 1.8, target.match) || findInteractable(this);
-        if (this.interactTarget) this.interact(this.interactTarget);
-      };
-      if (goal && goal.x === p.tileX && goal.y === p.tileY) { useTapped(); return; }
-      if (goal) {
-        const path = this.world.findPath(p.tileX, p.tileY, goal.x, goal.y);
-        if (path) {
-          p.setPath(path, useTapped);
-          this.renderer.emit('sparkle', goal.x * TILE + 8, goal.y * TILE + 10, 4, { speed: 15, gravity: 0, life: 0.5 });
-          return;
-        }
-      }
-    }
-    if (this.world.walkableTile(tx, ty)) {
-      const path = this.world.findPath(p.tileX, p.tileY, tx, ty);
-      if (path) { p.setPath(path); this.renderer.emit('sparkle', tx * TILE + 8, ty * TILE + 10, 4, { speed: 15, gravity: 0, life: 0.5 }); }
-    }
+    const it = (target && findInteractable(this, 1.6, target.match)) || this.interactTarget;
+    if (it) this.interact(it);
   }
 
   /** Find a tappable object at a world point (generous hit area for thumbs). */
@@ -595,31 +593,30 @@ export class Game {
     if (this.mode !== 'play') return false;
     if (this.fishing && this.fishing.active) return false; // fishing UI handles keys
     if (this.ui.blocking()) return false;
-    if (this.interactTarget) { this.interact(this.interactTarget); return true; }
-    if (swing(this)) return true;
+    // E / Space only interact (talk, open, enter, fish...). Tools are used with a left click.
+    const it = nearbyInteractables(this, 6).find(x => !TOOL_KINDS.has(x.kind));
+    if (it) { this.interact(it); return true; }
     return false;
   }
 
   /**
-   * Touch screens: tapping the right half of the screen swings the held tool
-   * (or plants the held seeds) toward where you tapped, any time. With the
-   * rod or nothing swingable, it uses whatever is nearby instead.
+   * Left click / tap on the world: swing the held tool (or plant the held
+   * seeds) toward where you clicked, any time. With the rod (or something
+   * that isn't a tool) it uses what you clicked, or whatever is nearby.
    */
-  tapToUse(cssX, wpt) {
-    if (!matchMedia('(pointer: coarse)').matches || this.inputBlocked()) return false;
-    const rect = this.canvas.getBoundingClientRect();
-    if (cssX < rect.width / 2) return false;
+  useHeld(wpt) {
+    if (this.inputBlocked()) return false;
     const p = this.player;
     const held = getState().inventory.held || '';
-    const swingable = SWING_TOOLS.has(held) || held.startsWith('seed:');
-    if (swingable) {
+    if (SWING_TOOLS.has(held) || held.startsWith('seed:')) {
       p.cancelPath();
-      // Face the tap if it's clearly off to one side; otherwise keep facing.
-      if (Math.hypot(wpt.x - p.x, wpt.y - (p.y - 8)) > 10) p.facing = facePoint(p, wpt.x, wpt.y + 4);
+      // The action always happens on the tile you're facing (see the marker).
       swing(this, held);
       return true;
     }
-    if (this.interactTarget) { this.interact(this.interactTarget); return true; }
+    const target = this.interactableNear(wpt.x, wpt.y);
+    const it = (target && findInteractable(this, 1.6, target.match)) || this.interactTarget;
+    if (it) { this.interact(it); return true; }
     return false;
   }
 
@@ -794,11 +791,9 @@ export class Game {
       }
       case 'clear': {
         const o = it.obj, tool = o.def.tool;
-        getState().inventory.held = tool;
-        p.facing = facePoint(p, o.x * TILE + 8, o.y * TILE + 12);
         if (this.visit) { toast('That belongs to your host’s yard.', 'axe'); return; }
+        if (!this.needTool(tool)) return;
         swing(this, tool);
-        this.ui.hotbar?.render();
         break;
       }
       case 'harvest': {
@@ -830,17 +825,16 @@ export class Game {
       case 'ascend': this.exitInterior(); break;
       case 'mine': {
         const o = it.obj;
-        getState().inventory.held = 'pickaxe';
-        p.facing = facePoint(p, o.x * TILE + 8, o.y * TILE + 12);
-        swing(this, 'pickaxe');
-        this.ui.hotbar?.render();
+        // crates break with a pickaxe or a sword; rocks need the pickaxe
+        const held = getState().inventory.held;
+        const ok = o.type === 'mine_crate' ? ['pickaxe', 'sword'].includes(held) : held === 'pickaxe';
+        if (!ok) { this.needTool(o.type === 'mine_crate' && held !== 'pickaxe' ? 'sword' : 'pickaxe'); return; }
+        swing(this, held);
         break;
       }
       case 'attack': {
-        getState().inventory.held = 'sword';
-        p.facing = facePoint(p, it.monster.x, it.monster.y);
+        if (!this.needTool('sword')) return;
         swing(this, 'sword');
-        this.ui.hotbar?.render();
         break;
       }
       case 'swing': swing(this); break;
@@ -887,9 +881,19 @@ export class Game {
   farmTarget() {
     const held = getState().inventory.held || '';
     if (this.build.active || this.fishing || this.sleeping || !this.player) return null;
-    if (!(held === 'hoe' || held === 'watering_can' || held.startsWith('seed:'))) return null;
-    if (farmBlocker(this)) return null;
+    const farming = held === 'hoe' || held === 'watering_can' || held.startsWith('seed:');
+    if (!farming && !SWING_TOOLS.has(held)) return null;
+    if (farming && farmBlocker(this)) return null;
+    if (!farming && this.indoor && !this.indoor.mine) return null;
     return frontTile(this.player);
+  }
+
+  /** Tools are never switched for you: say which one you need. Returns true if it's in hand. */
+  needTool(tool) {
+    if (getState().inventory.held === tool) return true;
+    toast(needToolText(tool), tool);
+    sfx('error');
+    return false;
   }
 
   /** Treasure chest on a milestone mine floor (once per character). */

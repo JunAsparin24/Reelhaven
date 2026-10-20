@@ -6,13 +6,16 @@ import { FLOOR_CHESTS } from './weapon-data.js';
 
 const THEME = { deep: 'deep', near: 'ocean', shallow: 'shallow', pond: 'pond', reef: 'reef', grass: 'grass', sand: 'sand' };
 
-/** Rock kinds. hp = pickaxe power needed in total; drops are [item, min, max, chance]. */
+/**
+ * Rock kinds. hp = pickaxe power needed in total; minTier = pickaxe upgrade
+ * needed at all (1 copper, 2 iron); drops are [item, min, max, chance].
+ */
 export const ROCKS = {
   stone: { label: 'Rock', hp: 2, drops: [['stone', 1, 2, 1]] },
   copper: { label: 'Copper Rock', hp: 3, drops: [['copper_ore', 1, 3, 1], ['stone', 0, 1, 0.5]] },
-  iron: { label: 'Iron Rock', hp: 5, drops: [['iron_ore', 1, 3, 1], ['stone', 0, 1, 0.5]] },
-  gold: { label: 'Gold Rock', hp: 8, drops: [['gold_ore', 1, 2, 1]] },
-  gem: { label: 'Gem Rock', hp: 6, drops: [['quartz', 1, 1, 0.8], ['amethyst', 1, 1, 0.25]] },
+  iron: { label: 'Iron Rock', hp: 5, minTier: 1, drops: [['iron_ore', 1, 3, 1], ['stone', 0, 1, 0.5]] },
+  gold: { label: 'Gold Rock', hp: 8, minTier: 2, drops: [['gold_ore', 1, 2, 1]] },
+  gem: { label: 'Gem Rock', hp: 6, minTier: 1, drops: [['quartz', 1, 1, 0.8], ['amethyst', 1, 1, 0.25]] },
 };
 
 /** Monster stats; scaled by floor in js/combat.js. */
