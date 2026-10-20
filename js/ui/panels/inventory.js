@@ -118,9 +118,10 @@ function renderGear(body, ctx) {
   body.append(h('h4.section', 'Tools'));
   const tl = h('div.list');
   for (const [kind, tiers] of Object.entries(TOOLS)) {
+    if (s.inventory.tools[kind] === undefined) continue;
     const t = tiers[s.inventory.tools[kind] || 0];
     tl.append(h('div.item-row', icon(kind, 'item-icon'), h('div.item-main', h('div.item-name', t.name), h('div.item-sub', t.desc),
-      h('div.statline', h('span', kind === 'pickaxe' ? `Power ${t.power}` : `Damage ${t.damage}`))),
+      h('div.statline', h('span', kind === 'sword' ? `Damage ${t.damage}` : kind === 'watering_can' ? `Water ${s.inventory.water ?? 0}/40` : `Power ${t.power}`))),
       s.inventory.held === kind ? h('span.tag', 'In hand') : button('Hold', () => { s.inventory.held = kind; commit('held'); refreshSheet(); }, { cls: 'small' })));
   }
   body.append(tl);

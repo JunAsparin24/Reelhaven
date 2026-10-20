@@ -7,6 +7,12 @@ import { makeCanvas } from './art/pixel.js';
 import { C } from './art/palette.js';
 import { T, WATERY } from './world-gen.js';
 import { lighting } from './weather.js';
+import { getState } from './state.js';
+import { seasonOf } from '../data/farm-data.js';
+import { cropStage } from './farm.js';
+
+/** The current season ('spring' on the title screen). */
+const seasonNow = () => { const s = getState(); return s?.world ? seasonOf(s.world.day).season : 'spring'; };
 import { TitleScene } from './title-scene.js';
 
 const GRASSY = new Set([T.G, T.K, T.N]);
@@ -76,7 +82,10 @@ export class Renderer {
     const g = land.getContext('2d');
     const pick = (arr, x, y) => arr[(((x * 73856093) ^ (y * 19349663)) >>> 0) % arr.length];
     const groundSet = t => {
-      if (t === T.G) return ts[th.grass] || ts.grass;
+      if (t === T.G) {
+        const season = w.def.seasonal ? seasonNow() : 'spring';
+        return (season !== 'spring' && ts['grass_' + season]) || ts[th.grass] || ts.grass;
+      }
       if (t === T.S) return ts[th.sand] || ts.sand;
       if (t === T.K) return ts.darkgrass;
       if (t === T.M) return ts.mud;
@@ -299,15 +308,18 @@ export class Renderer {
     this.titleT = 0;
     if (!w) { this.present(scene); return; }
 
-    const x0 = Math.max(0, Math.floor(cam.x / TILE) - 1), y0 = Math.max(0, Math.floor(cam.y / TILE) - 1);
-    const x1 = Math.min(w.w - 1, Math.ceil((cam.x + this.viewW) / TILE)), y1 = Math.min(w.h - 1, Math.ceil((cam.y + this.viewH) / TILE));
+    // Areas: only the current part of the map is drawn (see World.setArea).
+    const B = w.bounds || { x: 0, y: 0, w: w.w, h: w.h, px: 0, py: 0, pw: w.pxW, ph: w.pxH };
+    const inB = (px, py) => px >= B.px && py >= B.py && px < B.px + B.pw && py < B.py + B.ph;
+    const x0 = Math.max(B.x, Math.floor(cam.x / TILE) - 1), y0 = Math.max(B.y, Math.floor(cam.y / TILE) - 1);
+    const x1 = Math.min(B.x + B.w - 1, Math.ceil((cam.x + this.viewW) / TILE)), y1 = Math.min(B.y + B.h - 1, Math.ceil((cam.y + this.viewH) / TILE));
     const water = tiles().water;
     const wf = this.reducedMotion ? 0 : Math.floor(t * 4);
     // 1. water (also beyond the map edge)
     if (!indoor) for (let y = Math.floor(cam.y / TILE) - 1; y <= Math.ceil((cam.y + this.viewH) / TILE); y++) {
       for (let x = Math.floor(cam.x / TILE) - 1; x <= Math.ceil((cam.x + this.viewW) / TILE); x++) {
         let style, v;
-        if (x < 0 || y < 0 || x >= w.w || y >= w.h) { style = w.def.theme.deep; v = (((x * 7 + y * 13) % 4) + 4) % 4; }
+        if (x < B.x || y < B.y || x >= B.x + B.w || y >= B.y + B.h) { style = w.def.theme.deep; v = (((x * 7 + y * 13) % 4) + 4) % 4; }
         else {
           const k = y * w.w + x;
           if (!WATERY.has(w.terrain[k]) && w.terrain[k] !== T.X && w.terrain[k] !== T.D && w.terrain[k] !== T.B && w.terrain[k] !== T.H) continue;
@@ -317,8 +329,8 @@ export class Renderer {
       }
     }
     {
-      const sx = Math.max(0, cam.x), sy = Math.max(0, cam.y);
-      const sw = Math.min(w.pxW, cam.x + this.viewW) - sx, sh = Math.min(w.pxH, cam.y + this.viewH) - sy;
+      const sx = Math.max(B.px, cam.x), sy = Math.max(B.py, cam.y);
+      const sw = Math.min(B.px + B.pw, cam.x + this.viewW) - sx, sh = Math.min(B.py + B.ph, cam.y + this.viewH) - sy;
       if (sw > 0 && sh > 0) ctx.drawImage(this.dither, sx, sy, sw, sh, sx - cam.x, sy - cam.y, sw, sh);
     }
     // 2. fish shadows under water
@@ -330,7 +342,7 @@ export class Renderer {
         if (w.isWater(Math.floor(nx / TILE), Math.floor(ny / TILE))) { s.x = nx; s.y = ny; } else s.a += Math.PI * 0.7;
       }
       const sx = Math.round(s.x - cam.x), sy = Math.round(s.y - cam.y);
-      if (sx < -10 || sy < -10 || sx > this.viewW + 10 || sy > this.viewH + 10) continue;
+      if (sx < -10 || sy < -10 || sx > this.viewW + 10 || sy > this.viewH + 10 || !inB(s.x, s.y)) continue;
       const len = 3 + s.size * 2;
       const dx = Math.cos(s.a), dy = Math.sin(s.a);
       for (let i = -len; i <= len; i++) ctx.fillRect(sx + Math.round(dx * i), sy + Math.round(dy * i * 0.6), 2, s.size + 1);
@@ -340,8 +352,8 @@ export class Renderer {
     // 4. land layer
     {
       // Clip the source rect manually: the camera may show sea beyond the map.
-      const sx = Math.max(0, cam.x), sy = Math.max(0, cam.y);
-      const sw = Math.min(w.pxW, cam.x + this.viewW) - sx, sh = Math.min(w.pxH, cam.y + this.viewH) - sy;
+      const sx = Math.max(B.px, cam.x), sy = Math.max(B.py, cam.y);
+      const sw = Math.min(B.px + B.pw, cam.x + this.viewW) - sx, sh = Math.min(B.py + B.ph, cam.y + this.viewH) - sy;
       if (sw > 0 && sh > 0) ctx.drawImage(this.land, sx, sy, sw, sh, sx - cam.x, sy - cam.y, sw, sh);
     }
 
@@ -349,8 +361,33 @@ export class Renderer {
     const night = scene.light ? scene.light.dark > 0.35 : false;
     const drawList = [];
     const inView = (px, py, m = 64) => px > cam.x - m && py > cam.y - m && px < cam.x + this.viewW + m && py < cam.y + this.viewH + m + 40;
+    // tilled soil (darker when watered) and the crops growing in it
+    const soil = w.islandState?.farm?.soil;
+    if (soil) for (const [k, plot] of Object.entries(soil)) {
+      const [tx, ty] = k.split(',').map(Number);
+      const px = tx * TILE, py = ty * TILE;
+      if (!inView(px, py, 20) || !inB(px + 1, py + 1)) continue;
+      const sx = px - cam.x, sy = py - cam.y;
+      ctx.fillStyle = plot.water ? '#5a3f2e' : '#8a6a48';
+      ctx.fillRect(sx + 1, sy + 1, 14, 14);
+      ctx.fillStyle = plot.water ? '#4a3224' : '#76583c';
+      for (let r = 4; r < 15; r += 4) ctx.fillRect(sx + 2, sy + r, 12, 1);
+      ctx.fillStyle = plot.water ? '#6d4e3a' : '#a07c56';
+      ctx.fillRect(sx + 1, sy + 1, 14, 1);
+      if (plot.crop) {
+        const spr = sprite(`crop_${plot.crop}_${cropStage(plot)}`);
+        if (spr) drawList.push({ y: py + 14, spr, x: px + 8, by: py + 14, crop: plot });
+      }
+    }
+    // the tile your farming tool will hit
+    if (scene.target) {
+      const tx = scene.target.x * TILE - cam.x, ty = scene.target.y * TILE - cam.y;
+      ctx.fillStyle = 'rgba(255,245,223,0.75)';
+      ctx.fillRect(tx, ty, 4, 1); ctx.fillRect(tx, ty, 1, 4); ctx.fillRect(tx + 12, ty, 4, 1); ctx.fillRect(tx + 15, ty, 1, 4);
+      ctx.fillRect(tx, ty + 15, 4, 1); ctx.fillRect(tx, ty + 12, 1, 4); ctx.fillRect(tx + 12, ty + 15, 4, 1); ctx.fillRect(tx + 15, ty + 12, 1, 4);
+    }
     for (const o of w.objects) {
-      if (!inView(o.x * TILE, o.y * TILE)) continue;
+      if (!inView(o.x * TILE, o.y * TILE) || !inB(o.x * TILE + 1, o.y * TILE + 1)) continue;
       if (w.objectHidden(o)) continue;
       const spr = this.objectSprite(o, t, night, w);
       if (!spr) continue;
@@ -366,7 +403,7 @@ export class Renderer {
       }
     }
     for (const p of w.placed) {
-      if (!inView(p.x * TILE, p.y * TILE, 100)) continue;
+      if (!inView(p.x * TILE, p.y * TILE, 100) || !inB(p.x * TILE + 1, p.y * TILE + 1)) continue;
       if (scene.build && scene.build.moving && scene.build.moving.uid === p.uid) continue;
       const spr = this.placementSprite(p, night, scene.state);
       if (!spr) continue;
@@ -378,13 +415,14 @@ export class Renderer {
     if (!scene.title) for (const s of w.spots) {
       if (s.hidden && !scene.hiddenSpotsVisible?.has(s.id)) continue;
       const wx = s.waterX * TILE + 8, wy = s.waterY * TILE + 8;
-      if (!inView(wx, wy)) continue;
+      if (!inView(wx, wy) || !inB(s.x * TILE + 8, s.y * TILE + 8)) continue;
       const f = this.reducedMotion ? 1 : Math.floor((t * 2 + s.x) % 4);
       ctx.globalAlpha = 0.75;
       ctx.drawImage(sprite('ripple_' + f), Math.round(wx - 10 - cam.x), Math.round(wy - 5 - cam.y));
       ctx.globalAlpha = 1;
     }
     for (const n of w.npcs) {
+      if (!inB(n.x, n.y - 2)) continue;
       const set = sprite('npc_' + n.id);
       const frames = set[n.dir] || set.down;
       const spr = n.moving ? frames[Math.floor(n.anim) % 4] : frames[0];
@@ -392,7 +430,7 @@ export class Renderer {
     }
     this.nameTags = [];
     for (const r of scene.remotes || []) {
-      if (!r.sprites) continue;
+      if (!r.sprites || !inB(r.x, r.y - 2)) continue;   // friends in another area aren't shown
       const frames = r.sprites[r.f] || r.sprites.down;
       const spr = r.moving ? frames[Math.floor(r.anim) % 4] : frames[0];
       drawList.push({ y: r.y, spr, x: r.x, by: r.y + 1, remote: true });
@@ -517,6 +555,8 @@ export class Renderer {
       case 'lily': return sprite('lily_' + (o.variant % 2));
       case 'shop': return sprite(night ? 'shop_lit' : 'shop');
       case 'yard_fence': return sprite(o.vert ? 'fence_r1' : 'fence');
+      case 'debris_tree': return sprite('debris_tree_' + seasonNow());
+      case 'debris_weed': return sprite(`debris_weed_${seasonNow()}_${o.variant % 2}`);
       case 'mine_rock': return sprite('rock_' + (o.kind || 'stone'));
       default: return sprite(o.type);
     }
@@ -661,7 +701,20 @@ export class Renderer {
       }
       this.gulls = this.gulls.filter(g => g.x > -40 && g.x < this.viewW + 40);
     }
-    if (weather === 'rain' || weather === 'storm') {
+    if (weather === 'snow') {
+      ctx.fillStyle = 'rgba(220,235,255,0.10)';
+      ctx.fillRect(0, 0, this.viewW, this.viewH);
+      const target = Math.floor((this.viewW * this.viewH) / 520 * (this.reducedMotion ? 0.4 : 1));
+      while (this.rain.length < target) this.rain.push({ x: Math.random() * this.viewW, y: Math.random() * this.viewH, s: 0.5 + Math.random() * 0.7, ph: Math.random() * 6 });
+      if (this.rain.length > target) this.rain.length = target;
+      for (const d of this.rain) {
+        d.y += 22 * d.s * dt; d.x += Math.sin(t * 1.3 + d.ph) * 10 * dt;
+        if (d.y > this.viewH) { d.y -= this.viewH + 4; d.x = Math.random() * this.viewW; }
+        if (d.x < -2) d.x += this.viewW + 4; else if (d.x > this.viewW + 2) d.x -= this.viewW + 4;
+        ctx.fillStyle = d.s > 0.9 ? 'rgba(255,255,255,0.95)' : 'rgba(240,248,255,0.7)';
+        ctx.fillRect(Math.round(d.x), Math.round(d.y), d.s > 0.9 ? 2 : 1, d.s > 0.9 ? 2 : 1);
+      }
+    } else if (weather === 'rain' || weather === 'storm') {
       const storm = weather === 'storm';
       ctx.fillStyle = storm ? 'rgba(30,40,60,0.28)' : 'rgba(60,80,100,0.16)';
       ctx.fillRect(0, 0, this.viewW, this.viewH);

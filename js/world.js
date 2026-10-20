@@ -6,6 +6,7 @@ import { ISLANDS } from '../data/island-data.js';
 import { INTERIORS } from '../data/interior-data.js';
 import { NPCS } from '../data/npc-data.js';
 import { PLACEABLES, footprintOf } from '../data/building-data.js';
+import { getState } from './state.js';
 
 /**
  * Static object behaviour. resource: what gathering yields; respawn in ms.
@@ -46,6 +47,13 @@ export const OBJECT_TYPES = {
   ladder_up: { solid: true, interact: { kind: 'ascend', verb: 'Climb up', label: 'Ladder' } },
   ladder_down: { solid: false, interact: { kind: 'descend', verb: 'Climb down', label: 'Ladder' } },
   cave_crystal: { solid: false },
+  // ---- home-yard clutter (js/farm.js) and cottage extras
+  debris_tree: { solid: true, interact: { kind: 'clear', verb: 'Chop', label: 'Tree' }, tool: 'axe' },
+  debris_twig: { solid: true, interact: { kind: 'clear', verb: 'Chop', label: 'Twig' }, tool: 'axe' },
+  debris_stone: { solid: true, interact: { kind: 'clear', verb: 'Break', label: 'Stone' }, tool: 'pickaxe' },
+  debris_weed: { solid: true, interact: { kind: 'clear', verb: 'Cut', label: 'Weeds' }, tool: 'scythe' },
+  gift_box: { solid: true, interact: { kind: 'gift', verb: 'Open', label: 'Welcome Gift' } },
+  tv: { solid: true, interact: { kind: 'tv', verb: 'Watch', label: 'TV' } },
 };
 
 export class World {
@@ -66,8 +74,44 @@ export class World {
       id: n.id, def: NPCS[n.id], x: n.x * TILE + 8, y: n.y * TILE + 12, homeX: n.x * TILE + 8, homeY: n.y * TILE + 12,
       wander: (n.wander || 0) * TILE, dir: 'down', frame: 0, anim: 0, timer: 1 + Math.random() * 2, tx: null, ty: null,
     }));
+    // Areas (Sunny Shores): only one part of the map is "open" at a time.
+    this.areas = this.def.areas || null;
+    this.area = null;
+    this.bounds = null;
+    this.syncDebris(false);
     this.rebuild();
   }
+
+  /** (Re)load the yard clutter saved on the island (see js/farm.js). */
+  syncDebris(rebuild = true) {
+    this.objects = this.objects.filter(o => !o.type.startsWith('debris_'));
+    for (const d of this.islandState.farm?.debris || []) {
+      const type = 'debris_' + d.type;
+      this.objects.push({ id: d.id, type, kind: d.type, x: d.x, y: d.y, label: OBJECT_TYPES[type]?.interact.label, def: OBJECT_TYPES[type] || {}, variant: (d.x * 7 + d.y * 3) % 4 });
+    }
+    if (rebuild) this.rebuild();
+  }
+
+  /** The area id containing a tile (or null for maps without areas). */
+  areaAt(tx, ty) {
+    if (!this.areas) return null;
+    for (const [id, a] of Object.entries(this.areas)) if (tx >= a.x && ty >= a.y && tx < a.x + a.w && ty < a.y + a.h) return id;
+    return Object.keys(this.areas)[0];
+  }
+
+  setArea(id) {
+    if (!this.areas || !this.areas[id]) { this.area = null; this.bounds = null; return; }
+    this.area = id;
+    const a = this.areas[id];
+    this.bounds = { x: a.x, y: a.y, w: a.w, h: a.h, px: a.x * TILE, py: a.y * TILE, pw: a.w * TILE, ph: a.h * TILE };
+  }
+
+  /** Is a tile inside the current area (always true without areas)? */
+  inBounds(tx, ty) {
+    const b = this.bounds;
+    return !b || (tx >= b.x && ty >= b.y && tx < b.x + b.w && ty < b.y + b.h);
+  }
+  inBoundsPx(x, y) { return this.inBounds(Math.floor(x / TILE), Math.floor(y / TILE)); }
 
   applyFlags() {
     const flags = this.islandState.flags;
@@ -88,6 +132,7 @@ export class World {
 
   objectHidden(o) {
     if (this.broken.has(o.id)) return true;
+    if (o.type === 'gift_box' && getState()?.flags.giftOpened) return true;
     if (o.type === 'bridgeSite' && this.islandState.flags.bridgeRepaired) return true;
     const res = o.def.resource;
     if (res && !o.def.keepWhenEmpty && !this.nodeReady(o)) return true;
@@ -154,9 +199,10 @@ export class World {
     const bad = new Set();
     const fail = (r, i, j) => { reasons.push(r); bad.add(i + ',' + j); };
     for (let j = y; j < y + fp.h; j++) for (let i = x; i < x + fp.w; i++) {
-      if (i < 0 || j < 0 || i >= this.w || j >= this.h) { fail('edge', i, j); continue; }
+      if (i < 0 || j < 0 || i >= this.w || j >= this.h || !this.inBounds(i, j)) { fail('edge', i, j); continue; }
       const k = j * this.w + i;
       if (!BUILDABLE.has(this.terrain[k])) { fail('terrain', i, j); continue; }
+      if (this.islandState.farm?.soil?.[i + ',' + j]?.crop) { fail('occupied', i, j); continue; }
       const p = this.placementAt(i, j);
       if (p && p.uid !== ignoreUid) { fail('occupied', i, j); continue; }
       if (!p && this.occupied[k]) { fail('occupied', i, j); continue; }
@@ -184,13 +230,14 @@ export class World {
     const y0 = Math.floor((y - hh) / TILE), y1 = Math.floor((y + hh - 0.01) / TILE);
     for (let j = y0; j <= y1; j++) for (let i = x0; i <= x1; i++) {
       if (i < 0 || j < 0 || i >= this.w || j >= this.h) return false;
+      if (!this.inBounds(i, j)) return false;
       if (this.solid[j * this.w + i]) return false;
     }
     return true;
   }
 
   walkableTile(tx, ty) {
-    return tx >= 0 && ty >= 0 && tx < this.w && ty < this.h && !this.solid[ty * this.w + tx];
+    return tx >= 0 && ty >= 0 && tx < this.w && ty < this.h && this.inBounds(tx, ty) && !this.solid[ty * this.w + tx];
   }
 
   /** Breadth-first path between tiles (4-way). Returns array of tiles or null. */

@@ -4,11 +4,11 @@
 import { h, icon } from './dom.js';
 import { getState, commit } from '../state.js';
 import { toast } from '../events.js';
-import { FOOD, BAIT, RODS } from '../../data/item-data.js';
+import { FOOD, BAIT, RODS, RESOURCES, TOOL_ORDER } from '../../data/item-data.js';
 import { toolTier, eat } from '../combat.js';
 import { sfx } from '../audio.js';
 
-const MAX_SLOTS = 8;
+const MAX_SLOTS = 10;   // number keys 1–9 and 0
 
 export class Hotbar {
   constructor(ui) {
@@ -27,11 +27,14 @@ export class Hotbar {
   build() {
     const s = getState();
     const items = s.inventory.items;
-    const out = [
-      { kind: 'tool', id: 'rod', icon: 'rod', name: RODS[s.inventory.equippedRod]?.name || 'Fishing Rod' },
-      { kind: 'tool', id: 'pickaxe', icon: 'pickaxe', name: toolTier('pickaxe').name },
-      { kind: 'tool', id: 'sword', icon: 'sword', name: toolTier('sword').name },
-    ];
+    const out = [];
+    for (const kind of TOOL_ORDER) {
+      if (s.inventory.tools?.[kind] === undefined) continue;
+      const name = toolTier(kind).name + (kind === 'watering_can' ? ` (${s.inventory.water ?? 0}/40)` : '');
+      out.push({ kind: 'tool', id: kind, icon: kind, name, count: kind === 'watering_can' ? s.inventory.water ?? 0 : null });
+    }
+    if (s.inventory.rods.length) out.push({ kind: 'tool', id: 'rod', icon: 'rod', name: RODS[s.inventory.equippedRod]?.name || 'Fishing Rod' });
+    for (const r of Object.values(RESOURCES)) if (r.seed && items[r.id] > 0) out.push({ kind: 'tool', id: 'seed:' + r.id, icon: r.icon, name: r.name, count: items[r.id] });
     for (const f of Object.values(FOOD)) if (items[f.id] > 0) out.push({ kind: 'food', id: f.id, icon: f.icon, name: f.name, count: items[f.id] });
     for (const b of Object.values(BAIT)) if (b.id !== 'none' && items[b.id] > 0) out.push({ kind: 'bait', id: b.id, icon: b.icon, name: b.name, count: items[b.id] });
     return out.slice(0, MAX_SLOTS);
@@ -49,7 +52,7 @@ export class Hotbar {
         type: 'button', title: sl.name + (sl.kind === 'food' ? ' (tap to eat)' : sl.kind === 'bait' ? ' (tap to use as bait)' : ''),
         'aria-label': sl.name, 'aria-pressed': held || equipped ? 'true' : 'false',
         on: { click: e => { e.stopPropagation(); this.pick(i); } },
-      }, icon(sl.icon), sl.count ? h('span.cnt', String(sl.count)) : null, kb ? h('span.key', String(i + 1)) : null);
+      }, icon(sl.icon), sl.count != null ? h('span.cnt', String(sl.count)) : null, kb ? h('span.key', String((i + 1) % 10)) : null);
     });
     this.slotsEl.replaceChildren(...nodes);
     this.renderHp();

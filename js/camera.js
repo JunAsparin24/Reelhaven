@@ -20,11 +20,13 @@ export class Camera {
 
   clamp(world) {
     let cx = this.fx - this.viewW / 2, cy = this.fy - this.viewH / 2;
-    const m = world.def?.interior ? 8 : Camera.MARGIN;   // rooms sit centred, no sea around them
-    if (world.pxW + m * 2 <= this.viewW) cx = (world.pxW - this.viewW) / 2;
-    else cx = Math.max(-m, Math.min(world.pxW + m + this.extraRight - this.viewW, cx));
-    if (world.pxH + m * 2 <= this.viewH) cy = (world.pxH - this.viewH) / 2;
-    else cy = Math.max(-m, Math.min(world.pxH + m + this.extraBottom - this.viewH, cy));
+    // Areas are framed by the screen edge: no peeking into the next area.
+    const b = world.bounds || { px: 0, py: 0, pw: world.pxW, ph: world.pxH };
+    const m = world.bounds ? 0 : world.def?.interior ? 8 : Camera.MARGIN;   // rooms sit centred, no sea around them
+    if (b.pw + m * 2 <= this.viewW) cx = b.px + (b.pw - this.viewW) / 2;
+    else cx = Math.max(b.px - m, Math.min(b.px + b.pw + m + this.extraRight - this.viewW, cx));
+    if (b.ph + m * 2 <= this.viewH) cy = b.py + (b.ph - this.viewH) / 2;
+    else cy = Math.max(b.py - m, Math.min(b.py + b.ph + m + this.extraBottom - this.viewH, cy));
     this.x = Math.round(cx);
     this.y = Math.round(cy);
   }

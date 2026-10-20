@@ -209,7 +209,9 @@ test('shop refuses duplicates, locked items and unaffordable items', () => {
 });
 test('quests progress automatically and pay out once', () => {
   const s = fresh();
+  s.quests.index = 3;   // skip the farming intro (gift, clearing, planting) to "Welcome to Sunny Shores"
   initQuests();
+  eq(questProgress().def.id, 'q_welcome');
   s.stats.talked.mira = true;
   eq(questProgress().value, 1);
   checkAchievements();

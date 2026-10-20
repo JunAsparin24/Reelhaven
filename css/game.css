@@ -295,3 +295,12 @@
 .chest-modal .item-row.compact .item-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.85rem; }
 .chest-modal .item-row.compact .btn { min-height: 30px; padding: 2px 8px; font-size: 0.72rem; flex: none; }
 .chest-modal .item-row.compact .item-icon { width: 22px; height: 22px; }
+
+/* welcome gift + cottage TV */
+.gift-modal, .tv-modal { width: min(520px, 100%); }
+.gift-modal h3 .px-icon, .tv-modal h3 .px-icon { display: inline-block; vertical-align: -4px; }
+.gift-modal .note { background: #fffaf0; padding: 8px 10px; box-shadow: 0 0 0 2px var(--sand-2); font-style: italic; }
+.gift-modal .howto { margin: 8px 0 0; padding-left: 20px; }
+.tv-screen { background: #23384a; color: #dff4ff; padding: 10px 12px; box-shadow: 0 0 0 3px var(--ink), inset 0 0 18px rgba(120, 200, 230, 0.25); }
+.tv-screen p { margin: 4px 0; }
+.tv-screen b { color: #ffe3a3; }

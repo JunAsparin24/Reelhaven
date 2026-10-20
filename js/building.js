@@ -71,8 +71,9 @@ export class BuildMode {
     const w = this.world;
     const def = PLACEABLES[this.type];
     const fp = footprintOf(def, this.rot);
-    x = Math.max(0, Math.min(w.w - fp.w, x));
-    y = Math.max(0, Math.min(w.h - fp.h, y));
+    const b = w.bounds || { x: 0, y: 0, w: w.w, h: w.h };
+    x = Math.max(b.x, Math.min(b.x + b.w - fp.w, x));
+    y = Math.max(b.y, Math.min(b.y + b.h - fp.h, y));
     const pt = { x: this.game.player.tileX, y: this.game.player.tileY };
     const res = w.canPlace(this.type, x, y, this.rot, this.moving?.uid || null, pt);
     let sprId = this.type + (this.rot === 1 && def.rotations ? '_r1' : '');

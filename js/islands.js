@@ -54,7 +54,7 @@ export function travelTo(id) {
   if (!s.islands[id]?.unlocked) return { ok: false, message: 'That island is still locked.' };
   if (s.player.island === id) return { ok: false, message: 'You are already here.' };
   s.player.island = id;
-  s.player.pos = { ...ISLANDS[id].spawn };
+  s.player.pos = { ...(ISLANDS[id].arrival || ISLANDS[id].spawn) };
   const first = !s.islands[id].visited;
   s.islands[id].visited = true;
   if (first) addXp(50);

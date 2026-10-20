@@ -6,8 +6,26 @@
 
 export const MAIN_QUESTS = [
   {
+    id: 'q_gift', title: 'A Welcome Gift', giver: 'mira',
+    desc: 'Mira left a gift box in your cottage. Open it!',
+    objective: { type: 'flag', flag: 'giftOpened', count: 1 },
+    reward: { coins: 15, xp: 5 },
+  },
+  {
+    id: 'q_clear', title: 'Clearing the Yard', giver: 'rowan',
+    desc: 'Your yard is overgrown! Use your axe, pickaxe and scythe to clear 10 trees, stones or weeds.',
+    objective: { type: 'clear', count: 10 },
+    reward: { coins: 30, xp: 20 },
+  },
+  {
+    id: 'q_plant', title: 'Green Thumb', giver: 'pip',
+    desc: 'Till soil in your yard with the hoe, plant 15 seeds and water them with your watering can.',
+    objective: { type: 'plant', count: 15 },
+    reward: { coins: 40, xp: 25, items: { radish_seeds: 5 } },
+  },
+  {
     id: 'q_welcome', title: 'Welcome to Sunny Shores', giver: 'mira',
-    desc: 'Mira is waiting at the end of the dock. Go say hello!',
+    desc: 'Walk east to town, then south to the pier. Mira has a fishing rod for you!',
     objective: { type: 'talk', npc: 'mira', count: 1 },
     reward: { coins: 20, xp: 10 },
   },

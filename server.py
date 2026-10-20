@@ -51,7 +51,7 @@ PUBLIC_DIRS = {"css", "js", "data", "assets"}
 MIME = {
     ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8",
     ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml", ".wav": "audio/wav",
-    ".mp3": "audio/mpeg", ".ico": "image/x-icon", ".md": "text/plain; charset=utf-8",
+    ".mp3": "audio/mpeg", ".woff2": "font/woff2", ".ogg": "audio/ogg", ".ico": "image/x-icon", ".md": "text/plain; charset=utf-8",
 }
 
 CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -657,7 +657,7 @@ class Server:
         else:
             if not host:
                 return None
-            weather = d.get("weather") if d.get("weather") in ("sunny", "rain", "storm") else "sunny"
+            weather = d.get("weather") if d.get("weather") in ("sunny", "rain", "storm", "snow") else "sunny"
             data = {"day": max(1, min(10**6, int(d.get("day", 1)))), "minutes": max(0, min(1439, int(d.get("minutes", 0)))), "weather": weather}
         msg = {"t": "relay", "kind": kind, "user": c.user, "host": c.room[0], "island": c.room[1], "data": data}
         for o in self.rooms.get(c.room, ()):
@@ -916,11 +916,45 @@ async def client_loop(server, ws):
         ws.close()
 
 
-def respond(writer, status, body=b"", ctype="text/plain; charset=utf-8", head_only=False, extra=""):
+def respond(writer, status, body=b"", ctype="text/plain; charset=utf-8", head_only=False, extra="", cache="no-cache"):
     writer.write(
         f"HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {len(body)}\r\n"
-        f"Cache-Control: no-cache\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n{extra}\r\n".encode()
+        f"Cache-Control: {cache}\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n{extra}\r\n".encode()
     )
+    if not head_only:
+        writer.write(body)
+
+
+# Big media files (the hour-long soundtrack) are streamed in pieces: browsers
+# ask for byte ranges, and iPhones won't play audio from a server that can't
+# answer them. They rarely change, so browsers may keep them for a week.
+MEDIA_SUFFIXES = (".mp3", ".ogg", ".wav", ".woff2")
+MEDIA_CHUNK = 2 * 1024 * 1024
+
+
+def serve_media(writer, file, ctype, range_header, head_only):
+    size = file.stat().st_size
+    cache = "public, max-age=604800"
+    m = re.match(r"bytes=(\d*)-(\d*)$", range_header.strip()) if range_header else None
+    if not m or (not m.group(1) and not m.group(2)):
+        body = b"" if head_only else file.read_bytes()
+        respond(writer, "200 OK", body, ctype, head_only=head_only, extra="Accept-Ranges: bytes\r\n", cache=cache)
+        return
+    if m.group(1):
+        start = int(m.group(1))
+        # Open-ended requests get a 2 MB piece; the browser asks for more as it plays.
+        end = min(size - 1, int(m.group(2))) if m.group(2) else min(size - 1, start + MEDIA_CHUNK - 1)
+    else:                                   # "bytes=-500": the last 500 bytes
+        start = max(0, size - int(m.group(2)))
+        end = size - 1
+    if start >= size or start > end:
+        respond(writer, "416 Range Not Satisfiable", b"", ctype, extra=f"Content-Range: bytes */{size}\r\n")
+        return
+    with open(file, "rb") as f:
+        f.seek(start)
+        body = f.read(end - start + 1)
+    respond(writer, "206 Partial Content", body, ctype, head_only=head_only,
+            extra=f"Accept-Ranges: bytes\r\nContent-Range: bytes {start}-{end}/{size}\r\n", cache=cache)
     if not head_only:
         writer.write(body)
 
@@ -985,8 +1019,11 @@ async def handle_connection(server, reader, writer):
             file = public_file(path)
             if file:
                 ctype = MIME.get(file.suffix, "application/octet-stream")
-                body, extra = static_body(file, headers.get("accept-encoding", ""))
-                respond(writer, "200 OK", body, ctype, head_only=method == "HEAD", extra=extra)
+                if file.suffix in MEDIA_SUFFIXES:
+                    serve_media(writer, file, ctype, headers.get("range", ""), method == "HEAD")
+                else:
+                    body, extra = static_body(file, headers.get("accept-encoding", ""))
+                    respond(writer, "200 OK", body, ctype, head_only=method == "HEAD", extra=extra)
             else:
                 respond(writer, "404 Not Found", b"Not found")
         writer.transport.set_write_buffer_limits(high=0)

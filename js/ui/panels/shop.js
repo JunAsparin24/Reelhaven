@@ -3,7 +3,8 @@ import { h, icon, spriteImg, button, costView, tabs, refreshSheet } from '../dom
 import { getState } from '../../state.js';
 import { toast } from '../../events.js';
 import { purchase, requirement, priceOf, MATERIALS, BLUEPRINTS } from '../../shop.js';
-import { RODS, BAIT, HATS, TOOLS, FOOD } from '../../../data/item-data.js';
+import { RODS, BAIT, HATS, TOOLS, FOOD, RESOURCES, RESOURCE_SELL } from '../../../data/item-data.js';
+import { CROPS, seasonOf } from '../../../data/farm-data.js';
 import { DECOR, BUILDINGS } from '../../../data/building-data.js';
 import { rodStatsView } from './inventory.js';
 
@@ -13,7 +14,7 @@ export const shopPanel = {
   title: 'Nori’s Shop', icon: 'shop',
   render(body, ctx) {
     if (ctx.opts.tab) { tab = ctx.opts.tab; ctx.opts.tab = null; }
-    body.append(tabs([['rods', 'Rods', 'rod'], ['bait', 'Bait', 'worm'], ['tools', 'Tools', 'pickaxe'], ['food', 'Food', 'salad'], ['materials', 'Supplies', 'wood'], ['decor', 'Decor', 'flower'], ['blueprints', 'Plans', 'build'], ['hats', 'Hats', 'hat']], tab, t => { tab = t; refreshSheet(); }));
+    body.append(tabs([['rods', 'Rods', 'rod'], ['bait', 'Bait', 'worm'], ['seeds', 'Seeds', 'seeds_radish'], ['tools', 'Tools', 'pickaxe'], ['food', 'Food', 'salad'], ['materials', 'Supplies', 'wood'], ['decor', 'Decor', 'flower'], ['blueprints', 'Plans', 'build'], ['hats', 'Hats', 'hat']], tab, t => { tab = t; refreshSheet(); }));
     const list = h('div.list.shop-list');
     const s = getState();
     const have = id => id === 'coins' ? s.player.coins : id === 'pearls' ? s.player.pearls : (s.inventory.items[id] || 0);
@@ -41,12 +42,18 @@ export const shopPanel = {
     if (tab === 'tools') {
       list.append(h('p.muted', 'Upgrade your pickaxe and sword with bars from the furnace. Better tools break rocks faster and hit harder.'));
       for (const [kind, tiers] of Object.entries(TOOLS)) {
+        if (tiers.length < 2 || s.inventory.tools[kind] === undefined) continue;   // nothing to upgrade / not found yet
         const cur = s.inventory.tools[kind] || 0;
         const next = tiers[cur + 1];
         const stat = t => kind === 'pickaxe' ? `Power ${t.power}` : `Damage ${t.damage}`;
         if (!next) { list.append(h('div.item-row.owned', icon(kind, 'item-icon'), h('div.item-main', h('div.item-name', tiers[cur].name), h('div.item-sub', 'Fully upgraded! ' + stat(tiers[cur]))), h('span.tag', 'Max'))); continue; }
         row('tool', kind, icon(kind, 'item-icon'), `${next.name}`, next.desc, h('div.statline', h('span', `Now: ${tiers[cur].name} (${stat(tiers[cur])})`), h('span.bonus', stat(next))));
       }
+    }
+    if (tab === 'seeds') {
+      const sn = seasonOf(s.world.day);
+      list.append(h('p.muted', `It’s ${sn.name} ${sn.day}. Seeds only grow in their seasons — out-of-season packs come back later. Each pack has 5 seeds.`));
+      for (const it of Object.values(RESOURCES)) { if (!it.seed) continue; row('seed', it.id, icon(it.icon, 'item-icon'), `${it.name} ×5`, it.desc, h('div.statline', h('span', 'You have ' + (s.inventory.items[it.id] || 0)), h('span.bonus', 'Sells for ' + (RESOURCE_SELL[CROPS[it.seed].produce] || 0)))); }
     }
     if (tab === 'food') {
       list.append(h('p.muted', 'Food heals you in the mine. Tap it on the hotbar to eat. Grill fish at a furnace or campfire for the best meals.'));

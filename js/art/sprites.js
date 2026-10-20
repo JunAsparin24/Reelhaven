@@ -10,6 +10,7 @@ import { scaleUp, silhouette } from './pixel.js';
 import { C } from './palette.js';
 import { FISH } from '../../data/fish-data.js';
 import { NPCS } from '../../data/npc-data.js';
+import { CROPS, SEASONS } from '../../data/farm-data.js';
 
 /** e.g. { palm_0: 'assets/sprites/palm.png' } */
 export const SPRITE_OVERRIDES = {};
@@ -83,6 +84,15 @@ export function buildAllSprites() {
   put('ladder_down', OBJ.ladder(true)); put('ladder_up', OBJ.ladder(false));
   put('cave_crystal', OBJ.caveCrystal());
   put('mine_rock', store.get('rock_stone')); put('flowerbush', store.get('flowerbush_ready'));
+  // farm clutter (seasonal), crops, cottage extras
+  for (const s of SEASONS) {
+    put('debris_tree_' + s, OBJ.yardTree(s));
+    put('debris_weed_' + s + '_0', OBJ.weed(0, s)); put('debris_weed_' + s + '_1', OBJ.weed(1, s));
+  }
+  put('debris_tree', store.get('debris_tree_spring')); put('debris_weed', store.get('debris_weed_spring_0'));
+  put('debris_twig', OBJ.twig()); put('debris_stone', OBJ.yardStone());
+  for (const c of Object.values(CROPS)) for (let st = 0; st < 4; st++) put(`crop_${c.id}_${st}`, OBJ.crop(c, st));
+  put('gift_box', OBJ.giftBox()); put('tv', OBJ.tvSet());
   for (const t of ['slime', 'bat', 'crab', 'shade']) for (let f = 0; f < 2; f++) put(`mon_${t}_${f}`, OBJ.monster(t, f));
   // utilities + extra decorations
   put('furnace', OBJ.furnace(false)); put('furnace_lit', OBJ.furnace(true));

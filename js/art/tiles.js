@@ -49,18 +49,26 @@ export function buildWaterFrames() {
   return out;
 }
 
-export function grassTile(v) {
+/** Grass colours per season: [base, speckle, tuft, highlight]. */
+export const GRASS_SEASONS = {
+  spring: [C.grass, C.grass2, C.grass3, C.mint],
+  summer: ['#86c46a', '#6eae58', '#4f8f4a', '#c4e08a'],
+  fall: ['#b8b062', '#a39448', '#8a6e3a', '#e3c27a'],
+  winter: ['#e8f0f2', '#d2dee4', '#b8c8d2', '#ffffff'],
+};
+
+export function grassTile(v, pal = GRASS_SEASONS.spring) {
   return paint(TILE, TILE, p => {
-    p.rect(0, 0, 16, 16, C.grass);
+    p.rect(0, 0, 16, 16, pal[0]);
     for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
       const h = hash2(x, y, v + 11);
-      if (h < 0.06) p.px(x, y, C.grass2);
-      else if (h > 0.975) p.px(x, y, C.mint);
+      if (h < 0.06) p.px(x, y, pal[1]);
+      else if (h > 0.975) p.px(x, y, pal[3]);
     }
     // a couple of tufts
     const tufts = [[3 + v, 5], [10, 11 - v], [12 - v, 3]];
     for (const [x, y] of tufts) {
-      p.px(x, y, C.grass3); p.px(x + 2, y, C.grass3); p.px(x + 1, y - 1, C.grass3);
+      p.px(x, y, pal[2]); p.px(x + 2, y, pal[2]); p.px(x + 1, y - 1, pal[2]);
     }
   });
 }
@@ -222,7 +230,10 @@ export function caveWallTile(face, v = 0) {
 export function buildTileset() {
   const range = n => [...Array(n).keys()];
   return {
-    grass: range(4).map(grassTile),
+    grass: range(4).map(v => grassTile(v)),
+    grass_summer: range(4).map(v => grassTile(v, GRASS_SEASONS.summer)),
+    grass_fall: range(4).map(v => grassTile(v, GRASS_SEASONS.fall)),
+    grass_winter: range(4).map(v => grassTile(v, GRASS_SEASONS.winter)),
     sand: range(4).map(sandTile),
     path: range(3).map(pathTile),
     mud: range(3).map(mudTile),

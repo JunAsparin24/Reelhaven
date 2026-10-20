@@ -1,5 +1,6 @@
 // Items: rods, bait, resources, special items and cosmetics.
 // Balance values live here so they can be tuned without touching logic.
+import { FARM_ITEMS, FARM_SELL } from './farm-data.js';
 
 export const RODS = {
   wooden_rod: {
@@ -72,6 +73,8 @@ export const RESOURCES = {
   amethyst: { id: 'amethyst', name: 'Amethyst', icon: 'amethyst', desc: 'A rare purple gem from the deep mine.' },
   slime: { id: 'slime', name: 'Slime', icon: 'slime', desc: 'Squishy. Left behind by mine slimes.' },
   bat_wing: { id: 'bat_wing', name: 'Bat Wing', icon: 'wing', desc: 'Dropped by cave bats.' },
+  // farming: seeds, produce and fiber (data/farm-data.js)
+  ...FARM_ITEMS,
 };
 
 /** Things you can eat from the hotbar to heal. heal = HP restored. */
@@ -83,8 +86,22 @@ export const FOOD = {
 
 export const MAX_HP = 100;
 
-/** Tool tiers. Index 0 is what every player starts with; upgrade at Nori's. */
+/**
+ * Tool tiers. Index 0 is the starting version; upgrade at Nori's. A tool is
+ * owned once inventory.tools has its key (the sword is found in the mine).
+ */
+export const TOOL_ORDER = ['axe', 'pickaxe', 'scythe', 'hoe', 'watering_can', 'sword'];
+export const WATER_CAPACITY = 40;
 export const TOOLS = {
+  axe: [
+    { name: 'Old Axe', power: 1, desc: 'Chops trees and twigs.' },
+    { name: 'Copper Axe', power: 2, cost: { coins: 300, copper_bar: 4 }, minLevel: 2, desc: 'Fells trees twice as fast.' },
+    { name: 'Iron Axe', power: 3, cost: { coins: 900, iron_bar: 4 }, minLevel: 4, desc: 'Big trees in a few swings.' },
+    { name: 'Golden Axe', power: 5, cost: { coins: 2200, gold_bar: 4 }, minLevel: 6, desc: 'Timber!' },
+  ],
+  scythe: [{ name: 'Scythe', power: 1, desc: 'Cuts weeds in a wide sweep.' }],
+  hoe: [{ name: 'Hoe', power: 1, desc: 'Tills grass or sand in your yard so you can plant seeds.' }],
+  watering_can: [{ name: 'Watering Can', power: 1, desc: 'Waters crops. Refill it at any water.' }],
   pickaxe: [
     { name: 'Old Pickaxe', power: 1, desc: 'Breaks rocks in the mine.' },
     { name: 'Copper Pickaxe', power: 2, cost: { coins: 300, copper_bar: 4 }, minLevel: 2, desc: 'Breaks rocks twice as fast.' },
@@ -112,6 +129,7 @@ export const RESOURCE_SELL = {
   wood: 2, stone: 3, shell: 4, seaglass: 15, flower: 3,
   copper_ore: 5, iron_ore: 9, gold_ore: 16, copper_bar: 30, iron_bar: 55, gold_bar: 95,
   quartz: 20, amethyst: 45, slime: 3, bat_wing: 6,
+  ...FARM_SELL,
 };
 
 export const HATS = {

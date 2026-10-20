@@ -11,12 +11,14 @@ import { OBJECT_TYPES } from './world.js';
 import { T } from './world-gen.js';
 import { sfx, vibrate } from './audio.js';
 import { addXp } from './progression.js';
+import { hitDebris, till, water, plant, harvest } from './farm.js';
 
 const DIRV = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const SWING_TIME = 0.26, SWING_COOLDOWN = 0.36;
 
 export function toolTier(kind) {
   const tiers = TOOLS[kind];
+  if (!tiers) return { name: kind, power: 1 };
   return tiers[Math.min(tiers.length - 1, getState().inventory.tools?.[kind] || 0)];
 }
 
@@ -26,24 +28,62 @@ export function faceToward(p, x, y) {
   return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
 }
 
-/** Swing the pickaxe or sword. Returns true if a swing happened. */
+/** Tools you swing (seeds are 'seed:<item>'). */
+export const SWING_TOOLS = new Set(['pickaxe', 'sword', 'axe', 'scythe', 'hoe', 'watering_can']);
+export const ownsTool = kind => getState().inventory.tools?.[kind] !== undefined;
+
+/** The tile in front of the player. */
+export function frontTile(p) {
+  const [dx, dy] = DIRV[p.facing];
+  return { x: Math.floor((p.x + dx * 12) / TILE), y: Math.floor((p.y - 4 + dy * 12) / TILE) };
+}
+
+/** Use the held tool (or seeds). Returns true if something happened. */
 export function swing(game, tool = getState().inventory.held) {
   const p = game.player, w = game.world;
-  if (tool !== 'pickaxe' && tool !== 'sword') return false;
+  if (typeof tool === 'string' && tool.startsWith('seed:')) {
+    const t = frontTile(p);
+    if (plant(game, t.x, t.y, tool.slice(5))) { p.swingCool = 0.15; return true; }
+    return false;
+  }
+  if (!SWING_TOOLS.has(tool) || !ownsTool(tool)) return false;
   if ((p.swingCool || 0) > 0) return false;
   p.swing = { tool, t: 0, dur: SWING_TIME };
   p.swingCool = SWING_COOLDOWN;
   const [dx, dy] = DIRV[p.facing];
   const hx = p.x + dx * 13, hy = p.y - 5 + dy * 13;
-  if (tool === 'pickaxe') {
-    let best = null, bestD = 15;
+  const nearest = (match, range = 15) => {
+    let best = null, bestD = range;
     for (const o of w.objects) {
-      if (o.type !== 'mine_rock' && o.type !== 'boulder') continue;
-      if (w.objectHidden(o) || (o.type === 'boulder' && !w.nodeReady(o))) continue;
+      if (!match(o) || w.objectHidden(o) || !w.inBounds(o.x, o.y)) continue;
       const d = Math.hypot(o.x * TILE + 8 - hx, o.y * TILE + 8 - hy);
       if (d < bestD) { bestD = d; best = o; }
     }
-    if (best && best.type === 'mine_rock') hitRock(game, best, toolTier('pickaxe').power);
+    return best;
+  };
+  if (tool === 'hoe') { const t = frontTile(p); if (!harvest(game, t.x, t.y)) till(game, t.x, t.y); return true; }
+  if (tool === 'watering_can') { const t = frontTile(p); water(game, t.x, t.y); return true; }
+  if (tool === 'axe') {
+    const o = nearest(o => o.type === 'debris_tree' || o.type === 'debris_twig');
+    if (o) hitDebris(game, o, toolTier('axe').power); else sfx('swing');
+    return true;
+  }
+  if (tool === 'scythe') {
+    // A wide sweep: every weed in front of you, and ripe crops get picked.
+    let hit = false;
+    for (const o of [...w.objects]) {
+      if (o.type !== 'debris_weed' || !w.inBounds(o.x, o.y)) continue;
+      if (Math.hypot(o.x * TILE + 8 - hx, o.y * TILE + 8 - hy) < 20) { hitDebris(game, o, 1); hit = true; }
+    }
+    const t = frontTile(p);
+    if (harvest(game, t.x, t.y)) hit = true;
+    if (!hit) sfx('swing');
+    return true;
+  }
+  if (tool === 'pickaxe') {
+    const best = nearest(o => o.type === 'mine_rock' || o.type === 'debris_stone');
+    if (best?.type === 'mine_rock') hitRock(game, best, toolTier('pickaxe').power);
+    else if (best) hitDebris(game, best, toolTier('pickaxe').power);
     else sfx('swing');
   } else {
     let hit = false;

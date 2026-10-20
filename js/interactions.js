@@ -9,6 +9,7 @@ import { BUILDINGS } from '../data/building-data.js';
 import { RESOURCES } from '../data/item-data.js';
 import { sfx } from './audio.js';
 import { MONSTERS } from '../data/mine-data.js';
+import { CROPS } from '../data/farm-data.js';
 
 export const BRIDGE_COST = { coins: 100, wood: 15, stone: 6 };
 
@@ -24,6 +25,7 @@ function collectInteractables(game, rangeBoost = 1, only = null) {
   const found = [];
   const consider = (it, x, y, range) => {
     if (only && !only(it)) return;
+    if (!w.inBoundsPx(x, y + 4)) return;
     if (game.canUse && !game.canUse(it)) return;
     const d = Math.hypot(p.x - x, p.y - 4 - y);
     if (d < range * rangeBoost) { it.d = d; found.push(it); }
@@ -64,6 +66,17 @@ function collectInteractables(game, rangeBoost = 1, only = null) {
     const cx = pl.x * TILE + (pl.fw * TILE) / 2, cy = (pl.y + pl.fh) * TILE - 4;
     const spr = sprite(pl.type);
     consider({ kind: 'use', placement: pl, verb: USE_VERB[pl.def.use] || 'Use', label: pl.def.name, mx: cx, my: (pl.y + pl.fh) * TILE - (spr ? spr.height : 16) - 2 }, cx, cy, 26);
+  }
+  // Ripe (or withered) crops close by.
+  const soil = w.islandState.farm?.soil;
+  if (soil && !game.visit) {
+    const ptx = Math.floor(p.x / TILE), pty = Math.floor((p.y - 1) / TILE);
+    for (let ty = pty - 1; ty <= pty + 1; ty++) for (let tx = ptx - 1; tx <= ptx + 1; tx++) {
+      const plot = soil[tx + ',' + ty];
+      if (!plot?.crop || !(plot.ready || plot.dead)) continue;
+      const crop = CROPS[plot.crop];
+      consider({ kind: 'harvest', tx, ty, verb: plot.dead ? 'Clear' : 'Harvest', label: plot.dead ? `Withered ${crop.name}` : crop.name, mx: tx * TILE + 8, my: ty * TILE - 14 }, tx * TILE + 8, ty * TILE + 8, 22);
+    }
   }
   // Monsters in reach.
   for (const m of w.monsters || []) {

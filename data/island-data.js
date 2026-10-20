@@ -10,13 +10,22 @@ export const ISLAND_ORDER = ['sunny', 'coral', 'mangrove', 'moon'];
 
 export const ISLANDS = {
   sunny: {
-    id: 'sunny', name: 'Sunny Shores', size: { w: 80, h: 56 },
+    id: 'sunny', name: 'Sunny Shores', size: { w: 80, h: 56 }, seasonal: true,
     tagline: 'Your home island. Gentle waves and friendly faces.',
     features: ['Your own fenced home yard', 'Starter shops', 'The Old Mine', 'Hidden lagoon past the old bridge', 'Freshwater pond'],
     mapPos: { x: 0.24, y: 0.66 },
     theme: { deep: 'deep', near: 'ocean', shallow: 'shallow', pond: 'pond', reef: 'reef', grass: 'grass', sand: 'sand' },
     unlock: null,
     spawn: { x: 11, y: 27 },
+    arrival: { x: 53, y: 47 },          // stepping off the boat, on the pier
+    // Sunny Shores is split into areas you walk between, like Stardew: each one
+    // is a window onto the island map and you only see the one you're in.
+    // Walk off the end of a path at an edge to go to the next area.
+    areas: {
+      home: { name: 'Home', x: 0, y: 0, w: 34, h: 56 },
+      town: { name: 'Seabreeze Town', x: 34, y: 0, w: 46, h: 39 },
+      beach: { name: 'Sunny Beach & Pier', x: 34, y: 39, w: 46, h: 17 },
+    },
     // Where the home yard is and where friends' cabins go (see game.js).
     home: { cottage: { x: 9, y: 24 }, yard: { x: 6, y: 22, w: 22, h: 19 } },
     guestSpots: [{ x: 19, y: 24 }, { x: 23, y: 24 }, { x: 19, y: 34 }, { x: 23, y: 34 }],
@@ -45,9 +54,9 @@ export const ISLANDS = {
         if (y !== 30 && y !== 31) m.obj('yard_fence', fx + fw - 1, y, { vert: true });
       }
       m.path([[11, 26], [11, 30], [33, 30]], P, 2);       // cottage door -> east gate -> town
-      m.path([[16, 23], [16, 19], [12, 19]], P, 2);       // north gate -> mine
+      m.path([[16, 23], [16, 19], [12, 19]], P, 2);       // north gate -> the lookout hill
       m.place('cottage', 9, 24);
-      m.obj('mine_entrance', 11, 16);
+      m.obj('flowerbush', 11, 16); m.obj('bush', 13, 15);
       for (const [x, y] of [[8, 15], [15, 14], [17, 17], [7, 18]]) m.obj('rock', x, y);
       for (const [x, y] of [[3, 27], [4, 38], [30, 22], [29, 40], [2, 33]]) m.obj('palm', x, y);
       for (const [x, y] of [[8, 21], [25, 21], [8, 41]]) m.obj('flowers', x, y);
@@ -73,11 +82,17 @@ export const ISLANDS = {
       m.path([[29, 11], [30, 11]], P, 2);
       m.path([[14, 25], [14, 26]], P, 1);
       m.path([[3, 22], [14, 22]], P, 2);  // from the land bridge into town
+      // the Old Mine, up on a rocky hill at the north-west of town
+      m.blob(13, 8, 7.5, 4.5, S, 0.1, 41);
+      m.blob(13, 8, 6, 3.5, G, 0.1, 42);
+      m.path([[14, 10], [14, 19]], P, 1);
+      for (const [x, y] of [[9, 6], [18, 6], [8, 9], [19, 10]]) m.obj('rock', x, y);
       // dock
       m.rect(21, 35, 2, 6, D);
       m.rect(18, 40, 7, 2, D);
 
       m.obj('shop', 25, 16);
+      m.obj('mine_entrance', 13, 7);
       m.obj('board', 18, 22);
       m.obj('boat', 26, 41);
       m.obj('bridgeSite', 29, 13);

@@ -36,6 +36,17 @@ const MIGRATIONS = {
     const sunny = s.islands?.sunny;
     if (sunny) shiftSunnyLayout(sunny);
     if (s.player.island === 'sunny' && s.player.pos) s.player.pos = { ...ISLANDS.sunny.spawn };
+    s.inventory.tools = { pickaxe: 0, sword: 0, ...(s.inventory.tools || {}) };
+    return s;
+  },
+  5: s => {
+    // v5 -> v6: farming tools, seasons, and three new opening quests (gift,
+    // clearing the yard, planting) placed before the old first quest. Players
+    // who already started skip them, keep their rod and keep the mine open.
+    s.inventory.tools = { axe: 0, scythe: 0, hoe: 0, watering_can: 0, ...(s.inventory.tools || {}) };
+    s.inventory.water = 40;
+    if (s.quests) s.quests.index = (s.quests.index || 0) + 3;
+    s.flags = { ...(s.flags || {}), giftOpened: true, mineOpen: true };
     return s;
   },
 };
@@ -103,9 +114,11 @@ export function migrate(s) {
   const p = s.player;
   p.maxHp = p.maxHp || 100;
   p.hp = Number.isFinite(p.hp) ? Math.max(1, Math.min(p.maxHp, p.hp)) : p.maxHp;
-  s.inventory.tools = { pickaxe: 0, sword: 0, ...(s.inventory.tools || {}) };
-  s.inventory.held = s.inventory.held || 'rod';
-  for (const k of ['mineDeepest', 'monstersSlain', 'rocksBroken', 'daysSlept']) s.stats[k] = s.stats[k] || 0;
+  s.inventory.tools = s.inventory.tools || {};
+  s.inventory.held = s.inventory.held || 'axe';
+  if (!Number.isFinite(s.inventory.water)) s.inventory.water = 40;
+  for (const k of ['mineDeepest', 'monstersSlain', 'rocksBroken', 'daysSlept', 'debrisCleared', 'seedsPlanted', 'cropsHarvested']) s.stats[k] = s.stats[k] || 0;
+  if (s.world && !Number.isFinite(s.world.weatherUntil)) s.world.weatherUntil = 0;
   for (const isl of Object.values(s.islands)) isl.chests = isl.chests || {};
   s.islands.sunny.layout = 2;
   return s;

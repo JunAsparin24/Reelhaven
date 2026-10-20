@@ -6,7 +6,7 @@ import { ISLANDS, ISLAND_ORDER } from '../data/island-data.js';
 import { MAIN_QUESTS } from '../data/quest-data.js';
 import { defaultPlacements } from './world-gen.js';
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 export const GAME_NAME = 'Reelhaven';
 // Version: 26 = the year (2026), then .1, then the number of commits so far.
 export const GAME_VERSION = '26.1.47';
@@ -55,7 +55,7 @@ export function createNewState({ name = 'Islander', look }) {
     player: {
       name: name.slice(0, 16) || 'Islander',
       look,
-      level: 1, xp: 0, coins: 75, pearls: 0,
+      level: 1, xp: 0, coins: 300, pearls: 0,
       hp: 100, maxHp: 100,
       island: 'sunny',
       pos: { ...ISLANDS.sunny.spawn },
@@ -63,14 +63,16 @@ export function createNewState({ name = 'Islander', look }) {
     },
     inventory: {
       fish: [],                   // [{ uid, id, size, variant, caughtAt }]
-      items: { worm_bait: 3 },    // stackables: bait, resources
-      rods: ['wooden_rod'],
+      items: { worm_bait: 3 },    // stackables: bait, resources, seeds, crops
+      rods: [],                   // Mira hands you a rod at the pier
       equippedRod: 'wooden_rod',
       equippedBait: 'none',
       hats: ['none', 'straw', 'bandana'],
       storedDecor: {},            // decorations picked up from the island
-      tools: { pickaxe: 0, sword: 0 },   // tier index into TOOLS (data/item-data.js)
-      held: 'rod',                // what the hotbar has selected: rod | pickaxe | sword
+      // tier index into TOOLS (data/item-data.js); the sword is found in the mine
+      tools: { axe: 0, pickaxe: 0, scythe: 0, hoe: 0, watering_can: 0 },
+      held: 'axe',                // hotbar selection: a tool id, 'rod', or 'seed:<item id>'
+      water: 40,                  // watering can splashes left
     },
     collection: {},               // fishId -> { count, maxSize, first, variant }
     quests: {
@@ -89,10 +91,11 @@ export function createNewState({ name = 'Islander', look }) {
       ordersDone: 0, buildingsBuilt: 0, decorPlaced: 0, speciesNew: 0, casts: 0, escapes: 0,
       zoneCatch: {}, talked: {},
       mineDeepest: 0, monstersSlain: 0, rocksBroken: 0, daysSlept: 0,
+      debrisCleared: 0, seedsPlanted: 0, cropsHarvested: 0,
     },
     flags: {},
     islands,
-    world: { minutes: 7 * 60, day: 1, weather: 'sunny', weatherUntil: 10 * 60 },
+    world: { minutes: 6 * 60, day: 1, weather: 'sunny', weatherUntil: 0, forecast: 'sunny', luck: 0.05 },
     settings: defaultSettings(),
   };
 }

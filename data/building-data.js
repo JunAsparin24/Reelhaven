@@ -82,7 +82,7 @@ export const DECOR = {
   well: { id: 'well', name: 'Stone Well', kind: 'decor', price: 160, cost: { stone: 10, wood: 3 }, footprint: { w: 2, h: 1 }, solid: true, minLevel: 3, desc: 'A classic village well.' },
   fish_statue: { id: 'fish_statue', name: 'Fish Statue', kind: 'decor', price: 200, cost: { stone: 8, copper_bar: 1 }, footprint: { w: 1, h: 1 }, solid: true, minLevel: 4, desc: 'A proud tribute to the big one.' },
   // utility: things you use, not just look at
-  chest: { id: 'chest', name: 'Storage Chest', kind: 'decor', category: 'utility', use: 'chest', price: 40, cost: { wood: 8 }, footprint: { w: 1, h: 1 }, solid: true, desc: 'Store items you don’t want to carry around.' },
+  chest: { id: 'chest', name: 'Storage Chest', kind: 'decor', category: 'utility', use: 'chest', price: 0, cost: { wood: 50 }, footprint: { w: 1, h: 1 }, solid: true, desc: 'Store items you don’t want to carry around.' },
   furnace: { id: 'furnace', name: 'Furnace', kind: 'decor', category: 'utility', use: 'furnace', price: 120, cost: { stone: 15 }, footprint: { w: 1, h: 1 }, solid: true, minLevel: 2, lights: [{ x: 0, y: -8, r: 18 }], desc: 'Smelt ore into bars and grill fish.' },
   campfire: { id: 'campfire', name: 'Campfire', kind: 'decor', category: 'utility', use: 'campfire', price: 30, cost: { wood: 5, stone: 2 }, footprint: { w: 1, h: 1 }, solid: true, lights: [{ x: 0, y: -6, r: 26 }], desc: 'Grill fish to heal up. Cozy after dark.' },
 };

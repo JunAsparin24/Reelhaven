@@ -1,6 +1,7 @@
 // 16x16 UI icons, painted as pixel art (no emoji or font glyphs).
-import { paint, outline } from './pixel.js';
+import { paint, outline, shade } from './pixel.js';
 import { C } from './palette.js';
+import { CROPS } from '../../data/farm-data.js';
 
 const O = c => outline(c, C.ink);
 const icon = fn => O(paint(18, 18, p => fn(p)));
@@ -140,8 +141,43 @@ export const ICONS = {
   wing: () => icon(p => { p.line(3, 6, 15, 6, '#4a3b5c'); for (let x = 4; x < 15; x++) p.vline(x, 7, 3 + ((x * 3) % 4), '#6c5a82'); }),
   ladder: () => icon(p => { p.vline(5, 2, 14, C.wood); p.vline(12, 2, 14, C.wood); for (let y = 4; y < 16; y += 4) p.hline(5, y, 8, C.woodLight); }),
   fire: () => icon(p => { p.ellipse(9, 11, 5, 5, C.orange); p.ellipse(9, 12, 3, 3, C.yellow); p.px(9, 4, C.orange); p.px(7, 6, C.orange); p.rect(4, 15, 10, 2, C.wood2); }),
+  axe: () => icon(p => {
+    p.line(4, 16, 12, 5, C.wood2); p.line(5, 16, 13, 5, C.wood);
+    p.rect(10, 2, 5, 6, C.stone2); p.rect(11, 3, 4, 4, C.stone); p.vline(15, 3, 4, C.white);
+  }),
+  scythe: () => icon(p => {
+    p.line(5, 16, 9, 4, C.wood2); p.line(6, 16, 10, 4, C.wood);
+    for (let i = 0; i < 8; i++) p.px(9 + i, 3 + Math.round(Math.sin(i / 7 * Math.PI) * -1 + i * 0.4), C.stone);
+    p.line(9, 4, 16, 6, C.white);
+  }),
+  hoe: () => icon(p => {
+    // long handle with a flat blade bent down at the end
+    p.line(3, 16, 13, 3, C.wood2); p.line(4, 16, 14, 3, C.wood);
+    p.rect(9, 1, 8, 2, C.stone2); p.rect(9, 3, 3, 4, C.stone); p.hline(9, 6, 3, C.white);
+  }),
+  watering_can: () => icon(p => {
+    p.rect(3, 7, 9, 8, C.blueRoof); p.hline(3, 7, 9, '#8fb5dc'); p.rect(4, 4, 6, 2, C.blueRoof2);
+    p.line(12, 9, 16, 5, C.blueRoof2); p.px(16, 4, '#9fd6e8'); p.px(17, 6, '#9fd6e8');
+  }),
+  gift: () => icon(p => { p.rect(3, 7, 12, 8, C.coral2); p.rect(2, 5, 14, 3, C.coral); p.rect(8, 5, 2, 10, C.yellow); p.ellipse(6, 4, 2, 1.5, C.yellow); p.ellipse(12, 4, 2, 1.5, C.yellow); }),
+  tv: () => icon(p => { p.rect(2, 4, 14, 10, C.ink2); p.rect(3, 5, 12, 8, '#6fb8c8'); p.hline(4, 7, 8, '#a8e0e8'); p.rect(5, 14, 8, 2, C.wood); }),
+  snow: () => icon(p => { for (const [x, y] of [[9, 3], [4, 8], [14, 8], [6, 14], [12, 14], [9, 9]]) { p.px(x, y, C.white); p.px(x - 1, y, '#cfe4f5'); p.px(x + 1, y, '#cfe4f5'); p.px(x, y - 1, '#cfe4f5'); p.px(x, y + 1, '#cfe4f5'); } }),
+  fiber: () => icon(p => { for (let i = 0; i < 5; i++) p.line(4 + i * 2, 15, 6 + i * 2, 3, i % 2 ? '#7aa04a' : '#9ab85a'); p.hline(4, 10, 10, C.wood2); }),
   sparkle: () => icon(p => { p.rect(8, 2, 2, 14, C.yellow); p.rect(2, 8, 14, 2, C.yellow); p.rect(7, 7, 4, 4, C.white); }),
 };
+
+// Seed packets and produce for every crop.
+for (const c of Object.values(CROPS)) {
+  ICONS['seeds_' + c.id] = () => icon(p => {
+    p.rect(4, 3, 10, 13, C.cream); p.rect(4, 3, 10, 3, c.leaf);
+    p.ellipse(9, 10, 3, 3, c.fruit); p.px(8, 9, C.white); p.hline(5, 14, 8, C.sand2);
+  });
+  ICONS['crop_' + c.id] = () => icon(p => {
+    if (c.big) { p.ellipse(9, 10, 6, 5, c.fruit); for (let x = 5; x < 14; x += 3) p.vline(x, 6, 8, shade(c.fruit, -0.15)); p.rect(8, 3, 2, 3, c.leaf); }
+    else if (c.vine) { for (const [x, y] of [[5, 8], [9, 5], [12, 10], [7, 12]]) { p.rect(x, y, 3, 4, c.fruit); p.px(x, y, C.white); } }
+    else { p.ellipse(9, 11, 5, 4, c.fruit); for (let i = 0; i < 3; i++) p.line(9, 7, 6 + i * 3, 2, c.leaf); p.px(7, 10, C.white); }
+  });
+}
 
 function inPoly(x, y, pts) {
   let inside = false;

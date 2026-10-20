@@ -33,9 +33,11 @@ import { addXp } from './progression.js';
 import { commit, uid } from './state.js';
 import { mineFloor } from '../data/mine-data.js';
 import { forgetMap } from './world-gen.js';
-import { swing, updateMonsters, faceToward as facePoint } from './combat.js';
+import { swing, updateMonsters, faceToward as facePoint, frontTile } from './combat.js';
 import { sleepToMorning, setClock } from './weather.js';
 import { shiftSunnyLayout } from './save.js';
+import { FARM_ISLAND, seedYard, sproutWeeds, growFarms, hitDebris, harvest, farmBlocker } from './farm.js';
+import { seasonOf } from '../data/farm-data.js';
 
 export class Game {
   constructor({ canvas, ui }) {
@@ -116,6 +118,7 @@ export class Game {
     setState(st);
     Save.save(st);
     this.enterPlay();
+    this.startInCottage();
     emit('newGame');
   }
 
@@ -142,6 +145,8 @@ export class Game {
     const s = getState();
     this.indoor = null;
     this.world = new World(id, s.islands[id]);
+    // First time home: the yard is covered in trees, stones and weeds.
+    if (id === FARM_ISLAND && seedYard(this.world, s.islands[id])) { this.world.syncDebris(); commit('seedYard', false); }
     this.renderer.setWorld(this.world);
     this.revealedSpots = new Set();
     const pos = keepPos && s.player.pos ? s.player.pos : ISLANDS[id].spawn;
@@ -153,6 +158,7 @@ export class Game {
       const n = this.world.nearestWalkable(ISLANDS[id].spawn.x, ISLANDS[id].spawn.y, pos.x, pos.y) || ISLANDS[id].spawn;
       this.player.placeAtTile(n.x, n.y);
     }
+    this.world.setArea(this.world.areaAt(this.player.tileX, this.player.tileY));
     this.onResize();
     this.camera.snap(this.player.x, this.player.y, this.world);
   }
@@ -233,6 +239,7 @@ export class Game {
       this.player = new Player(0, 0, 'up');
       this.footsteps.attach(this.player);
       this.player.placeAtTile(sp.x, sp.y);
+      this.world.setArea(this.world.areaAt(sp.x, sp.y));
       this.onResize();
       this.camera.snap(this.player.x, this.player.y, this.world);
       this.joinChannel(hostId, isl.id);
@@ -358,6 +365,26 @@ export class Game {
       if (this.mode === 'play' && weather === 'storm') { sfx('thunder'); }
     });
     on('phase', ({ phase }) => setMood(phase === 'night' || phase === 'evening' ? 'night' : 'day'));
+    // A new morning: crops grow, weeds sprout, the mine opens on Day 5.
+    on('newDay', ({ day }) => {
+      if (this.mode !== 'play' || this.visit) return;
+      const s = getState();
+      growFarms(day, s.world.weather);
+      const home = this.outdoor;
+      if (home?.id === FARM_ISLAND) { sproutWeeds(home, s.islands[FARM_ISLAND], 3); home.syncDebris(); }
+      if (!s.flags.mineOpen && day >= 5) {
+        s.flags.mineOpen = true;
+        setTimeout(() => toast('Rowan cleared the rocks at the Old Mine. It’s open!', 'pickaxe', 'gold'), 1500);
+      }
+      commit('newDay');
+    });
+    // Seasons repaint the grass.
+    on('season', ({ season }) => {
+      if (this.mode !== 'play') return;
+      if (!this.indoor) this.renderer.buildLand();
+      const n = seasonOf(getState().world.day);
+      setTimeout(() => toast(`${n.name} has arrived! ${season === 'winter' ? 'Bundle up — and plant Frost Leeks.' : 'New seeds are in at Nori’s.'}`, 'sun', 'gold'), 1200);
+    });
     on('settings', () => { const s = getState(); setVolumes(s.settings); });
     // Friends on my island see my building changes live.
     on('change', e => { if (e && ['build', 'move', 'store', 'bridge'].includes(e.reason)) this.shareLayout(); });
@@ -608,15 +635,43 @@ export class Game {
     const p = this.player;
     p.cancelPath();
     switch (it.kind) {
-      case 'spot': this.startFishing(it.spot); break;
+      case 'spot': {
+        if (!getState().inventory.rods.length) { toast('You need a fishing rod. Mira at the pier might have a spare!', 'rod'); return; }
+        this.startFishing(it.spot);
+        break;
+      }
       case 'npc': {
         const n = it.npc;
         n.dir = faceToward(n, p);
         p.facing = faceToward(p, n);
         markTalked(n.id);
         this.ui.talk(n.id);
+        // Mira gives new islanders their first rod (like Willy at the beach).
+        const inv = getState().inventory;
+        if (n.id === 'mira' && !inv.rods.length && !this.visit) {
+          inv.rods.push('wooden_rod');
+          inv.equippedRod = 'wooden_rod';
+          setTimeout(() => { toast('Mira gave you a Wooden Rod! Find it on your hotbar.', 'rod', 'gold'); sfx('quest'); }, 400);
+          commit('rod');
+        }
         break;
       }
+      case 'clear': {
+        const o = it.obj, tool = o.def.tool;
+        getState().inventory.held = tool;
+        p.facing = facePoint(p, o.x * TILE + 8, o.y * TILE + 12);
+        if (this.visit) { toast('That belongs to your host’s yard.', 'axe'); return; }
+        swing(this, tool);
+        this.ui.hotbar?.render();
+        break;
+      }
+      case 'harvest': {
+        p.facing = facePoint(p, it.tx * TILE + 8, it.ty * TILE + 8);
+        harvest(this, it.tx, it.ty);
+        break;
+      }
+      case 'gift': this.openGift(); break;
+      case 'tv': this.ui.tvModal(); break;
       case 'gather': gather(this, it.obj); break;
       case 'board': this.ui.open('quests'); break;
       case 'shop': this.ui.open('shop'); break;
@@ -624,7 +679,12 @@ export class Game {
       case 'exit': this.exitInterior(); break;
       case 'bed': this.ui.sleepPrompt(); break;
       case 'use': this.ui.useUtility(it.placement); break;
-      case 'mine_enter': this.ui.mineMenu(); break;
+      case 'mine_enter': {
+        const s = getState();
+        if (!s.flags.mineOpen && !this.visit) { toast(`Fallen rocks block the way in. Rowan says they’ll be cleared by Day 5 (it’s Day ${s.world.day}).`, 'pickaxe'); return; }
+        this.ui.mineMenu();
+        break;
+      }
       case 'descend': this.enterMine((this.world.def.level || 0) + 1); break;
       case 'ascend': this.exitInterior(); break;
       case 'mine': {
@@ -655,8 +715,8 @@ export class Game {
   get outdoor() { return this.indoor ? this.indoor.outside : this.world; }
 
   /** Walk into a building: the shop object or a cottage placement. */
-  enterInterior(it) {
-    if (this.indoor || this.ui.fading) return;
+  enterInterior(it, { instant = false, spawn = null } = {}) {
+    if (this.indoor || (this.ui.fading && !instant)) return;
     const id = it.obj ? it.obj.def.interior : it.placement?.type === 'guest_cabin' ? 'cabin_interior' : 'cottage_interior';
     const def = INTERIORS[id];
     if (!def) return;
@@ -666,17 +726,80 @@ export class Game {
     else { const pl = it.placement; ret = { x: pl.x + Math.floor(pl.fw / 2), y: pl.y + pl.fh }; }
     const outside = this.world;
     if (!outside.walkableTile(ret.x, ret.y)) ret = outside.nearestWalkable(ret.x, ret.y, this.player.tileX, this.player.tileY) || { x: this.player.tileX, y: this.player.tileY };
-    sfx('click');
-    this.ui.fade(() => {
+    const go = () => {
       this.indoor = { id, outside, ret };
       this.world = new World(id, { unlocked: true, visited: true, nodes: {}, gardens: {}, flags: {}, placements: [] });
       this.renderer.setWorld(this.world);
-      this.player.placeAtTile(def.spawn.x, def.spawn.y);
+      const sp = spawn || def.spawn;
+      this.player.placeAtTile(sp.x, sp.y);
       this.player.facing = 'up';
       this.onResize();
       this.camera.snap(this.player.x, this.player.y, this.world);
       this.ui.closeAll();
-    }, def.name);
+    };
+    if (instant) { go(); return; }
+    sfx('click');
+    this.ui.fade(go, def.name);
+  }
+
+  /** Tile a held hoe / watering can / seed packet would affect (shown as a marker). */
+  farmTarget() {
+    const held = getState().inventory.held || '';
+    if (this.build.active || this.fishing || this.sleeping || !this.player) return null;
+    if (!(held === 'hoe' || held === 'watering_can' || held.startsWith('seed:'))) return null;
+    if (farmBlocker(this)) return null;
+    return frontTile(this.player);
+  }
+
+  /** The welcome gift in the cottage: starter seeds. */
+  openGift() {
+    const s = getState();
+    if (s.flags.giftOpened) return;
+    s.flags.giftOpened = true;
+    s.inventory.items.radish_seeds = (s.inventory.items.radish_seeds || 0) + 15;
+    s.inventory.held = 'seed:radish_seeds';
+    sfx('quest');
+    this.renderer.emit('sparkle', this.player.x, this.player.y - 16, 14, { speed: 50, gravity: 30, color: '#f8dc7c' });
+    this.ui.giftModal();
+    this.world.rebuild();
+    commit('gift');
+  }
+
+  /** A brand-new game starts inside your cottage, next to the welcome gift. */
+  startInCottage() {
+    const pl = this.world.placed.find(p => p.type === 'cottage');
+    if (pl) this.enterInterior({ placement: pl }, { instant: true, spawn: { x: 5, y: 5 } });
+  }
+
+  /** Stayed up past 2 AM: pass out and wake at home, a few coins lighter. */
+  passOut() {
+    if (this.fainting || this.sleeping) return;
+    this.fainting = true;
+    const s = getState();
+    const lost = Math.min(250, Math.floor(s.player.coins * 0.1));
+    if (this.fishing) this.stopFishing();
+    this.ui.closeAll();
+    this.ui.fade(() => {
+      s.player.coins -= lost;
+      const ind = this.indoor;
+      if (ind) { this.indoor = null; this.world = ind.outside; this.renderer.setWorld(this.world); }
+      if (this.world.id === 'sunny') {
+        const home = ISLANDS.sunny.spawn;
+        this.player.placeAtTile(home.x, home.y);
+      }
+      this.player.facing = 'down';
+      sleepToMorning();
+      s.player.hp = Math.ceil(s.player.maxHp * 0.75);
+      if (this.channel && this.bedPeers().length) {
+        const w = s.world;
+        this.ui.online?.social.relay('wake', { day: w.day, minutes: Math.floor(w.minutes), weather: w.weather });
+      }
+      this.world.rebuild();
+      this.camera.snap(this.player.x, this.player.y, this.world);
+      this.syncPlayerToState();
+      this.fainting = false;
+      setTimeout(() => toast(`You stayed up too late and passed out!${lost ? ` Someone found you and kept ${lost} coins for their trouble.` : ''}`, 'sleep', 'error'), 500);
+    }, 'You passed out…');
   }
 
   /** Step back outside onto the doorstep. */
@@ -695,6 +818,45 @@ export class Game {
       this.camera.snap(this.player.x, this.player.y, this.world);
       this.syncPlayerToState();
     }, '');
+  }
+
+  // ---------------------------------------------------------------- areas
+  /**
+   * Sunny Shores is split into areas. Teleports (doors, the mine, waking up)
+   * switch area straight away; walking off the end of a path at an edge
+   * fades over to the next area.
+   */
+  updateArea() {
+    const w = this.world, p = this.player;
+    const here = w.areaAt(p.tileX, p.tileY);
+    if (here !== w.area) {
+      w.setArea(here);
+      this.camera.snap(p.x, p.y - 8, w);
+      return;
+    }
+    if (this.ui.fading || !p.moving) return;
+    const b = w.bounds;
+    const tx = p.tileX, ty = p.tileY;
+    const dir = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] }[p.facing];
+    const atEdge = (dir[0] < 0 && tx === b.x) || (dir[0] > 0 && tx === b.x + b.w - 1) || (dir[1] < 0 && ty === b.y) || (dir[1] > 0 && ty === b.y + b.h - 1);
+    if (!atEdge) return;
+    const nx = tx + dir[0], ny = ty + dir[1];
+    const open = (x, y) => x >= 0 && y >= 0 && x < w.w && y < w.h && !w.solid[y * w.w + x];
+    if (!open(nx, ny)) return;
+    const next = w.areaAt(nx, ny);
+    if (!next || next === w.area) return;
+    // Land one step past the edge so you don't bounce straight back.
+    const fx = nx + dir[0], fy = ny + dir[1];
+    const land = open(fx, fy) ? { x: fx, y: fy } : { x: nx, y: ny };
+    p.cancelPath();
+    const facing = p.facing;
+    this.ui.fade(() => {
+      w.setArea(next);
+      p.placeAtTile(land.x, land.y);
+      p.facing = facing;
+      this.camera.snap(p.x, p.y - 8, w);
+      this.syncPlayerToState();
+    }, w.areas[next].name);
   }
 
   // ---------------------------------------------------------------- the mine
@@ -720,6 +882,11 @@ export class Game {
       this.onResize();
       this.camera.snap(this.player.x, this.player.y, this.world);
       this.ui.closeAll();
+      if (s.inventory.tools.sword === undefined) {
+        s.inventory.tools.sword = 0;
+        setTimeout(() => toast('You found an old Wooden Sword by the ladder. Monsters lurk down here!', 'sword', 'gold'), 600);
+        commit('sword');
+      }
       if (level > (s.stats.mineDeepest || 0)) {
         s.stats.mineDeepest = level;
         if (level % 5 === 0) setTimeout(() => toast(`Floor ${level} reached! You can start here next time.`, 'sparkle', 'gold'), 500);
@@ -890,6 +1057,8 @@ export class Game {
     if (this.mode === 'title') { this.footsteps.update(dt); return; }   // the title scene animates itself
     const s = getState();
     tickWeather(dt);
+    // Stay up past 2 AM and you pass out (the host's clock rules in multiplayer).
+    if (!this.visit && s.world.minutes >= 120 && s.world.minutes < 360 && !this.ui.fading && !ISLANDS[s.player.island]?.alwaysNight) this.passOut();
     const blocked = this.inputBlocked();
     // Menus, dialogue and fishing stop the player (and their footsteps) at once,
     // including a tap-to-walk that was in progress.
@@ -899,6 +1068,7 @@ export class Game {
     else this.player.moving = false;
     this.footsteps.update(dt);
     if (this.indoor && this.world.def.exit && !this.ui.fading && this.player.tileY >= this.world.def.exit.y) this.exitInterior();
+    if (this.world.areas) this.updateArea();
     const pl = this.player;
     if (pl.swingCool > 0) pl.swingCool -= dt;
     if (pl.swing) { pl.swing.t += dt; if (pl.swing.t >= pl.swing.dur) pl.swing = null; }
@@ -953,6 +1123,7 @@ export class Game {
   updateNpcs(dt) {
     const p = this.mode === 'play' ? this.player : null;
     for (const n of this.world.npcs) {
+      if (!this.world.inBoundsPx(n.homeX, n.homeY - 2)) continue;   // in another area
       // Hold still while the player is close (or heading over to chat).
       if (p && Math.hypot(p.x - n.x, p.y - n.y) < 3 * TILE) {
         n.tx = null; n.moving = false; n.timer = Math.max(n.timer, 1.5);
@@ -1001,6 +1172,7 @@ export class Game {
       questGiver: play && !this.visit ? questGiverHere() : null,
       remotes: play && this.remotes && !this.indoor ? [...this.remotes.values()] : null,
       phase: play ? currentPhase() : 'morning',
+      target: play ? this.farmTarget() : null,
     };
     this.renderer.render(scene, dt);
   }

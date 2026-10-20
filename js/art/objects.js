@@ -953,3 +953,91 @@ export function fishStatue() {
     p.rect(6, 1, 6, 3, '#c98a4a'); p.px(10, 8, C.ink); p.vline(9, 19, 3, '#c98a4a');
   }));
 }
+
+// ---------------------------------------------------------------- farm clutter & crops
+/** A leafy yard tree; the season changes its leaves. */
+export function yardTree(season = 'spring') {
+  const leaf = { spring: ['#5fa070', '#7cc086', '#4a8a5c'], summer: ['#4f9a5a', '#6db86a', '#3d7f4a'], fall: ['#d9823f', '#f0a94e', '#b3612e'], winter: ['#e8f0f4', '#ffffff', '#c4d2dc'] }[season];
+  return O(paint(30, 42, p => {
+    p.rect(13, 26, 5, 15, C.wood2); p.vline(13, 26, 15, C.wood3); p.rect(11, 39, 9, 2, C.wood3);
+    if (season === 'winter') {
+      // bare branches with a cap of snow
+      p.line(15, 28, 7, 14, C.wood2); p.line(16, 28, 24, 13, C.wood2); p.line(15, 22, 15, 6, C.wood2);
+      p.line(10, 18, 5, 12, C.wood3); p.line(21, 17, 26, 11, C.wood3);
+      for (const [x, y] of [[7, 13], [24, 12], [15, 5], [5, 11], [26, 10]]) p.ellipse(x, y, 2.5, 1.5, leaf[1]);
+      return;
+    }
+    p.ellipse(15, 16, 13, 12, leaf[2]);
+    p.ellipse(15, 14, 12, 11, leaf[0]);
+    for (const [x, y, r] of [[9, 11, 4], [19, 9, 4], [15, 18, 4], [22, 16, 3], [8, 18, 3]]) p.ellipse(x, y, r, r - 1, leaf[1]);
+    for (let i = 0; i < 10; i++) p.px(5 + ((i * 7) % 20), 6 + ((i * 11) % 18), leaf[2]);
+    if (season === 'summer') for (const [x, y] of [[10, 9], [20, 13], [14, 20]]) p.px(x, y, C.coral);
+  }));
+}
+
+export function twig() {
+  return O(paint(16, 10, p => {
+    p.line(2, 7, 13, 4, C.wood2); p.line(3, 8, 14, 5, C.wood3); p.line(7, 6, 9, 2, C.wood2); p.px(10, 1, C.grass3);
+  }));
+}
+
+export function yardStone() {
+  return O(paint(14, 11, p => {
+    p.ellipse(7, 6, 6, 4, C.stone2); p.ellipse(7, 5, 5, 3, C.stone); p.px(5, 4, C.white); p.px(9, 7, C.stone3);
+  }));
+}
+
+export function weed(v = 0, season = 'spring') {
+  const g = season === 'fall' ? ['#9a8a3a', '#c2a84a'] : season === 'winter' ? ['#8aa0a0', '#b8c8c8'] : ['#4f8a4a', '#6aaa5a'];
+  return O(paint(14, 14, p => {
+    for (let i = 0; i < 5; i++) { const x = 2 + i * 2 + (v ? 1 : 0); p.line(x, 12, x - 1 + ((i + v) % 3), 3 + ((i * 3 + v) % 4), i % 2 ? g[0] : g[1]); }
+    p.hline(2, 12, 10, g[0]);
+    if (v === 1 && season !== 'winter') { p.px(5, 4, C.yellow); p.px(9, 5, C.white); }
+  }));
+}
+
+export function giftBox() {
+  return O(paint(16, 16, p => {
+    p.rect(2, 6, 12, 9, C.coral2); p.rect(1, 4, 14, 3, C.coral);
+    p.rect(7, 4, 2, 11, C.yellow); p.hline(1, 5, 14, C.coral);
+    p.ellipse(5, 3, 2, 1.5, C.yellow); p.ellipse(11, 3, 2, 1.5, C.yellow); p.px(8, 3, C.gold);
+  }));
+}
+
+export function tvSet() {
+  return O(paint(16, 20, p => {
+    p.rect(2, 13, 12, 6, C.wood); p.hline(2, 13, 12, C.woodLight);
+    p.rect(1, 2, 14, 11, C.ink2); p.rect(2, 3, 12, 8, '#6fb8c8');
+    p.hline(3, 5, 8, '#a8e0e8'); p.px(12, 4, C.white);
+    p.line(5, 0, 7, 2, C.stone3); p.line(11, 0, 9, 2, C.stone3);
+  }));
+}
+
+/** Crop growth: stage 0 sprout, 1 leafy, 2 nearly there, 3 ripe. */
+export function crop(def, stage) {
+  const leaf = def.leaf, fruit = def.fruit;
+  if (stage === 0) return paint(12, 8, p => { p.vline(6, 3, 4, leaf); p.px(5, 3, leaf); p.px(7, 2, leaf); });
+  if (def.big) {
+    if (stage === 1) return O(paint(16, 12, p => { p.vline(8, 4, 7, leaf); p.ellipse(5, 6, 3, 2, leaf); p.ellipse(11, 5, 3, 2, leaf); }));
+    if (stage === 2) return O(paint(18, 14, p => { p.ellipse(9, 8, 7, 4, leaf); p.ellipse(9, 10, 3, 2.5, shade(fruit, -0.2)); p.px(6, 6, shade(leaf, 0.2)); }));
+    return O(paint(20, 18, p => {
+      p.ellipse(10, 11, 8, 6, shade(fruit, -0.15)); p.ellipse(10, 10, 7, 5, fruit);
+      for (let x = 5; x < 16; x += 3) p.vline(x, 6, 8, shade(fruit, -0.1));
+      p.px(7, 7, C.white); p.rect(9, 3, 2, 3, leaf); p.ellipse(13, 4, 2, 1, leaf);
+    }));
+  }
+  if (def.vine) {
+    const hh = stage === 3 ? 24 : 20;
+    return O(paint(14, hh, p => {
+      p.vline(7, 1, hh - 2, C.wood2);
+      for (let y = hh - 4; y > 3; y -= 4) { p.ellipse(5, y, 2, 1.5, leaf); p.ellipse(9, y - 2, 2, 1.5, leaf); }
+      if (stage === 3) for (const [x, y] of [[4, 8], [10, 12], [5, 16], [9, 5]]) { p.rect(x, y, 2, 3, fruit); p.px(x, y, C.white); }
+    }));
+  }
+  if (stage === 1) return O(paint(12, 11, p => { p.vline(6, 4, 6, leaf); p.ellipse(4, 5, 2, 1.5, leaf); p.ellipse(8, 4, 2, 1.5, leaf); }));
+  if (stage === 2) return O(paint(14, 13, p => { for (let i = 0; i < 4; i++) p.line(7, 11, 3 + i * 3, 2 + (i % 2) * 2, leaf); p.ellipse(7, 11, 2, 1, shade(fruit, -0.2)); }));
+  return O(paint(14, 15, p => {
+    for (let i = 0; i < 4; i++) p.line(7, 9, 3 + i * 3, 1 + (i % 2) * 2, leaf);
+    p.ellipse(7, 11, 4, 3, fruit); p.px(5, 10, C.white); p.vline(7, 13, 2, shade(fruit, -0.3));
+  }));
+}

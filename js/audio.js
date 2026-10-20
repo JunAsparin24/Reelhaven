@@ -153,8 +153,12 @@ function cricket(t) {
 export function pauseAudio() {
   if (ctx && ctx.state === 'running') ctx.suspend();
   if (mediaKeepAlive) mediaKeepAlive.pause();
+  if (track) { saveTrackPos(); track.pause(); }
 }
-export function resumeAudio() { if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {}); }
+export function resumeAudio() {
+  if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {});
+  if (musicOn && track && track.paused) track.play().catch(() => {});
+}
 
 // ------------------------------------------------------------- mobile unlock
 // Phones only let audio start inside a "real" user gesture (touchend / click /
@@ -200,6 +204,8 @@ function unlock() {
     }
     if (mediaKeepAlive.paused) mediaKeepAlive.play().catch(() => {});
   }
+  // Phones only start <audio> inside a tap, so retry the music here.
+  if (musicOn && track && track.paused) track.play().catch(() => {});
 }
 
 /** Install once at startup: any tap, click or key unlocks / resumes audio. */
@@ -278,6 +284,11 @@ const SFX = {
   step: t => noise(t, 0.04, { vol: 0.03, freq: 1800, q: 3 }),
   // mine & combat
   swing: t => noise(t, 0.12, { vol: 0.12, freq: 1800, sweep: -1200, q: 0.8 }),
+  // farming
+  chop: t => { noise(t, 0.09, { vol: 0.25, freq: 700, q: 1.5 }); tone(180, t, 0.08, { type: 'square', vol: 0.05, slide: -60 }); },
+  treefall: t => { noise(t, 0.5, { vol: 0.25, freq: 400, sweep: -250, q: 0.6 }); noise(t + 0.35, 0.25, { vol: 0.2, freq: 1500, q: 0.8 }); },
+  hoe: t => { noise(t, 0.12, { vol: 0.2, freq: 500, sweep: -200, q: 1 }); },
+  pour: t => noise(t, 0.35, { vol: 0.14, freq: 2200, sweep: -800, q: 0.7 }),
   pick: t => { noise(t, 0.07, { vol: 0.22, freq: 2600, q: 3 }); tone(1300, t, 0.05, { type: 'square', vol: 0.04 }); },
   rockbreak: t => { noise(t, 0.3, { vol: 0.28, freq: 700, sweep: -400, q: 0.7 }); noise(t + 0.05, 0.15, { vol: 0.15, freq: 2400, q: 2 }); },
   hit: t => { noise(t, 0.08, { vol: 0.2, freq: 900, q: 1 }); tone(220, t, 0.1, { type: 'square', vol: 0.06, slide: -120 }); },
@@ -307,15 +318,69 @@ const PENTA = [72, 74, 76, 79, 81, 84];
 
 export function setMood(m) { mood = m; }
 
-export function startMusic() {
-  if (!ctx || musicOn) return;
-  musicOn = true;
+// The main soundtrack is a long recorded track (an hour of chill game music),
+// streamed through an <audio> element into the music volume. It picks up
+// where it left off last time. If it can't load, the little synthesized
+// tune below plays instead.
+export const MUSIC_TRACK = 'assets/audio/music/main_theme.mp3';
+const TRACK_GAIN = 2.2;            // the recording is quieter than the synth tune
+const POS_KEY = 'reelhaven.musicPos';
+let track = null, trackFailed = false, posTimer = null;
+
+function saveTrackPos() {
+  try { if (track && track.currentTime > 0) localStorage.setItem(POS_KEY, String(Math.floor(track.currentTime))); } catch { /* storage blocked */ }
+}
+
+function startTrack() {
+  if (trackFailed || typeof Audio === 'undefined') return false;
+  if (!track) {
+    track = new Audio();
+    track.loop = true;
+    track.preload = 'auto';
+    track.setAttribute('playsinline', '');
+    track.addEventListener('error', () => {
+      if (trackFailed) return;
+      trackFailed = true;
+      track = null;
+      if (musicOn) startSynth();
+    });
+    track.addEventListener('loadedmetadata', () => {
+      let pos = 0;
+      try { pos = Number(localStorage.getItem(POS_KEY)) || 0; } catch { /* storage blocked */ }
+      if (pos > 0 && pos < track.duration - 10) track.currentTime = pos;
+    }, { once: true });
+    track.src = MUSIC_TRACK;
+    try {
+      const node = ctx.createMediaElementSource(track);
+      const g = ctx.createGain();
+      g.gain.value = TRACK_GAIN;
+      node.connect(g); g.connect(musicGain);
+    } catch { /* plays straight to the speakers if Web Audio can't take it */ }
+    posTimer = setInterval(saveTrackPos, 10000);
+    window.addEventListener('pagehide', saveTrackPos);
+  }
+  track.play().catch(() => { /* waits for the next tap (see unlock) */ });
+  return true;
+}
+
+function startSynth() {
   nextNoteTime = ctx.currentTime + 0.1;
   step = 0;
+  clearInterval(musicTimer);
   musicTimer = setInterval(scheduleMusic, 120);
 }
 
-export function stopMusic() { musicOn = false; clearInterval(musicTimer); }
+export function startMusic() {
+  if (!ctx || musicOn) return;
+  musicOn = true;
+  if (!startTrack()) startSynth();
+}
+
+export function stopMusic() {
+  musicOn = false;
+  clearInterval(musicTimer);
+  if (track) { saveTrackPos(); track.pause(); }
+}
 
 function scheduleMusic() {
   if (!ctx || ctx.state !== 'running') return;

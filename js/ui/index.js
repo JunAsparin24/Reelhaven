@@ -26,6 +26,7 @@ import { Hotbar } from './hotbar.js';
 import { chestItems, transfer, smelt, missingFor, recipesFor } from '../crafting.js';
 import { RESOURCES, FOOD, BAIT } from '../../data/item-data.js';
 import { toolTier } from '../combat.js';
+import { seasonOf, SEASON_NAMES, TV_TIPS } from '../../data/farm-data.js';
 
 // Menu bar: one compact row of icon buttons (top-right in landscape,
 // bottom edge in portrait). null = visual separator.
@@ -50,9 +51,15 @@ function actionIcon(it) {
     case 'exit': return 'home';
     case 'bed': return 'sleep';
     case 'use': return { chest: 'chest', furnace: 'fire', campfire: 'fire' }[it.placement.def.use] || 'sparkle';
-    case 'mine_enter': case 'mine': case 'swing': return it.kind === 'swing' && getState().inventory.held === 'sword' ? 'sword' : 'pickaxe';
+    case 'swing': return it.icon || (getState().inventory.held === 'sword' ? 'sword' : 'pickaxe');
+    case 'mine_enter': case 'mine': return 'pickaxe';
     case 'attack': return 'sword';
     case 'descend': case 'ascend': return 'ladder';
+    case 'clear': return it.obj.def.tool;
+    case 'harvest': return 'scythe';
+    case 'gift': return 'gift';
+    case 'tv': return 'tv';
+    case 'use_tool': return it.icon;
     case 'board': return 'quest';
     case 'boat': return 'boat';
     case 'bridge': return 'build';
@@ -141,8 +148,14 @@ export class UI {
     const usable = g.mode === 'play' && !this.blocking() && !g.build.active && !g.fishing;
     let list = usable ? nearbyInteractables(g, 3) : [];
     // Underground with nothing in reach: a big swing button for your tool.
+    // At home with a farming tool or seeds: a big "Use" button for the tile in front of you.
     const held = getState()?.inventory.held;
     if (usable && !list.length && g.world?.def.mine && (held === 'pickaxe' || held === 'sword')) list = [{ kind: 'swing', verb: 'Swing', label: toolTier(held).name }];
+    else if (usable && !list.length && g.world?.area === 'home' && !g.visit && held && held !== 'rod' && held !== 'sword') {
+      const seed = held.startsWith('seed:') ? RESOURCES[held.slice(5)] : null;
+      const verb = seed ? 'Plant' : { hoe: 'Till', watering_can: 'Water', axe: 'Chop', pickaxe: 'Break', scythe: 'Cut' }[held] || 'Use';
+      list = [{ kind: 'swing', verb, label: seed ? seed.name : toolTier(held).name, icon: seed ? seed.icon : held }];
+    }
     const key = list.map(it => it.kind + ':' + it.verb + ':' + it.label).join('|');
     if (key === this.actionKey) return;
     this.actionKey = key;
@@ -197,10 +210,11 @@ export class UI {
 
   updateClock() {
     const w = currentWeather(), ph = currentPhase();
-    const ic = w === 'storm' ? 'storm' : w === 'rain' ? 'rain' : ph === 'night' ? 'moon' : ph === 'evening' ? 'sunset' : 'sun';
+    const ic = w === 'storm' ? 'storm' : w === 'rain' ? 'rain' : w === 'snow' ? 'snow' : ph === 'night' ? 'moon' : ph === 'evening' ? 'sunset' : 'sun';
     if (this.el.clockIcon.dataset.ic !== ic) { this.el.clockIcon.src = icon(ic).src; this.el.clockIcon.dataset.ic = ic; }
     const isl = ISLANDS[getState().player.island];
-    const day = 'Day ' + getState().world.day;
+    const sn = seasonOf(getState().world.day);
+    const day = `${sn.name} ${sn.day}${sn.year > 1 ? ' · Y' + sn.year : ''}`;
     if (this.el.day.textContent !== day) this.el.day.textContent = day;
     const txt = isl.alwaysNight ? 'Night' : clockText();
     if (this.el.clock.dataset.t !== txt) {
@@ -445,6 +459,38 @@ export class UI {
 
 
   // ---------------------------------------------------------------- sleep, mine, utilities
+  /** The welcome gift: what's inside and how to use it. */
+  giftModal() {
+    let close;
+    close = modal(h('div.confirm.gift-modal',
+      h('h3', icon('gift'), ' A welcome gift!'),
+      h('p', h('b', '15 Island Radish Seeds'), ' — with a note from Mira:'),
+      h('p.note', '“Welcome home! Clear a patch of the yard, till it with your hoe, plant these and water them every day. Come find me at the pier when you’re settled — I’ve got a fishing rod with your name on it.”'),
+      h('ul.howto',
+        h('li', 'Pick a tool on the hotbar (or press 1–0).'),
+        h('li', 'Face a tile and press ', h('b', 'Use'), ' (or E / Space).'),
+        h('li', 'Seeds grow one stage for every day they were watered.')),
+      h('div.row.end', button('Let’s go!', () => close(), { cls: 'primary' }))), { cls: 'celebrate' });
+  }
+
+  /** The cottage TV: tomorrow's weather, a fortune and a tip. */
+  tvModal() {
+    const w = getState().world;
+    const tomorrow = seasonOf(w.day + 1);
+    const forecast = { sunny: 'clear skies and sunshine', rain: 'steady rain — your crops will be watered for you', storm: 'a thunderstorm rolling in', snow: 'snow, snow and more snow' }[w.forecast || 'sunny'];
+    const luck = w.luck ?? 0;
+    const fortune = luck > 0.05 ? 'The spirits are very happy today. A great day for treasure!' : luck > 0 ? 'The spirits are in good humour today.' : luck > -0.05 ? 'The spirits feel neutral today.' : 'The spirits are a little grumpy today. Take care in the mine.';
+    const tip = TV_TIPS[w.day % TV_TIPS.length];
+    let close;
+    close = modal(h('div.confirm.tv-modal',
+      h('h3', icon('tv'), ' Island TV'),
+      h('div.tv-screen',
+        h('p', h('b', 'Weather: '), `Tomorrow (${tomorrow.name} ${tomorrow.day}) brings ${forecast}.`),
+        h('p', h('b', 'Fortune: '), fortune),
+        h('p', h('b', 'Island Living: '), tip)),
+      h('div.row.end', button('Turn off', () => close(), { cls: 'primary' }))));
+  }
+
   /** Bed: sleep through to the next morning (together in multiplayer). */
   sleepPrompt() {
     const s = getState();
@@ -627,7 +673,8 @@ export class UI {
     on('bridgeRepaired', () => toast('The grove is open!', 'build', 'good'));
     on('weather', ({ weather }) => {
       if (!this.game || this.game.mode !== 'play') return;
-      if (weather === 'rain') toast('It started to rain. Drizzle Darters love this!', 'rain');
+      if (weather === 'rain') toast('A rainy day. Drizzle Darters love this — and your crops are watered!', 'rain');
+      if (weather === 'snow') toast('Snow is falling over the islands.', 'snow');
       if (weather === 'storm') toast('A storm rolls in… Stormrays are stirring.', 'storm');
     });
     on('phase', ({ phase }) => { if (this.game?.mode === 'play' && phase === 'night') toast('Night falls. Nocturnal fish are rising.', 'moon'); });

@@ -3,7 +3,8 @@
 import { getState, commit } from './state.js';
 import { emit } from './events.js';
 import { checkCost, spend, addItem, describeMissing } from './economy.js';
-import { RODS, BAIT, HATS, TOOLS, FOOD } from '../data/item-data.js';
+import { RODS, BAIT, HATS, TOOLS, FOOD, RESOURCES } from '../data/item-data.js';
+import { CROPS, seasonOf } from '../data/farm-data.js';
 import { DECOR, BUILDINGS } from '../data/building-data.js';
 import { hasBuilding } from './building-count.js';
 import { sfx } from './audio.js';
@@ -47,6 +48,11 @@ export function requirement(kind, id) {
       return next ? need(next) : 'Owned';
     }
     case 'food': return null;
+    case 'seed': {
+      const it = RESOURCES[id], crop = CROPS[it.seed];
+      if (it.minLevel && lvl < it.minLevel) return `Reach level ${it.minLevel}`;
+      return crop.seasons.includes(seasonOf(s.world.day).season) ? null : 'Out of season';
+    }
     default: return null;
   }
 }
@@ -61,6 +67,7 @@ export function priceOf(kind, id) {
     case 'hat': return { pearls: HATS[id].pearls };
     case 'tool': return { ...(TOOLS[id][(getState().inventory.tools[id] || 0) + 1]?.cost || {}) };
     case 'food': return { coins: FOOD[id].price };
+    case 'seed': return { coins: RESOURCES[id].price * 5 };
     default: return {};
   }
 }
@@ -105,6 +112,10 @@ export function purchase(kind, id) {
     case 'food':
       addItem(id, 1);
       message = `+1 ${FOOD[id].name}`;
+      break;
+    case 'seed':
+      addItem(id, 5);
+      message = `+5 ${RESOURCES[id].name}`;
       break;
     case 'hat':
       s.inventory.hats.push(id);

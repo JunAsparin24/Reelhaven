@@ -36,6 +36,9 @@ function measure(o) {
     case 'island_unlocked': return s.islands[o.island]?.unlocked ? 1 : 0;
     case 'island_visited': return s.islands[o.island]?.visited ? 1 : 0;
     case 'level': return s.player.level;
+    case 'clear': return s.stats.debrisCleared || 0;
+    case 'plant': return s.stats.seedsPlanted || 0;
+    case 'harvest': return s.stats.cropsHarvested || 0;
     default: return 0;
   }
 }

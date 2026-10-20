@@ -50,6 +50,8 @@ export const INTERIORS = {
       m.obj('rug', 3, 4);
       m.obj('table', 6, 5);
       m.obj('plant', 1, 7);
+      m.obj('tv', 1, 5);
+      m.obj('gift_box', 7, 6);
       m.obj('doormat', 4, 8);
     },
     npcs: [],

@@ -3,9 +3,9 @@
 import { getState, commit } from './state.js';
 import { emit } from './events.js';
 import { ISLANDS } from '../data/island-data.js';
+import { seasonOf, SEASON_WEATHER } from '../data/farm-data.js';
 
 export const GAME_MIN_PER_SEC = 1;
-const WEATHER_TABLE = [['sunny', 0.68], ['rain', 0.24], ['storm', 0.08]];
 
 export const PHASES = ['morning', 'afternoon', 'evening', 'night'];
 
@@ -27,7 +27,10 @@ export function isNight() { return currentPhase() === 'night'; }
 
 export function currentWeather() {
   const s = getState();
-  if (ISLANDS[s.player.island]?.alwaysNight && s.world.weather === 'storm') return 'rain';
+  const isl = ISLANDS[s.player.island];
+  if (isl?.alwaysNight && s.world.weather === 'storm') return 'rain';
+  // Snow only falls on the cooler islands; the coral atoll gets rain instead.
+  if (s.world.weather === 'snow' && isl?.id === 'coral') return 'rain';
   return s.world.weather;
 }
 
@@ -38,17 +41,31 @@ export function clockText() {
   return `${h12}:${String(mm).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
 }
 
-function rollWeather() {
-  const s = getState();
+/** The season right now: { season, name, day, year }. */
+export function currentSeason() { return seasonOf(getState().world.day); }
+
+/** Random weather for a day, using that day's season. */
+export function pickWeather(day, prev = 'sunny') {
+  const table = SEASON_WEATHER[seasonOf(day).season];
   let r = Math.random(), pick = 'sunny';
-  for (const [w, p] of WEATHER_TABLE) { if (r < p) { pick = w; break; } r -= p; }
-  // Storms never follow storms; first day is always fair to welcome new players.
-  if (s.world.day <= 1) pick = 'sunny';
-  if (pick === 'storm' && s.world.weather === 'storm') pick = 'rain';
-  const absNow = s.world.day * 1440 + s.world.minutes;
-  s.world.weather = pick;
-  s.world.weatherUntil = absNow + (pick === 'sunny' ? 240 + Math.random() * 300 : 150 + Math.random() * 200);
-  emit('weather', { weather: pick });
+  for (const [w, p] of table) { if (r < p) { pick = w; break; } r -= p; }
+  // Storms never follow storms; the first days are always fair for new players.
+  if (day <= 2) pick = 'sunny';
+  if (pick === 'storm' && prev === 'storm') pick = 'rain';
+  return pick;
+}
+
+/**
+ * Weather is decided once per day, like Stardew: today's weather is
+ * yesterday's forecast (what the TV promised), and a new forecast is rolled.
+ */
+function startDay() {
+  const w = getState().world;
+  const today = w.forecast || pickWeather(w.day, w.weather);
+  w.forecast = pickWeather(w.day + 1, today);
+  w.luck = Math.round((Math.random() * 0.2 - 0.1) * 100) / 100;   // the TV's daily fortune
+  w.weatherUntil = Infinity;
+  if (today !== w.weather) { w.weather = today; emit('weather', { weather: today }); }
 }
 
 let lastPhase = null;
@@ -59,8 +76,8 @@ export function tick(dt) {
   const s = getState();
   const w = s.world;
   w.minutes += dt * GAME_MIN_PER_SEC;
-  if (w.minutes >= 1440) { w.minutes -= 1440; w.day += 1; emit('newDay', { day: w.day }); }
-  if (w.day * 1440 + w.minutes >= w.weatherUntil) rollWeather();
+  if (w.minutes >= 1440) { w.minutes -= 1440; w.day += 1; startDay(); emit('newDay', { day: w.day }); }
+  if (!w.forecast) startDay();
   const ph = currentPhase();
   if (ph !== lastPhase) { if (lastPhase) emit('phase', { phase: ph }); lastPhase = ph; }
   // Persist the clock occasionally without spamming saves.
@@ -73,9 +90,8 @@ export function restUntil(phase) {
   const s = getState();
   const target = { morning: 6 * 60, afternoon: 12 * 60, evening: 17.5 * 60, night: 21 * 60 }[phase];
   if (target == null) return;
-  if (s.world.minutes >= target) s.world.day += 1;
+  if (s.world.minutes >= target) { s.world.day += 1; startDay(); }
   s.world.minutes = target;
-  rollWeather();
   lastPhase = null;
   emit('rested', { phase });
   commit('rest');
@@ -89,9 +105,8 @@ export const WAKE_MINUTES = 6 * 60;
 export function sleepToMorning() {
   const s = getState();
   const w = s.world;
-  if (w.minutes >= WAKE_MINUTES) w.day += 1;
+  if (w.minutes >= WAKE_MINUTES) { w.day += 1; startDay(); }
   w.minutes = WAKE_MINUTES;
-  rollWeather();
   lastPhase = null;
   s.stats.daysSlept = (s.stats.daysSlept || 0) + 1;
   s.player.hp = s.player.maxHp || 100;
@@ -105,7 +120,7 @@ export function setClock({ day, minutes, weather }) {
   const w = getState().world;
   if (Number.isFinite(day)) w.day = day;
   if (Number.isFinite(minutes)) w.minutes = minutes;
-  if (weather && weather !== w.weather) { w.weather = weather; w.weatherUntil = w.day * 1440 + w.minutes + 240; emit('weather', { weather }); }
+  if (weather && weather !== w.weather) { w.weather = weather; w.weatherUntil = Infinity; emit('weather', { weather }); }
 }
 
 // ---- lighting keyframes: [hour, r, g, b, alpha]
