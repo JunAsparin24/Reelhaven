@@ -180,13 +180,11 @@ def mud(rng):
     return normalise(mix(scale(squelch, 1.0), scale(low, 0.5)), 0.4)
 
 
+# grass, sand, wood and mud now use recorded steps (tools/slice_footsteps.py),
+# so they're left out here to avoid overwriting them.
 SURFACES = {
-    'grass': (grass, 3),
-    'sand': (sand, 3),
-    'wood': (wood, 3),
     'stone': (stone, 3),
     'shallow_water': (shallow_water, 3),
-    'mud': (mud, 3),
     'indoor_wood': (lambda r: wood(r, indoor=True), 2),
 }
 

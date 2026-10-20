@@ -14,7 +14,7 @@
 .title-menu { grid-area: menu; }
 .title-foot { grid-area: foot; }
 
-.title-top { display: flex; flex-direction: column; align-items: center; animation: logo-drop 0.9s cubic-bezier(.3,1.4,.5,1) both 0.25s; }
+.title-top { padding-top: clamp(30px, 5vh, 54px); display: flex; flex-direction: column; align-items: center; animation: logo-drop 0.9s cubic-bezier(.3,1.4,.5,1) both 0.25s; }
 @keyframes logo-drop { from { opacity: 0; transform: translateY(-28px); } to { opacity: 1; transform: none; } }
 
 .logo { position: relative; margin: 0; display: flex; align-items: baseline; line-height: 0.95; font-weight: 700; letter-spacing: 0.01em; animation: bob 3.4s ease-in-out infinite 1.2s; }
@@ -70,11 +70,21 @@
   .logo-fish { width: 44px; right: -26px; top: -20px; }
   .title-foot { flex-wrap: wrap; justify-content: center; }
 }
-/* short landscape phones */
-@media (orientation: landscape) and (max-height: 430px) {
-  .btn.title-btn { min-width: 150px; min-height: 40px; font-size: 0.88rem; padding: 4px 12px; }
-  .title-menu { gap: 7px; }
-  .logo-fish { width: 46px; top: -18px; right: -30px; }
+/* short landscape phones: keep the logo (and its fish) inside the screen and
+   lay the menu out as a compact two-column grid that sits mid-screen */
+@media (orientation: landscape) and (max-height: 500px) {
+  #title-screen { padding-top: calc(8px + var(--safe-top)); padding-bottom: calc(6px + var(--safe-bottom)); }
+  .title-top { padding-top: 28px; }
+  .logo span { font-size: clamp(2rem, 12vh, 3.6rem); }
+  .logo-fish { width: 40px; top: -16px; right: -28px; }
+  .tagline { margin-top: 6px; font-size: clamp(0.75rem, 3.6vh, 0.95rem); }
+  .title-menu {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px;
+    align-self: center; align-content: center; margin: 4px 1vw 4px 0;
+  }
+  .title-menu > .btn.title-btn { margin: 0; }
+  .title-menu > .btn.title-btn.primary { grid-column: 1 / -1; }
+  .btn.title-btn { min-width: 128px; min-height: 38px; font-size: 0.85rem; padding: 3px 10px; }
 }
 
 /* credits & creator polish */

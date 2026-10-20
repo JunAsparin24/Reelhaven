@@ -20,7 +20,7 @@ export class Camera {
 
   clamp(world) {
     let cx = this.fx - this.viewW / 2, cy = this.fy - this.viewH / 2;
-    const m = Camera.MARGIN;
+    const m = world.def?.interior ? 8 : Camera.MARGIN;   // rooms sit centred, no sea around them
     if (world.pxW + m * 2 <= this.viewW) cx = (world.pxW - this.viewW) / 2;
     else cx = Math.max(-m, Math.min(world.pxW + m + this.extraRight - this.viewW, cx));
     if (world.pxH + m * 2 <= this.viewH) cy = (world.pxH - this.viewH) / 2;

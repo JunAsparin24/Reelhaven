@@ -47,24 +47,85 @@
 /* ---------- tablets & desktop: more breathing room, bigger HUD */
 @media (min-width: 1000px) and (min-height: 600px) {
   #app { --pad: 14px; }
-  .nav-btn { width: 54px; height: 54px; font-size: 0.66rem; }
-  .nav-btn .px-icon { width: 28px; height: 28px; }
+  .nav-btn { width: 58px; height: 58px; font-size: 0.68rem; }
+  .nav-btn .px-icon { width: 30px; height: 30px; }
   .pinfo { width: 130px; }
   .pname { font-size: 0.95rem; }
-  .pill { font-size: 0.95rem; min-height: 46px; }
-  .portrait { width: 38px; height: 34px; }
-  .quest-chip { font-size: 0.85rem; min-height: 36px; }
-  #fishing-ui { width: 620px; grid-template-columns: 1fr 150px; }
-  #dialogue, #build-bar { width: 640px; }
+  .pill { font-size: 0.98rem; min-height: 48px; padding: 2px 10px 2px 6px; }
+  .pill .px-icon { width: 22px; height: 22px; }
+  .profile { min-height: 48px; }
+  .portrait { width: 40px; height: 35px; }
+  .quest-chip { font-size: 0.88rem; min-height: 38px; }
+  .quest-chip .px-icon { width: 22px; height: 22px; }
+  #hud-info { max-width: min(46%, 440px); }
+  .act { min-height: 52px; max-width: 290px; }
+  .act .key { width: 40px; height: 40px; }
+  .act .key .px-icon { width: 26px; height: 26px; }
+  .act .verb { font-size: 1.05rem; }
+  .act .what { font-size: 0.8rem; }
+  .act.primary { min-height: 66px; }
+  .act.primary .key { width: 54px; height: 54px; }
+  .act.primary .key .px-icon { width: 32px; height: 32px; }
+  .act.primary .verb { font-size: 1.25rem; }
+  .toast { font-size: 0.92rem; padding: 7px 12px; }
+  .toast .px-icon { width: 22px; height: 22px; }
+  #toasts { width: min(520px, 50%); }
+  #fishing-ui { width: 640px; grid-template-columns: 1fr 160px; }
+  #dialogue, #build-bar { width: 680px; }
 }
 
 @media (hover: hover) and (pointer: fine) {
   .ency-card:hover, .build-card:hover:not(:disabled), .item-row.selectable:hover, .nav-btn:hover, .act:hover { filter: brightness(1.05); }
 }
 
-/* Large desktop screens: scale the rem-based UI up a little. */
+/* Desktop screens: scale the whole UI up so it reads comfortably at a desk.
+   Sizes step up with the screen; each step was checked for overlaps at the
+   smallest width it applies to. */
 @media (min-width: 1280px) and (min-height: 720px) and (pointer: fine) {
   html { font-size: 18px; }
-  .sheet { width: min(520px, 42%); }
-  .sheet.wide { width: min(720px, 55%); }
+  #app { --pad: 16px; }
+  .nav-btn { width: 66px; height: 66px; font-size: 0.66rem; gap: 2px; }
+  .nav-btn .px-icon { width: 34px; height: 34px; }
+  .nav-sep { width: 8px; }
+  #nav { gap: 6px; }
+  #hud-top { gap: 8px; }
+  .pinfo { width: 150px; }
+  .pill, .profile { min-height: 56px; }
+  .pill .px-icon { width: 26px; height: 26px; }
+  .portrait { width: 48px; height: 42px; }
+  .plevel { font-size: 0.7rem; }
+  .bar.xp { height: 7px; }
+  .badge { width: 20px; height: 20px; font-size: 0.75rem; }
+  .sheet { width: min(560px, 42%); }
+  .sheet.wide { width: min(780px, 56%); }
+  #fishing-ui { width: 720px; grid-template-columns: 1fr 180px; }
+  #dialogue, #build-bar { width: 760px; }
+  .dlg-portrait { width: 70px; height: 60px; }
+  .dlg-portrait img { width: 80px; }
+}
+@media (min-width: 1700px) and (min-height: 900px) and (pointer: fine) {
+  html { font-size: 21px; }
+  #app { --pad: 20px; }
+  .nav-btn { width: 80px; height: 80px; }
+  .nav-btn .px-icon { width: 42px; height: 42px; }
+  .pinfo { width: 180px; }
+  .pill, .profile { min-height: 66px; }
+  .pill .px-icon { width: 30px; height: 30px; }
+  .portrait { width: 56px; height: 49px; }
+  .act .key { width: 48px; height: 48px; }
+  .act .key .px-icon { width: 30px; height: 30px; }
+  .act.primary .key { width: 64px; height: 64px; }
+  .act.primary .key .px-icon { width: 38px; height: 38px; }
+  .act { max-width: 340px; }
+  #fishing-ui { width: 820px; grid-template-columns: 1fr 200px; }
+  #dialogue, #build-bar { width: 860px; }
+}
+@media (min-width: 2400px) and (min-height: 1300px) and (pointer: fine) {
+  html { font-size: 26px; }
+  .nav-btn { width: 100px; height: 100px; }
+  .nav-btn .px-icon { width: 52px; height: 52px; }
+  .pinfo { width: 220px; }
+  .pill, .profile { min-height: 82px; }
+  .pill .px-icon { width: 38px; height: 38px; }
+  .portrait { width: 70px; height: 61px; }
 }

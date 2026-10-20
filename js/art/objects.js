@@ -334,11 +334,13 @@ export function shopStall(glow = false) {
     p.rect(26, 2, 16, 11, C.wood); p.rect(27, 3, 14, 9, C.wood2);
     p.ellipse(34, 7, 3, 3, C.gold); p.vline(34, 5, 4, C.gold2);
     // counter with goods
-    p.rect(10, 38, 48, 8, C.wood);
-    p.hline(10, 38, 48, C.woodLight);
-    p.rect(13, 34, 5, 4, C.orange); p.rect(21, 33, 4, 5, C.mint); p.rect(41, 34, 6, 4, C.coral);
-    p.rect(50, 33, 5, 5, C.yellow);
+    // counters either side of the door
+    p.rect(10, 38, 17, 8, C.wood); p.hline(10, 38, 17, C.woodLight);
+    p.rect(41, 38, 17, 8, C.wood); p.hline(41, 38, 17, C.woodLight);
+    p.rect(13, 34, 5, 4, C.orange); p.rect(21, 33, 4, 5, C.mint); p.rect(43, 34, 6, 4, C.coral);
+    p.rect(51, 33, 5, 5, C.yellow);
     p.rect(30, 32, 8, 6, glow ? C.glow : '#9fd6e8');
+    door(p, 29, 42);
   }));
 }
 
@@ -576,3 +578,152 @@ export function sprinkleSparkle(frame) {
 }
 
 export function treeHash(x, y) { return hash2(x, y, 99); }
+
+// ---------------------------------------------------------------- indoor furniture
+// Sized to their footprint in js/world.js (16px per tile, bottom-centred).
+export function shelf(variant = 0) {
+  return O(paint(32, 38, p => {
+    p.rect(1, 1, 30, 36, C.wood2);
+    p.rect(3, 3, 26, 32, '#6a4030');
+    p.vline(1, 1, 36, C.wood3); p.vline(30, 1, 36, C.wood3);
+    for (const y of [12, 23, 34]) { p.rect(2, y, 28, 2, C.wood); p.hline(2, y, 28, C.woodLight); }
+    if (variant === 0) {
+      // bait jars + tackle boxes
+      for (let i = 0; i < 4; i++) { p.rect(5 + i * 6, 6, 4, 6, i % 2 ? C.mint : C.orange); p.hline(5 + i * 6, 5, 4, C.stone2); p.px(6 + i * 6, 7, C.white); }
+      for (let i = 0; i < 3; i++) { p.rect(5 + i * 8, 17, 7, 6, [C.coral, C.blueRoof, C.yellow][i]); p.hline(5 + i * 8, 19, 7, shade([C.coral, C.blueRoof, C.yellow][i], -0.2)); }
+      for (let i = 0; i < 5; i++) p.rect(5 + i * 5, 29, 3, 5, i % 2 ? C.cream : C.lilac);
+    } else {
+      // rods, nets and hats
+      for (let i = 0; i < 5; i++) { p.vline(6 + i * 5, 4, 8, [C.wood3, C.gold2, C.stone3, C.coral2, C.wood][i]); p.px(6 + i * 5, 4, C.white); }
+      p.rect(5, 17, 9, 6, '#e9c46a'); p.hline(4, 22, 11, '#d4a94a');
+      p.rect(18, 18, 9, 5, C.blueRoof); p.hline(17, 22, 11, C.blueRoof2);
+      for (let x = 5; x < 28; x += 3) for (let y = 26; y < 34; y += 3) p.px(x, y, C.stone);
+    }
+  }));
+}
+
+export function shopCounter() {
+  return O(paint(160, 26, p => {
+    p.rect(1, 6, 158, 19, C.wood2);
+    for (let x = 1; x < 159; x += 10) p.vline(x, 9, 15, C.wood3);
+    p.rect(1, 4, 158, 5, C.woodLight); p.hline(1, 4, 158, '#e8b585'); p.hline(1, 8, 158, C.wood);
+    p.rect(1, 23, 158, 2, C.wood3);
+    // cash register
+    p.rect(74, 0, 14, 6, C.stone2); p.rect(75, 1, 12, 2, C.stone); p.rect(76, 0, 4, 1, C.yellow);
+    // bell, jars, a fish on paper
+    p.rect(98, 2, 5, 3, C.gold); p.px(100, 1, C.gold2);
+    p.rect(30, 1, 5, 4, C.mint); p.rect(37, 1, 5, 4, C.orange);
+    p.rect(118, 2, 14, 3, C.cream); p.ellipse(125, 3, 4, 1, C.blueRoof);
+    // little price sign
+    p.rect(12, 12, 16, 7, C.cream); p.hline(14, 14, 10, C.coral2); p.hline(14, 16, 7, C.stone2);
+  }));
+}
+
+export function barrel() {
+  return O(paint(16, 20, p => {
+    p.rect(2, 2, 12, 17, C.wood);
+    p.vline(2, 3, 15, C.wood2); p.vline(13, 3, 15, C.wood3);
+    p.hline(2, 5, 12, C.stone3); p.hline(2, 15, 12, C.stone3);
+    p.ellipse(8, 2, 5, 1, '#6a4030');
+    p.px(6, 1, C.orange); p.px(9, 1, C.mint); p.px(7, 2, C.yellow);   // bait inside
+  }));
+}
+
+export function crate() {
+  return O(paint(16, 16, p => {
+    p.rect(1, 1, 14, 14, C.woodLight);
+    p.rect(1, 1, 14, 2, C.wood); p.rect(1, 13, 14, 2, C.wood);
+    p.line(2, 3, 13, 12, C.wood); p.line(2, 12, 13, 3, C.wood);
+  }));
+}
+
+export function pottedPlant() {
+  return O(paint(14, 22, p => {
+    p.rect(3, 15, 8, 6, C.coral2); p.hline(2, 15, 10, C.coral);
+    for (const [x, y, rx, ry] of [[7, 9, 4, 4], [4, 7, 3, 3], [10, 6, 3, 3], [7, 3, 3, 3]]) p.ellipse(x, y, rx, ry, C.grass2);
+    p.px(5, 6, C.grass); p.px(8, 2, C.grass); p.px(10, 5, C.grass);
+  }));
+}
+
+export function fishTank() {
+  return O(paint(32, 26, p => {
+    p.rect(2, 18, 28, 7, C.wood2); p.hline(2, 18, 28, C.wood);
+    p.rect(3, 2, 26, 16, '#7fd6cf'); p.rect(3, 2, 26, 2, '#b2e6da');
+    p.rect(3, 15, 26, 3, C.sand2);
+    p.vline(8, 9, 6, C.grass3); p.vline(9, 11, 4, C.grass3); p.vline(24, 8, 7, C.grass3);
+    p.rect(13, 8, 4, 2, C.orange); p.px(12, 9, C.orange); p.px(17, 8, C.ink);
+    p.rect(20, 12, 3, 2, C.yellow); p.px(23, 12, C.yellow);
+    p.px(15, 5, C.white); p.px(16, 4, C.white);
+  }));
+}
+
+export function bed() {
+  return O(paint(32, 34, p => {
+    p.rect(1, 1, 30, 9, C.wood2); p.hline(1, 1, 30, C.wood);           // headboard
+    p.rect(2, 8, 28, 24, C.cream);
+    p.rect(4, 9, 11, 6, C.white); p.rect(17, 9, 11, 6, C.white);        // pillows
+    p.rect(2, 16, 28, 16, C.blueRoof); p.hline(2, 16, 28, '#8fb5dc');   // quilt
+    for (let x = 4; x < 30; x += 6) for (let y = 19; y < 31; y += 6) p.px(x, y, C.cream);
+    p.rect(1, 31, 30, 2, C.wood3);
+  }));
+}
+
+export function nightstand() {
+  return O(paint(16, 22, p => {
+    p.rect(2, 10, 12, 11, C.wood); p.hline(2, 10, 12, C.woodLight);
+    p.hline(3, 15, 10, C.wood2); p.px(8, 13, C.gold); p.px(8, 18, C.gold);
+    p.rect(6, 5, 3, 5, C.cream); p.px(7, 3, C.orange); p.px(7, 4, C.yellow);   // candle
+  }));
+}
+
+export function fireplace() {
+  return O(paint(32, 36, p => {
+    p.rect(1, 1, 30, 34, C.stone2);
+    for (let y = 3; y < 34; y += 5) for (let x = (y % 2) * 3 + 1; x < 31; x += 7) p.hline(x, y, 5, C.stone3);
+    p.rect(0, 10, 32, 3, C.wood2); p.hline(0, 10, 32, C.wood);           // mantel
+    p.rect(13, 6, 3, 4, C.coral); p.rect(18, 7, 3, 3, C.mint);
+    p.rect(7, 17, 18, 18, '#3a2a2a');
+    p.rect(9, 30, 14, 3, C.wood3);
+    p.ellipse(16, 27, 5, 4, C.orange); p.ellipse(16, 28, 3, 3, C.yellow); p.px(16, 22, C.orange);
+  }));
+}
+
+export function bookshelf() {
+  return O(paint(32, 38, p => {
+    p.rect(1, 1, 30, 36, C.wood2);
+    p.rect(3, 3, 26, 32, '#6a4030');
+    for (const y of [12, 23, 34]) { p.rect(2, y, 28, 2, C.wood); p.hline(2, y, 28, C.woodLight); }
+    const cols = [C.coral2, C.blueRoof, C.grass3, C.gold2, C.lilac2, C.red, C.forest];
+    for (const [y, h] of [[4, 8], [15, 8], [26, 8]]) {
+      let x = 4;
+      for (let i = 0; x < 27; i++) { const w = 2 + ((i * 7 + y) % 3); p.rect(x, y + ((i + y) % 2), w, h - ((i + y) % 2), cols[(i + y) % cols.length]); x += w + 1; }
+    }
+  }));
+}
+
+export function table() {
+  return O(paint(32, 22, p => {
+    p.rect(1, 4, 30, 6, C.woodLight); p.hline(1, 4, 30, '#e8b585'); p.hline(1, 9, 30, C.wood2);
+    p.rect(3, 10, 3, 11, C.wood2); p.rect(26, 10, 3, 11, C.wood2);
+    p.rect(12, 0, 6, 5, C.cream); p.px(18, 2, C.cream); p.hline(13, 0, 4, C.coral);   // teapot
+    p.rect(21, 2, 3, 3, C.white);
+  }));
+}
+
+export function rug() {
+  return paint(64, 32, p => {
+    p.rrect(0, 0, 64, 32, C.coral2);
+    p.rrect(2, 2, 60, 28, C.coral);
+    p.rrect(6, 6, 52, 20, C.cream);
+    p.rrect(9, 9, 46, 14, C.coral);
+    for (let x = 12; x < 54; x += 6) p.px(x, 16, C.yellow);
+  });
+}
+
+export function doormat() {
+  return paint(32, 14, p => {
+    p.rrect(2, 2, 28, 10, C.wood3);
+    p.rrect(3, 3, 26, 8, '#b98a52');
+    for (let x = 5; x < 28; x += 3) p.vline(x, 4, 6, '#a07642');
+  });
+}

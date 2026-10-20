@@ -2,12 +2,13 @@
 // a short script (blobs, rects, paths, objects, spots); this module turns that
 // script into a tile grid plus object / fishing-spot lists.
 import { ISLANDS } from '../data/island-data.js';
+import { INTERIORS } from '../data/interior-data.js';
 
-export const T = { W: 0, S: 1, G: 2, P: 3, D: 4, B: 5, X: 6, O: 7, M: 8, K: 9, N: 10, R: 11, H: 12 };
-export const TERRAIN_NAMES = ['water', 'sand', 'grass', 'path', 'dock', 'bridge', 'bridgeBroken', 'pond', 'mud', 'darkgrass', 'moongrass', 'reef', 'shallows'];
+export const T = { W: 0, S: 1, G: 2, P: 3, D: 4, B: 5, X: 6, O: 7, M: 8, K: 9, N: 10, R: 11, H: 12, I: 13, L: 14 };
+export const TERRAIN_NAMES = ['water', 'sand', 'grass', 'path', 'dock', 'bridge', 'bridgeBroken', 'pond', 'mud', 'darkgrass', 'moongrass', 'reef', 'shallows', 'floor', 'wall'];
 
 /** Tiles you can stand on. */
-export const WALKABLE = new Set([T.S, T.G, T.P, T.D, T.B, T.M, T.K, T.N, T.H]);
+export const WALKABLE = new Set([T.S, T.G, T.P, T.D, T.B, T.M, T.K, T.N, T.H, T.I]);
 /** Tiles that count as water for fishing / bobbers. */
 export const WATERY = new Set([T.W, T.O, T.R]);
 /** Tiles where buildings and decorations may be placed. */
@@ -16,7 +17,7 @@ export const BUILDABLE = new Set([T.S, T.G, T.M, T.K, T.N]);
 /** What each walkable terrain sounds like underfoot (see js/footsteps.js). */
 export const SURFACE = {
   [T.S]: 'sand', [T.G]: 'grass', [T.K]: 'grass', [T.N]: 'grass', [T.P]: 'stone',
-  [T.D]: 'wood', [T.B]: 'wood', [T.M]: 'mud', [T.H]: 'shallow_water',
+  [T.D]: 'wood', [T.B]: 'wood', [T.M]: 'mud', [T.H]: 'shallow_water', [T.I]: 'wood',
 };
 
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
@@ -25,7 +26,7 @@ const cache = new Map();
 
 export function buildIslandMap(id) {
   if (cache.has(id)) return cache.get(id);
-  const def = ISLANDS[id];
+  const def = ISLANDS[id] || INTERIORS[id];
   const { w, h } = def.size;
   const terrain = new Uint8Array(w * h);
   const objects = [];
@@ -87,7 +88,7 @@ export function buildIslandMap(id) {
   const taken = new Set(objects.map(o => o.x + ',' + o.y));
   // Keep fishing spots (and the tile behind them) clear.
   for (const sp of spots) { const [dx, dy] = DIRS[sp.facing]; taken.add(sp.x + ',' + sp.y); taken.add((sp.x - dx) + ',' + (sp.y - dy)); }
-  for (const o of objects) {
+  for (const o of def.interior ? [] : objects) {
     if (WATER_OBJECTS.has(o.type) || BUILDABLE.has(get(o.x, o.y))) continue;
     let best = null;
     for (let r = 1; r <= 5 && !best; r++) {

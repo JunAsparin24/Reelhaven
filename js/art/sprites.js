@@ -69,6 +69,13 @@ export function buildAllSprites() {
   put('storage_shed', OBJ.storageShed());
   put('lighthouse', OBJ.lighthouse(false)); put('lighthouse_lit', OBJ.lighthouse(true));
 
+  // indoor furniture
+  put('shelf', OBJ.shelf(0)); put('shelf_b', OBJ.shelf(1));
+  put('counter', OBJ.shopCounter()); put('barrel', OBJ.barrel()); put('crate', OBJ.crate());
+  put('plant', OBJ.pottedPlant()); put('fish_tank', OBJ.fishTank()); put('bed', OBJ.bed());
+  put('nightstand', OBJ.nightstand()); put('fireplace', OBJ.fireplace()); put('bookshelf', OBJ.bookshelf());
+  put('table', OBJ.table()); put('rug', OBJ.rug()); put('doormat', OBJ.doormat());
+
   // decorations
   put('bench', OBJ.bench(0)); put('bench_r1', OBJ.bench(1));
   put('lantern', OBJ.lantern(false)); put('lantern_lit', OBJ.lantern(true));

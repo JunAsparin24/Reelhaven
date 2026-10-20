@@ -151,6 +151,47 @@ export function bridgeTile(broken) {
   });
 }
 
+/** Indoor wooden floorboards (planks run horizontally, staggered seams). */
+export function floorTile(v) {
+  return paint(TILE, TILE, p => {
+    p.rect(0, 0, 16, 16, '#c98d5e');
+    for (let y = 0; y < 16; y += 4) {
+      p.hline(0, y, 16, '#d8a273');
+      p.hline(0, y + 3, 16, '#a96f47');
+      const seam = (y * 3 + v * 6 + (y / 4) * 5) % 16;
+      p.vline(seam, y, 3, '#a96f47');
+      for (let x = 0; x < 16; x++) if (hash2(x, y + 1, v + 81) < 0.08) p.px(x, y + 1, '#bd8155');
+    }
+  });
+}
+
+/** Back wall: `lower` is the row touching the floor (wainscot + skirting),
+ *  the upper row is wallpaper with a little window or picture now and then. */
+export function wallTile(lower, v = 0) {
+  return paint(TILE, TILE, p => {
+    if (lower) {
+      p.rect(0, 0, 16, 7, '#efdcbc');
+      for (let x = 1; x < 16; x += 4) p.vline(x, 0, 7, '#e6cfa9');
+      p.rect(0, 7, 16, 9, '#a96f47');
+      p.hline(0, 7, 16, '#d8a273');
+      for (let x = 0; x < 16; x += 8) p.vline(x, 8, 6, '#8c5a39');
+      p.rect(0, 14, 16, 2, '#744631');
+    } else {
+      p.rect(0, 0, 16, 16, '#efdcbc');
+      for (let x = 1; x < 16; x += 4) p.vline(x, 0, 16, '#e6cfa9');
+      p.rect(0, 0, 16, 2, '#744631');
+      p.hline(0, 2, 16, '#97603e');
+      if (v === 1) {   // window
+        p.rect(4, 5, 8, 8, '#744631'); p.rect(5, 6, 6, 6, '#9fd6e8');
+        p.vline(8, 6, 6, '#744631'); p.hline(5, 9, 6, '#744631'); p.px(6, 7, '#fbfbf6');
+        p.hline(3, 13, 10, '#97603e');
+      } else if (v === 2) {   // little framed picture
+        p.rect(5, 6, 6, 5, '#97603e'); p.rect(6, 7, 4, 3, '#8cc78a'); p.px(7, 7, '#f8dc7c');
+      }
+    }
+  });
+}
+
 export function buildTileset() {
   const range = n => [...Array(n).keys()];
   return {
@@ -163,6 +204,9 @@ export function buildTileset() {
     dock: range(3).map(dockTile),
     bridge: [bridgeTile(false)],
     bridgeBroken: [bridgeTile(true)],
+    floor: range(3).map(floorTile),
+    wallUpper: range(3).map(v => wallTile(false, v)),
+    wallLower: [wallTile(true)],
     water: buildWaterFrames(),
   };
 }

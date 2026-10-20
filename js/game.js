@@ -19,6 +19,7 @@ import { travelTo } from './islands.js';
 import { checkAchievements } from './progression.js';
 import { initAudio, sfx, setVolumes, startMusic, setMood, pauseAudio, resumeAudio } from './audio.js';
 import { ISLANDS } from '../data/island-data.js';
+import { INTERIORS } from '../data/interior-data.js';
 import { markTalked } from './dialogue.js';
 import { pendingSettings } from './ui/panels/settings.js';
 import { FootstepSystem } from './footsteps.js';
@@ -44,6 +45,7 @@ export class Game {
     this.build = new BuildMode(this);
     this.footsteps = new FootstepSystem(this);
     this.visit = null;
+    this.indoor = null;           // { id, outside: World, ret: {x, y} } while inside a building
     this.remotes = new Map();
     this.charCache = new Map();
     this.interactTarget = null;
@@ -74,6 +76,8 @@ export class Game {
     // The stage changes size when the HUD appears or the phone rotates.
     if ('ResizeObserver' in window) new ResizeObserver(() => this.onResize()).observe(this.canvas);
     window.visualViewport?.addEventListener('resize', () => this.onResize());
+    // Going fullscreen or rotating can change the size without a resize event on some phones.
+    for (const ev of ['fullscreenchange', 'orientationchange']) (ev === 'fullscreenchange' ? document : window).addEventListener(ev, () => setTimeout(() => this.onResize(), 150));
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) { this.paused = true; this.persistNow(); pauseAudio(); }
       else { this.paused = false; this.last = performance.now(); resumeAudio(); }
@@ -128,6 +132,7 @@ export class Game {
 
   loadIsland(id, keepPos = false) {
     const s = getState();
+    this.indoor = null;
     this.world = new World(id, s.islands[id]);
     this.renderer.setWorld(this.world);
     this.revealedSpots = new Set();
@@ -182,7 +187,7 @@ export class Game {
   syncPlayerToState() {
     const s = getState();
     if (!s || !this.player || this.visit) return;   // a visit never moves your own save
-    s.player.pos = { x: this.player.tileX, y: this.player.tileY };
+    s.player.pos = this.indoor ? { ...this.indoor.ret } : { x: this.player.tileX, y: this.player.tileY };
     s.player.facing = this.player.facing;
   }
 
@@ -207,6 +212,7 @@ export class Game {
         unlocked: true, visited: true, nodes: {}, gardens: {}, flags: { ...(isl.flags || {}) },
         placements: isl.placements.filter(p => p && typeof p.type === 'string').map((p, i) => ({ ...p, uid: 'visit' + i })),
       };
+      this.indoor = null;
       this.visit = { hostId, hostName, islandId: isl.id, islandName: isl.name || ISLANDS[isl.id].name, hostHere: false, member };
       this.world = new World(isl.id, temp);
       this.renderer.setWorld(this.world);
@@ -279,10 +285,11 @@ export class Game {
   updateRemotes(dt) {
     const online = this.ui.online;
     // Hosts are reachable on their own island whenever they're signed in.
-    if (!this.visit && online?.auth.signedIn && this.mode === 'play') this.joinChannel(online.auth.user.id, this.world.id);
+    if (!this.visit && online?.auth.signedIn && this.mode === 'play') this.joinChannel(online.auth.user.id, this.outdoor.id);
     if (!this.channel) return;
     this.netT = (this.netT || 0) - dt;
-    const p = this.player;
+    // Indoors, everyone else on the island sees you waiting at the door.
+    const p = this.indoor ? { x: this.indoor.ret.x * TILE + 8, y: this.indoor.ret.y * TILE + 12, facing: 'up' } : this.player;
     const moved = !this.lastSent || Math.hypot(p.x - this.lastSent.x, p.y - this.lastSent.y) > 0.5 || p.facing !== this.lastSent.f;
     if ((moved && this.netT <= 0) || this.netT < -2) {
       this.netT = 0.12;
@@ -320,6 +327,7 @@ export class Game {
       }
     });
     on('built', ({ x, y, fw, fh }) => {
+      if (this.indoor) return;
       this.renderer.emit('leaf', (x + fw / 2) * TILE, (y + fh) * TILE - 4, 16, { speed: 50, life: 0.8, color: '#e8c98e', gravity: 60 });
       this.renderer.emit('sparkle', (x + fw / 2) * TILE, (y + fh / 2) * TILE, 10, { speed: 40, gravity: 10 });
     });
@@ -449,7 +457,7 @@ export class Game {
 
   canUse(it) {
     if (!this.visit) return true;
-    if (it.kind === 'npc') return true;
+    if (it.kind === 'npc' || it.kind === 'enter' || it.kind === 'exit') return true;
     return this.visit.member && ['spot', 'gather', 'shop', 'board'].includes(it.kind);
   }
 
@@ -458,7 +466,7 @@ export class Game {
   shareLayout() {
     const online = this.ui.online;
     if (this.visit || !this.channel || !online?.auth.signedIn) return;
-    const isl = getState().islands[this.world.id];
+    const isl = getState().islands[this.outdoor.id];
     online.social.shareLayout({ bridgeRepaired: !!isl.flags.bridgeRepaired },
       isl.placements.map(({ uid, type, x, y, rot }) => ({ uid, type, x, y, rot })));
   }
@@ -470,18 +478,19 @@ export class Game {
     const s = getState();
     const def = PLACEABLES[m.type];
     if (this.visit || this.mode !== 'play' || !def) return reply(false, 'The host isn’t on this island right now.');
-    const isl = s.islands[this.world.id];
-    const tile = { x: this.player.tileX, y: this.player.tileY };
+    const world = this.outdoor;
+    const isl = s.islands[world.id];
+    const tile = this.indoor ? { ...this.indoor.ret } : { x: this.player.tileX, y: this.player.tileY };
     if (m.op === 'move') {
       const pl = isl.placements.find(p => p.uid === m.uid);
       if (!pl) return reply(false, 'That has already been moved — try again.');
-      const res = this.world.canPlace(pl.type, m.x, m.y, m.rot, pl.uid, tile);
+      const res = world.canPlace(pl.type, m.x, m.y, m.rot, pl.uid, tile);
       if (!res.ok) return reply(false, reasonText(res.reasons));
       Object.assign(pl, { x: m.x, y: m.y, rot: m.rot });
     } else {
       if (def.buildable === false) return reply(false, 'That can’t be built.');
       if (def.maxCount && countBuilt(m.type) >= def.maxCount) return reply(false, `This island already has ${def.maxCount === 1 ? 'one' : 'the most it can hold'}.`);
-      const res = this.world.canPlace(m.type, m.x, m.y, m.rot, null, tile);
+      const res = world.canPlace(m.type, m.x, m.y, m.rot, null, tile);
       if (!res.ok) return reply(false, reasonText(res.reasons));
       const pl = { uid: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), type: m.type, x: m.x, y: m.y, rot: m.rot, by: m.name };
       isl.placements.push(pl);
@@ -489,7 +498,7 @@ export class Game {
       emit('built', { id: m.type, kind: def.kind, x: m.x, y: m.y, fw: res.fw, fh: res.fh });
       toast(`${m.name} built a ${def.name} on your island!`, 'build', 'good');
     }
-    this.world.rebuild();
+    world.rebuild();
     if (this.build.active && this.build.ghost) this.build.setGhost(this.build.ghost.x, this.build.ghost.y);
     commit('coop');
     reply(true);
@@ -498,16 +507,17 @@ export class Game {
 
   /** Visitor: the host's island changed (their build or someone else's). */
   applyCoopLayout(m) {
-    if (!this.visit || m.island !== this.world.id) return;
-    const st = this.world.islandState;
+    const world = this.outdoor;   // still applies while indoors
+    if (!this.visit || m.island !== world.id) return;
+    const st = world.islandState;
     st.placements = (m.placements || []).map((p, i) => ({ ...p, uid: p.uid || 'visit' + i }));
     const bridge = !!m.flags?.bridgeRepaired;
     if (bridge !== !!st.flags.bridgeRepaired) {
       st.flags.bridgeRepaired = bridge;
-      this.world.applyFlags();
-      this.renderer.buildLand();
+      world.applyFlags();
+      if (!this.indoor) this.renderer.buildLand();
     }
-    this.world.rebuild();
+    world.rebuild();
     if (this.build.active && this.build.ghost) this.build.setGhost(this.build.ghost.x, this.build.ghost.y);
   }
 
@@ -555,6 +565,7 @@ export class Game {
 
   interact(it) {
     if (!it || this.inputBlocked()) return;
+    if (!this.canUse(it) && it.kind === 'bed') { toast('That’s your host’s bed — you can rest at home.', 'sleep'); return; }
     if (!this.canUse(it)) { toast('You’re a guest here — fishing, gathering and building happen on your own island.', 'island'); return; }
     initAudio();
     const p = this.player;
@@ -572,11 +583,61 @@ export class Game {
       case 'gather': gather(this, it.obj); break;
       case 'board': this.ui.open('quests'); break;
       case 'shop': this.ui.open('shop'); break;
+      case 'enter': this.enterInterior(it); break;
+      case 'exit': this.exitInterior(); break;
+      case 'bed': this.ui.restMenu(); break;
       case 'boat': this.ui.open('map'); break;
       case 'bridge': this.ui.bridge(); break;
       case 'building': this.ui.building(it.placement); break;
       default: break;
     }
+  }
+
+  // ---------------------------------------------------------------- interiors
+  /** The island world (the one outside when indoors). */
+  get outdoor() { return this.indoor ? this.indoor.outside : this.world; }
+
+  /** Walk into a building: the shop object or a cottage placement. */
+  enterInterior(it) {
+    if (this.indoor || this.ui.fading) return;
+    const id = it.obj ? it.obj.def.interior : 'cottage_interior';
+    const def = INTERIORS[id];
+    if (!def) return;
+    // Where to stand when coming back out: the tile in front of the door.
+    let ret;
+    if (it.obj) { const fp = it.obj.def.footprint || { w: 1, h: 1 }; ret = { x: it.obj.x + Math.floor(fp.w / 2), y: it.obj.y + fp.h }; }
+    else { const pl = it.placement; ret = { x: pl.x + Math.floor(pl.fw / 2), y: pl.y + pl.fh }; }
+    const outside = this.world;
+    if (!outside.walkableTile(ret.x, ret.y)) ret = outside.nearestWalkable(ret.x, ret.y, this.player.tileX, this.player.tileY) || { x: this.player.tileX, y: this.player.tileY };
+    sfx('click');
+    this.ui.fade(() => {
+      this.indoor = { id, outside, ret };
+      this.world = new World(id, { unlocked: true, visited: true, nodes: {}, gardens: {}, flags: {}, placements: [] });
+      this.renderer.setWorld(this.world);
+      this.player.placeAtTile(def.spawn.x, def.spawn.y);
+      this.player.facing = 'up';
+      this.onResize();
+      this.camera.snap(this.player.x, this.player.y, this.world);
+      this.ui.closeAll();
+    }, def.name);
+  }
+
+  /** Step back outside onto the doorstep. */
+  exitInterior() {
+    const ind = this.indoor;
+    if (!ind || this.ui.fading) return;
+    this.player.cancelPath();
+    this.ui.fade(() => {
+      this.indoor = null;
+      this.world = ind.outside;
+      this.world.rebuild();
+      this.renderer.setWorld(this.world);
+      this.player.placeAtTile(ind.ret.x, ind.ret.y);
+      this.player.facing = 'down';
+      this.onResize();
+      this.camera.snap(this.player.x, this.player.y, this.world);
+      this.syncPlayerToState();
+    }, '');
   }
 
   startFishing(spot) {
@@ -622,6 +683,7 @@ export class Game {
     if (!this.build.active) this.player.update(dt, input, this.world);
     else this.player.moving = false;
     this.footsteps.update(dt);
+    if (this.indoor && !this.ui.fading && this.player.tileY >= this.world.def.exit.y) this.exitInterior();
     this.updateNpcs(dt);
     if (this.fishing) this.fishing.update(dt);
     this.interactTarget = this.build.active || this.fishing ? null : findInteractable(this);
@@ -717,7 +779,7 @@ export class Game {
       stick: play ? this.controls.stickVisual() : null,
       hiddenSpotsVisible: this.revealedSpots,
       questGiver: play && !this.visit ? questGiverHere() : null,
-      remotes: play && this.remotes ? [...this.remotes.values()] : null,
+      remotes: play && this.remotes && !this.indoor ? [...this.remotes.values()] : null,
       phase: play ? currentPhase() : 'morning',
     };
     this.renderer.render(scene, dt);

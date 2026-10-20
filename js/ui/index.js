@@ -42,6 +42,9 @@ function actionIcon(it) {
     case 'spot': return 'rod';
     case 'npc': return 'friends';
     case 'shop': return 'shop';
+    case 'enter': return it.obj ? 'shop' : 'home';
+    case 'exit': return 'home';
+    case 'bed': return 'sleep';
     case 'board': return 'quest';
     case 'boat': return 'boat';
     case 'bridge': return 'build';
@@ -253,6 +256,7 @@ export class UI {
     const v = this.game.visit;
     if (v && !v.member) { toast('You’re visiting, so you can only look around. Join their game to build.', 'build'); return; }
     if (v && !v.hostHere) { toast(`${v.hostName} needs to be on this island for you to build.`, 'build'); return; }
+    if (this.game.indoor) { toast('Step outside to build.', 'build'); return; }
     if (this.game.fishing) this.game.stopFishing();
     this.open('build');
   }
@@ -408,7 +412,7 @@ export class UI {
       this.fade(() => { restUntil(phase); toast(`You rested until ${phase}.`, 'sleep', 'good'); }, 'Zzz…');
     };
     close = modal(h('div.confirm',
-      h('h3', 'Cozy Cottage'),
+      h('h3', 'Time for bed?'),
       h('p', isl.alwaysNight ? 'Time stands still in Moonlit Bay.' : `It is ${clockText()}. Take a nap and wake up at…`),
       h('div.rest-grid',
         button('Morning', () => rest('morning'), { iconName: 'sun' }),

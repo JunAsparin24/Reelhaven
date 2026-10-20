@@ -32,13 +32,18 @@ function collectInteractables(game, rangeBoost = 1, only = null) {
     const cx = s.x * TILE + 8, cy = s.y * TILE + 8;
     consider({ kind: 'spot', spot: s, verb: 'Fish', label: s.name, mx: s.waterX * TILE + 8, my: s.waterY * TILE - 6 }, cx, cy, 14);
   }
+  // Indoors you can talk across a counter, so NPCs reach a little further.
+  const npcRange = w.def.interior ? 40 : 28;
   for (const n of w.npcs) {
-    consider({ kind: 'npc', npc: n, verb: 'Talk', label: n.def.name, mx: n.x, my: n.y - 30 }, n.x, n.y - 4, 28);
+    consider({ kind: 'npc', npc: n, verb: 'Talk', label: n.def.name, mx: n.x, my: n.y - 30 }, n.x, n.y - 4, npcRange);
   }
   for (const o of w.objects) {
     if (w.objectHidden(o)) continue;
     const fp = o.def.footprint || { w: 1, h: 1 };
-    const cx = o.x * TILE + (fp.w * TILE) / 2, cy = (o.y + fp.h) * TILE - 6;
+    let cx = o.x * TILE + (fp.w * TILE) / 2;
+    const cy = (o.y + fp.h) * TILE - 6;
+    // Long furniture (the shop counter) can be used from anywhere along it.
+    if (w.def.interior) cx = Math.max(o.x * TILE + 8, Math.min((o.x + fp.w) * TILE - 8, p.x));
     if (o.def.resource) {
       if (!w.nodeReady(o)) continue;
       const res = o.def.resource;
@@ -54,7 +59,11 @@ function collectInteractables(game, rangeBoost = 1, only = null) {
   for (const pl of w.placed) {
     if (pl.def.kind !== 'building') continue;
     const cx = pl.x * TILE + (pl.fw * TILE) / 2, cy = (pl.y + pl.fh) * TILE + 6;
-    const verbs = { cottage: 'Rest', fishing_hut: 'Bait Shop', fish_market: 'Orders', crop_garden: 'Harvest', storage_shed: 'Check', lighthouse: 'Visit' };
+    if (pl.type === 'cottage') {
+      consider({ kind: 'enter', placement: pl, verb: 'Enter', label: pl.def.name, mx: cx, my: (pl.y + pl.fh) * TILE - (sprite('cottage')?.height || 32) - 2 }, cx, cy, 22);
+      continue;
+    }
+    const verbs = { fishing_hut: 'Bait Shop', fish_market: 'Orders', crop_garden: 'Harvest', storage_shed: 'Check', lighthouse: 'Visit' };
     const spr = sprite(pl.type === 'crop_garden' ? 'crop_garden_3' : pl.type);
     consider({ kind: 'building', placement: pl, verb: verbs[pl.type] || 'Look', label: pl.def.name, mx: cx, my: (pl.y + pl.fh) * TILE - (spr ? spr.height : 32) - 2 }, cx, cy, 22);
   }

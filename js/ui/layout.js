@@ -18,6 +18,7 @@ export class Layout {
     window.addEventListener('resize', update);
     window.visualViewport?.addEventListener('resize', update);
     window.addEventListener('orientationchange', () => setTimeout(update, 120));
+    document.addEventListener('fullscreenchange', () => setTimeout(update, 120));
     if ('ResizeObserver' in window) {
       this.ro = new ResizeObserver(update);
       for (const id of ['hud-top', 'nav']) { const el = document.getElementById(id); if (el) this.ro.observe(el); }

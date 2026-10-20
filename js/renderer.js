@@ -10,6 +10,8 @@ import { lighting } from './weather.js';
 import { TitleScene } from './title-scene.js';
 
 const GRASSY = new Set([T.G, T.K, T.N]);
+// Floor coverings indoors, drawn under everything and bottom-aligned.
+const FLOOR_OBJECTS = new Set(['rug', 'doormat']);
 const FLAT_OBJECTS = new Set(['shells', 'seaglass', 'tidepool', 'flowers', 'lily', 'coral', 'driftwood', 'reeds']);
 const TARGET_TILES = 13.5; // tiles visible across the shorter screen side
 
@@ -173,6 +175,23 @@ export class Renderer {
         g.drawImage(t === T.B ? ts.bridge[0] : ts.bridgeBroken[0], px, py);
         continue;
       }
+      if (t === T.I) {
+        g.drawImage(pick(ts.floor, x, y), px, py);
+        // soft shadow along the walls
+        g.fillStyle = 'rgba(60,30,20,0.25)';
+        if (w.tile(x, y - 1) === T.L) g.fillRect(px, py, 16, 3);
+        if (w.tile(x - 1, y) === T.L) g.fillRect(px, py, 2, 16);
+        if (w.tile(x + 1, y) === T.L) g.fillRect(px + 14, py, 2, 16);
+        continue;
+      }
+      if (t === T.L) {
+        // Only the back wall is drawn; walls at the sides and below are dark.
+        const below = w.tile(x, y + 1), below2 = w.tile(x, y + 2);
+        if (below === T.I && y > 0) g.drawImage(ts.wallLower[0], px, py);
+        else if (below === T.L && below2 === T.I) g.drawImage(ts.wallUpper[(x * 5 + y) % 4 === 1 ? 1 : (x * 3) % 7 === 2 ? 2 : 0], px, py);
+        else if (w.tile(x, y - 1) === T.I || w.tile(x - 1, y) === T.I || w.tile(x + 1, y) === T.I) { g.fillStyle = '#5a3a2a'; g.fillRect(px, py, 16, 16); g.fillStyle = '#744631'; g.fillRect(px, py, 16, 2); }
+        continue;
+      }
       const set = groundSet(t);
       const isGrass = GRASSY.has(t);
       const nb = (dx, dy) => w.tile(x + dx, y + dy);
@@ -253,7 +272,8 @@ export class Renderer {
     this.reducedMotion = !!scene.settings?.reducedMotion;
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = '#1d6878';
+    const indoor = !!this.world?.def.interior && !scene.title;
+    ctx.fillStyle = indoor ? '#2c2433' : '#1d6878';
     ctx.fillRect(0, 0, this.viewW, this.viewH);
     if (scene.title) {
       // Title screen: sunset diorama, fading in from night on first show.
@@ -272,7 +292,7 @@ export class Renderer {
     const water = tiles().water;
     const wf = this.reducedMotion ? 0 : Math.floor(t * 4);
     // 1. water (also beyond the map edge)
-    for (let y = Math.floor(cam.y / TILE) - 1; y <= Math.ceil((cam.y + this.viewH) / TILE); y++) {
+    if (!indoor) for (let y = Math.floor(cam.y / TILE) - 1; y <= Math.ceil((cam.y + this.viewH) / TILE); y++) {
       for (let x = Math.floor(cam.x / TILE) - 1; x <= Math.ceil((cam.x + this.viewW) / TILE); x++) {
         let style, v;
         if (x < 0 || y < 0 || x >= w.w || y >= w.h) { style = w.def.theme.deep; v = (((x * 7 + y * 13) % 4) + 4) % 4; }
@@ -304,7 +324,7 @@ export class Renderer {
       for (let i = -len; i <= len; i++) ctx.fillRect(sx + Math.round(dx * i), sy + Math.round(dy * i * 0.6), 2, s.size + 1);
     }
     // 3. foam lapping on the shore
-    this.drawFoam(ctx, cam, t, x0, y0, x1, y1);
+    if (!indoor) this.drawFoam(ctx, cam, t, x0, y0, x1, y1);
     // 4. land layer
     {
       // Clip the source rect manually: the camera may show sea beyond the map.
@@ -324,7 +344,9 @@ export class Renderer {
       if (!spr) continue;
       const fp = o.def.footprint || { w: 1, h: 1 };
       const baseX = o.x * TILE + (fp.w * TILE) / 2, baseY = (o.y + fp.h) * TILE;
-      if (FLAT_OBJECTS.has(o.type)) {
+      if (FLOOR_OBJECTS.has(o.type)) {
+        ctx.drawImage(spr, Math.round(o.x * TILE - cam.x), Math.round(baseY - spr.height - cam.y));
+      } else if (FLAT_OBJECTS.has(o.type)) {
         ctx.drawImage(spr, Math.round(baseX - spr.width / 2 - cam.x), Math.round(baseY - 8 - spr.height / 2 - cam.y));
         if (o.def.resource && w.nodeReady(o)) this.twinkle(ctx, baseX - cam.x, baseY - 12 - cam.y, o.x + o.y);
       } else {
@@ -403,8 +425,11 @@ export class Renderer {
     // 8. build ghost
     if (scene.build) this.drawBuild(ctx, scene.build, cam, t);
     // 9. weather & lighting
-    this.drawWeather(ctx, scene, cam, dt, t);
-    this.drawLighting(ctx, scene, cam, t);
+    if (indoor) this.drawIndoorLight(ctx, scene, cam, t);
+    else {
+      this.drawWeather(ctx, scene, cam, dt, t);
+      this.drawLighting(ctx, scene, cam, t);
+    }
     if (w.def.fog) this.drawFog(ctx, t, cam);
     if (this.flash > 0) { ctx.fillStyle = `rgba(255,255,255,${this.flash})`; ctx.fillRect(0, 0, this.viewW, this.viewH); this.flash = Math.max(0, this.flash - dt * 2.5); }
     // interaction marker
@@ -684,6 +709,23 @@ export class Renderer {
         ctx.fillRect(Math.round(sx - cam.x), Math.round(sy - cam.y), 1, 1);
       }
     }
+  }
+
+  /** Indoors: no weather, just a warm lamp-lit glow (a touch dimmer at night). */
+  drawIndoorLight(ctx, scene, cam, t) {
+    const dark = scene.light ? scene.light.dark : 0;
+    ctx.fillStyle = `rgba(40,24,40,${0.06 + dark * 0.22})`;
+    ctx.fillRect(0, 0, this.viewW, this.viewH);
+    ctx.globalCompositeOperation = 'lighter';
+    const w = this.world;
+    const flick = this.reducedMotion ? 0 : Math.sin(t * 6) * 0.01;
+    ctx.fillStyle = `rgba(255,190,110,${0.05 + dark * 0.05 + flick})`;
+    ctx.beginPath(); ctx.arc(Math.round(w.pxW / 2 - cam.x), Math.round(w.pxH * 0.45 - cam.y), Math.round(w.pxW * 0.45), 0, Math.PI * 2); ctx.fill();
+    for (const o of w.objects) if (o.type === 'fireplace') {
+      ctx.fillStyle = `rgba(255,150,60,${0.12 + flick * 3})`;
+      ctx.beginPath(); ctx.arc(Math.round(o.x * TILE + 16 - cam.x), Math.round((o.y + 1) * TILE - 6 - cam.y), 22, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   drawFog(ctx, t, cam) {

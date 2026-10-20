@@ -231,5 +231,7 @@ change their password while signed in.
 ## Credits
 
 All code, pixel art (procedural), sounds (Web Audio synthesis) and writing are
-original to this project (footsteps: `tools/generate_footsteps.py`). Font: [Pixelify Sans](https://fonts.google.com/specimen/Pixelify+Sans)
+original to this project (footsteps: `tools/generate_footsteps.py`), except the
+grass, sand, wood and mud footsteps, which are cut from Epidemic Sound recordings
+(`tools/slice_footsteps.py`). Font: [Pixelify Sans](https://fonts.google.com/specimen/Pixelify+Sans)
 (SIL Open Font License) via Google Fonts, with a system fallback.

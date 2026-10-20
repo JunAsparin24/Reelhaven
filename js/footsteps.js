@@ -42,6 +42,12 @@ export class FootstepSystem {
     if (g.mode === 'title') { setAmbience({ waves: 0.75, rain: 0, birds: 0.25, crickets: 0.35 }); return; }
     if (g.mode !== 'play' || !g.world || !g.player) { setAmbience({ waves: 0, rain: 0, birds: 0, crickets: 0 }); return; }
     const w = g.world, p = g.player;
+    if (w.def.interior) {
+      // Indoors: no surf or birdsong, rain is a soft patter on the roof.
+      const wx = currentWeather();
+      setAmbience({ waves: 0, rain: wx === 'storm' ? 0.45 : wx === 'rain' ? 0.3 : 0, birds: 0, crickets: currentPhase() === 'night' ? 0.15 : 0 });
+      return;
+    }
     // How much open water is around the player (0..1) → surf volume.
     const r = 7, cx = Math.floor(p.x / TILE), cy = Math.floor(p.y / TILE);
     let water = 0, total = 0;

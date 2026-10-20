@@ -11,8 +11,10 @@
    In portrait the menu docks to the bottom edge instead. */
 
 #app {
+  /* inset: 0 alone fills the screen. A fixed 100dvh height used to go stale on
+     some phones (e.g. after going fullscreen) and leave a blue strip until the
+     phone was rotated. */
   position: fixed; inset: 0;
-  height: 100dvh;
   background: var(--deep);
   overflow: hidden; overflow: clip;
   --pad: 8px;

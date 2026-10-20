@@ -3,6 +3,7 @@
 import { buildIslandMap, T, WALKABLE, WATERY, BUILDABLE, SURFACE } from './world-gen.js';
 import { TILE } from './art/tiles.js';
 import { ISLANDS } from '../data/island-data.js';
+import { INTERIORS } from '../data/interior-data.js';
 import { NPCS } from '../data/npc-data.js';
 import { PLACEABLES, footprintOf } from '../data/building-data.js';
 
@@ -23,15 +24,27 @@ export const OBJECT_TYPES = {
   rock: { solid: true }, bush: { solid: true }, stump: { solid: true },
   flowers: { solid: false }, reeds: { solid: false }, coral: { solid: false, water: true }, lily: { solid: false, water: true },
   board: { solid: true, interact: { kind: 'board', verb: 'Read', label: 'Quest Board' } },
-  shop: { solid: true, footprint: { w: 4, h: 2 }, interact: { kind: 'shop', verb: 'Shop', label: 'Nori’s Shop' } },
+  shop: { solid: true, footprint: { w: 4, h: 2 }, interact: { kind: 'enter', verb: 'Enter', label: 'Nori’s Shop' }, interior: 'shop_interior' },
   boat: { solid: false, water: true, interact: { kind: 'boat', verb: 'Sail', label: 'Boat' } },
   bridgeSite: { solid: true, interact: { kind: 'bridge', verb: 'Inspect', label: 'Broken Bridge' } },
+  // ---- indoor furniture (see data/interior-data.js)
+  counter: { solid: true, footprint: { w: 10, h: 1 }, interact: { kind: 'shop', verb: 'Shop', label: 'Shop Counter' } },
+  shelf: { solid: true, footprint: { w: 2, h: 1 } },
+  shelf_b: { solid: true, footprint: { w: 2, h: 1 } },
+  barrel: { solid: true }, crate: { solid: true }, plant: { solid: true }, nightstand: { solid: true },
+  fish_tank: { solid: true, footprint: { w: 2, h: 1 } },
+  bookshelf: { solid: true, footprint: { w: 2, h: 1 } },
+  fireplace: { solid: true, footprint: { w: 2, h: 1 } },
+  table: { solid: true, footprint: { w: 2, h: 1 } },
+  bed: { solid: true, footprint: { w: 2, h: 2 }, interact: { kind: 'bed', verb: 'Sleep', label: 'Bed' } },
+  rug: { solid: false, footprint: { w: 4, h: 2 } },
+  doormat: { solid: false, footprint: { w: 2, h: 1 }, interact: { kind: 'exit', verb: 'Leave', label: 'Door' } },
 };
 
 export class World {
   constructor(islandId, islandState) {
     this.id = islandId;
-    this.def = ISLANDS[islandId];
+    this.def = ISLANDS[islandId] || INTERIORS[islandId];
     this.map = buildIslandMap(islandId);
     this.w = this.map.w; this.h = this.map.h;
     this.pxW = this.w * TILE; this.pxH = this.h * TILE;
@@ -87,6 +100,7 @@ export class World {
       if (!WALKABLE.has(t)) this.solid[i] = 1;
       if (t === T.M) this.slow[i] = 1;
     }
+    for (const r of this.def.solid || []) for (let j = r.y; j < r.y + r.h; j++) for (let i = r.x; i < r.x + r.w; i++) this.solid[j * this.w + i] = 1;
     const mark = (x, y, w, h, solid) => {
       for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) {
         if (i < 0 || j < 0 || i >= this.w || j >= this.h) continue;

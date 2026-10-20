@@ -64,7 +64,6 @@ export const ISLANDS = {
     },
     npcs: [
       { id: 'mira', x: 23, y: 40 },
-      { id: 'nori', x: 27, y: 19 },
       { id: 'rowan', x: 28, y: 14 },
       { id: 'pip', x: 17, y: 26, wander: 3 },
     ],
