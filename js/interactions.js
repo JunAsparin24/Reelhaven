@@ -8,6 +8,7 @@ import { addItem, addCoins, addPearls, checkCost, spend, describeMissing } from 
 import { BUILDINGS } from '../data/building-data.js';
 import { RESOURCES } from '../data/item-data.js';
 import { sfx } from './audio.js';
+import { MONSTERS } from '../data/mine-data.js';
 
 export const BRIDGE_COST = { coins: 100, wood: 15, stone: 6 };
 
@@ -53,14 +54,28 @@ function collectInteractables(game, rangeBoost = 1, only = null) {
       const spr = sprite(o.type);
       const range = o.type === 'boat' ? 40 : o.type === 'shop' ? 24 : 20;
       const iy = o.type === 'shop' ? (o.y + fp.h) * TILE + 6 : cy;
-      consider({ kind: o.def.interact.kind, obj: o, verb: o.def.interact.verb, label: o.def.interact.label, mx: cx, my: (o.y + fp.h) * TILE - (spr ? spr.height : 16) - 2 }, cx, iy, range);
+      consider({ kind: o.def.interact.kind, obj: o, verb: o.def.interact.verb, label: o.label || o.def.interact.label, mx: cx, my: (o.y + fp.h) * TILE - (spr ? spr.height : 16) - 2 }, cx, iy, range);
     }
+  }
+  // Utilities you can use: chests, furnaces, campfires.
+  const USE_VERB = { chest: 'Open', furnace: 'Smelt', campfire: 'Cook' };
+  for (const pl of w.placed) {
+    if (!pl.def.use) continue;
+    const cx = pl.x * TILE + (pl.fw * TILE) / 2, cy = (pl.y + pl.fh) * TILE - 4;
+    const spr = sprite(pl.type);
+    consider({ kind: 'use', placement: pl, verb: USE_VERB[pl.def.use] || 'Use', label: pl.def.name, mx: cx, my: (pl.y + pl.fh) * TILE - (spr ? spr.height : 16) - 2 }, cx, cy, 26);
+  }
+  // Monsters in reach.
+  for (const m of w.monsters || []) {
+    if (m.dead) continue;
+    consider({ kind: 'attack', monster: m, verb: 'Attack', label: MONSTERS[m.type]?.name || 'Monster', mx: m.x, my: m.y - 22 }, m.x, m.y - 2, 26);
   }
   for (const pl of w.placed) {
     if (pl.def.kind !== 'building') continue;
     const cx = pl.x * TILE + (pl.fw * TILE) / 2, cy = (pl.y + pl.fh) * TILE + 6;
-    if (pl.type === 'cottage') {
-      consider({ kind: 'enter', placement: pl, verb: 'Enter', label: pl.def.name, mx: cx, my: (pl.y + pl.fh) * TILE - (sprite('cottage')?.height || 32) - 2 }, cx, cy, 22);
+    if (pl.type === 'cottage' || pl.type === 'guest_cabin') {
+      const label = pl.type === 'guest_cabin' ? `${pl.ownerName || 'Guest'}’s Cabin` : pl.def.name;
+      consider({ kind: 'enter', placement: pl, verb: 'Enter', label, mx: cx, my: (pl.y + pl.fh) * TILE - (sprite(pl.type)?.height || 32) - 2 }, cx, cy, 22);
       continue;
     }
     const verbs = { fishing_hut: 'Bait Shop', fish_market: 'Orders', crop_garden: 'Harvest', storage_shed: 'Check', lighthouse: 'Visit' };
@@ -141,7 +156,8 @@ export function repairBridge(game) {
   game.world.applyFlags();
   game.world.rebuild();
   game.renderer.buildLand();
-  game.renderer.emit('sparkle', 32 * TILE, 12 * TILE, 20, { speed: 50, gravity: 20 });
+  const site = game.world.objects.find(o => o.type === 'bridgeSite');
+  if (site) game.renderer.emit('sparkle', (site.x + 3) * TILE, (site.y - 1) * TILE, 20, { speed: 50, gravity: 20 });
   sfx('build');
   emit('bridgeRepaired');
   commit('bridge');

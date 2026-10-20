@@ -192,6 +192,33 @@ export function wallTile(lower, v = 0) {
   });
 }
 
+/** Mine floor: packed earth with pebbles. */
+export function caveFloorTile(v) {
+  return paint(TILE, TILE, p => {
+    p.rect(0, 0, 16, 16, '#5d5160');
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const h = hash2(x, y, v + 91);
+      if (h < 0.08) p.px(x, y, '#4f4452');
+      else if (h > 0.975) p.px(x, y, '#7a6e7c');
+    }
+    p.rect(3 + v * 3, 10 - v, 2, 1, '#7a6e7c');
+  });
+}
+
+/** Mine wall: `face` is the side you see from below; otherwise the rocky top. */
+export function caveWallTile(face, v = 0) {
+  return paint(TILE, TILE, p => {
+    if (face) {
+      p.rect(0, 0, 16, 16, '#3a3140');
+      for (let y = 2; y < 16; y += 5) for (let x = (y % 2) * 4; x < 16; x += 8) { p.rect(x, y, 6, 3, '#463c4c'); p.hline(x, y, 6, '#54485a'); }
+      p.rect(0, 14, 16, 2, '#241e28');
+    } else {
+      p.rect(0, 0, 16, 16, '#28212c');
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (hash2(x, y, v + 97) < 0.06) p.px(x, y, '#352c3a');
+    }
+  });
+}
+
 export function buildTileset() {
   const range = n => [...Array(n).keys()];
   return {
@@ -207,6 +234,9 @@ export function buildTileset() {
     floor: range(3).map(floorTile),
     wallUpper: range(3).map(v => wallTile(false, v)),
     wallLower: [wallTile(true)],
+    cave: range(3).map(caveFloorTile),
+    caveFace: [caveWallTile(true)],
+    caveTop: range(2).map(v => caveWallTile(false, v)),
     water: buildWaterFrames(),
   };
 }

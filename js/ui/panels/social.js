@@ -229,7 +229,7 @@ function savePostcard(game) {
   bg.imageSmoothingEnabled = false;
   bg.drawImage(c, 0, 0, big.width, big.height);
   bg.fillStyle = '#2c2433';
-  bg.font = '28px "Pixelify Sans", monospace';
+  bg.font = '34px "Reel Pixel", monospace';
   bg.fillText(`${getState().player.name}'s ${ISLANDS[w.id].name} — Reelhaven`, pad * 2, big.height - 18);
   big.toBlob(blob => {
     if (!blob) { toast('Could not create the postcard.', null, 'error'); return; }

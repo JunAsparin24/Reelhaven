@@ -239,3 +239,59 @@
 .req .px-icon { width: 16px; height: 16px; }
 
 @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+
+/* ---------- hotbar (bottom-left; above the menu in portrait) */
+#hotbar {
+  left: var(--edge-l); bottom: var(--edge-b);
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+}
+#hotbar .slots { display: flex; gap: 4px; padding: 4px; background: rgba(30, 44, 70, 0.72); box-shadow: 0 0 0 2px var(--ink); }
+#hotbar .slot {
+  position: relative; width: 42px; height: 42px; border: 0; padding: 0; display: grid; place-items: center;
+  background: rgba(253, 240, 210, 0.95); box-shadow: 0 0 0 2px var(--ink), inset 0 -3px 0 rgba(0, 0, 0, 0.14);
+  touch-action: manipulation;
+}
+#hotbar .slot .px-icon { width: 26px; height: 26px; }
+#hotbar .slot.held { background: var(--gold); box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--cream), inset 0 -3px 0 rgba(0, 0, 0, 0.14); }
+#hotbar .slot.equipped::after { content: ''; position: absolute; top: 3px; left: 3px; width: 7px; height: 7px; background: var(--turq); box-shadow: 0 0 0 1.5px var(--ink); }
+#hotbar .slot .cnt { position: absolute; right: 2px; bottom: 1px; font-size: 0.66rem; font-weight: 700; color: var(--ink); text-shadow: 1px 1px 0 #fff8; }
+#hotbar .slot .key { position: absolute; left: 3px; top: 1px; font-size: 0.6rem; font-weight: 700; color: var(--muted); }
+#hotbar .slot:active { transform: translateY(1px); }
+.hp-bar { display: flex; align-items: center; gap: 6px; padding: 3px 8px 3px 4px; font-weight: 700; font-size: 0.78rem; }
+.hp-bar[hidden] { display: none; }
+.hp-bar .px-icon { width: 18px; height: 18px; }
+.bar.hp { width: 110px; height: 9px; margin: 0; background: #3a1e2a; box-shadow: 0 0 0 1.5px var(--ink); }
+.bar.hp .fill { background: #e05a5a; transition: width 0.15s; }
+.bar.hp.low .fill { animation: pulse 0.5s ease-in-out infinite alternate; }
+#app.fishing #hotbar, #app.building #hotbar, #app.talking #hotbar { display: none; }
+#app.on-title #hotbar { display: none; }
+/* the action buttons must clear the hotbar on narrow screens */
+@media (orientation: landscape) and (max-width: 760px) {
+  #hotbar .slot { width: 38px; height: 38px; }
+  #hotbar .slot .px-icon { width: 22px; height: 22px; }
+}
+
+/* day + time stacked in the clock pill */
+.clock-stack { display: flex; flex-direction: column; line-height: 1.05; }
+.day-text { font-size: 0.62rem; font-weight: 700; opacity: 0.8; letter-spacing: 0.04em; }
+
+.sleep-banner[hidden], .where-note[hidden] { display: none; }
+
+/* red edge flash when you get hurt */
+.hurt-flash { position: absolute; inset: 0; pointer-events: none; z-index: 5; box-shadow: inset 0 0 60px 10px rgba(220, 40, 40, 0.0); }
+.hurt-flash.on { animation: hurt 0.45s ease-out; }
+@keyframes hurt { from { box-shadow: inset 0 0 70px 18px rgba(220, 40, 40, 0.55); } to { box-shadow: inset 0 0 60px 10px rgba(220, 40, 40, 0); } }
+
+/* chest + furnace windows */
+.chest-modal, .furnace-modal { width: min(640px, 100%); }
+.chest-modal h3 .px-icon, .furnace-modal h3 .px-icon { display: inline-block; vertical-align: -4px; }
+.chest-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-height: min(56vh, 420px); overflow: auto; }
+.item-row.compact { padding: 4px 6px; gap: 6px; }
+.item-row.compact .btn { margin: 2px; }
+@media (max-width: 560px) { .chest-cols { grid-template-columns: 1fr; } }
+.furnace-modal .list { max-height: min(56vh, 420px); overflow: auto; }
+.chest-modal { width: min(760px, 100%); }
+.chest-col, .chest-col .item-main { min-width: 0; }
+.chest-modal .item-row.compact .item-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.85rem; }
+.chest-modal .item-row.compact .btn { min-height: 30px; padding: 2px 8px; font-size: 0.72rem; flex: none; }
+.chest-modal .item-row.compact .item-icon { width: 22px; height: 22px; }

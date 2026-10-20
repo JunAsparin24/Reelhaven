@@ -111,6 +111,35 @@ export const ICONS = {
   order: () => icon(p => { p.rect(3, 3, 12, 12, C.cream); p.rect(5, 6, 5, 3, C.orange); p.hline(5, 11, 8, C.stone2); p.rect(11, 5, 3, 3, C.gold); }),
   postcard: () => icon(p => { p.rect(2, 4, 14, 10, C.cream); p.rect(3, 5, 7, 8, C.turq); p.ellipse(6, 10, 2, 1, C.sand); p.hline(11, 7, 4, C.stone2); p.hline(11, 9, 4, C.stone2); p.rect(13, 5, 2, 1, C.red); }),
   hat: () => icon(p => { p.rect(2, 11, 14, 2, '#e9c46a'); p.rrect(5, 5, 8, 7, '#f2d27e'); p.hline(5, 10, 8, C.red); }),
+  pickaxe: () => icon(p => {
+    p.line(4, 15, 12, 7, C.wood2); p.line(5, 15, 13, 7, C.wood);
+    for (let i = 0; i < 9; i++) { const x = 6 + i, y = 3 + Math.round(Math.abs(i - 4) * 0.6); p.px(x, y, C.stone2); p.px(x, y + 1, C.stone); }
+    p.px(6, 4, C.stone3); p.px(14, 4, C.stone3);
+  }),
+  sword: () => icon(p => {
+    p.line(5, 13, 14, 4, C.stone); p.line(6, 13, 15, 4, C.white); p.px(14, 3, C.white);
+    p.rect(4, 11, 4, 2, C.gold2); p.rect(5, 10, 2, 4, C.gold2); p.line(2, 16, 5, 13, C.wood2);
+  }),
+  heart: () => icon(p => {
+    p.ellipse(6, 7, 3, 3, C.red); p.ellipse(12, 7, 3, 3, C.red);
+    for (let y = 8; y < 15; y++) p.hline(3 + (y - 8), y, 13 - 2 * (y - 8), C.red);
+    p.px(5, 6, C.coral);
+  }),
+  snack: () => icon(p => { p.rect(4, 5, 10, 9, '#3f7a52'); p.hline(4, 5, 10, '#5fa070'); for (let x = 5; x < 14; x += 3) p.vline(x, 7, 5, '#2f5f40'); p.rect(6, 9, 6, 2, C.cream); }),
+  salad: () => icon(p => { p.ellipse(9, 12, 7, 3, C.white); p.ellipse(9, 10, 6, 3, C.grass2); p.px(6, 9, C.red); p.px(11, 9, C.orange); p.px(9, 8, C.yellow); p.px(12, 11, C.red); }),
+  grilled: () => icon(p => { p.ellipse(9, 13, 7, 2, C.white); p.ellipse(9, 10, 5, 3, '#c9804a'); p.px(4, 9, '#a0603a'); p.px(4, 11, '#a0603a'); for (let x = 7; x < 13; x += 2) p.vline(x, 8, 4, '#7a4426'); }),
+  ore_copper: () => icon(p => { p.ellipse(9, 10, 6, 5, C.stone2); p.ellipse(9, 9, 5, 4, C.stone); p.px(7, 8, C.orange); p.px(11, 10, C.orange2); p.px(9, 11, C.orange); p.px(10, 7, C.orange); }),
+  ore_iron: () => icon(p => { p.ellipse(9, 10, 6, 5, '#7d7a80'); p.ellipse(9, 9, 5, 4, '#a29ea5'); p.px(7, 8, '#e8eef5'); p.px(11, 10, '#a8c4dc'); p.px(9, 11, '#e8eef5'); }),
+  ore_gold: () => icon(p => { p.ellipse(9, 10, 6, 5, '#8a7e6a'); p.ellipse(9, 9, 5, 4, '#b0a58c'); p.px(7, 8, C.yellow); p.px(11, 10, C.gold); p.px(9, 11, C.yellow); p.px(10, 7, C.gold); }),
+  bar_copper: () => icon(p => { p.rect(3, 8, 12, 6, '#c26b34'); p.rect(4, 7, 10, 2, '#e3924a'); p.hline(5, 8, 6, '#f6b66c'); }),
+  bar_iron: () => icon(p => { p.rect(3, 8, 12, 6, '#8a8f99'); p.rect(4, 7, 10, 2, '#b8bec8'); p.hline(5, 8, 6, '#e8eef5'); }),
+  bar_gold: () => icon(p => { p.rect(3, 8, 12, 6, C.gold2); p.rect(4, 7, 10, 2, C.gold); p.hline(5, 8, 6, C.yellow); }),
+  quartz: () => icon(p => { p.rect(8, 3, 3, 11, '#e8f4ff'); p.rect(5, 7, 3, 7, '#cfe4f5'); p.rect(11, 6, 2, 8, '#d8ecfa'); p.px(9, 3, C.white); }),
+  amethyst: () => icon(p => { p.rect(8, 3, 3, 11, '#b27be0'); p.rect(5, 7, 3, 7, '#8f5fc0'); p.rect(11, 6, 2, 8, '#c9a0f0'); p.px(9, 4, '#efe0ff'); }),
+  slime: () => icon(p => { p.ellipse(9, 11, 6, 4, '#5fbf5a'); p.ellipse(9, 10, 5, 3, '#8ee07a'); p.px(7, 9, C.white); }),
+  wing: () => icon(p => { p.line(3, 6, 15, 6, '#4a3b5c'); for (let x = 4; x < 15; x++) p.vline(x, 7, 3 + ((x * 3) % 4), '#6c5a82'); }),
+  ladder: () => icon(p => { p.vline(5, 2, 14, C.wood); p.vline(12, 2, 14, C.wood); for (let y = 4; y < 16; y += 4) p.hline(5, y, 8, C.woodLight); }),
+  fire: () => icon(p => { p.ellipse(9, 11, 5, 5, C.orange); p.ellipse(9, 12, 3, 3, C.yellow); p.px(9, 4, C.orange); p.px(7, 6, C.orange); p.rect(4, 15, 10, 2, C.wood2); }),
   sparkle: () => icon(p => { p.rect(8, 2, 2, 14, C.yellow); p.rect(2, 8, 14, 2, C.yellow); p.rect(7, 7, 4, 4, C.white); }),
 };
 

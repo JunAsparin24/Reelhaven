@@ -11,7 +11,13 @@ export const BUILDINGS = {
     id: 'cottage', name: 'Starter Cottage', kind: 'building', price: 0, minLevel: 1, maxCount: 1, buildable: false,
     footprint: { w: 4, h: 2 }, solid: true,
     lights: [{ x: -17, y: -16, r: 18 }, { x: 21, y: -16, r: 18 }],
-    desc: 'Your cozy home. Rest here to pass the time until morning, evening or night.',
+    desc: 'Your cozy home. Sleep here to skip to the next morning.',
+  },
+  guest_cabin: {
+    id: 'guest_cabin', name: 'Guest Cabin', kind: 'building', price: 0, buildable: false,
+    footprint: { w: 3, h: 2 }, solid: true,
+    lights: [{ x: -10, y: -14, r: 16 }],
+    desc: 'Built automatically for each friend who joins your game, with a bed of their own.',
   },
   fishing_hut: {
     id: 'fishing_hut', name: 'Fishing Hut', kind: 'building', price: 220, cost: { wood: 10, stone: 4 }, minLevel: 2, maxCount: 1,
@@ -60,6 +66,25 @@ export const DECOR = {
   hammock: { id: 'hammock', name: 'Hammock', kind: 'decor', price: 120, cost: { wood: 6 }, footprint: { w: 3, h: 1 }, solid: true, minLevel: 3, desc: 'Peak island relaxation.' },
   topiary: { id: 'topiary', name: 'Topiary', kind: 'decor', price: 90, cost: { flower: 3 }, footprint: { w: 1, h: 1 }, solid: true, minLevel: 4, desc: 'A carefully clipped little tree.' },
   coral_planter: { id: 'coral_planter', name: 'Coral Planter', kind: 'decor', price: 80, cost: { shell: 3 }, footprint: { w: 1, h: 1 }, solid: true, requiresIsland: 'coral', desc: 'Reef-inspired garden art.' },
+  picket_fence: { id: 'picket_fence', name: 'Picket Fence', kind: 'decor', price: 14, cost: { wood: 1 }, footprint: { w: 1, h: 1 }, rotations: 2, solid: true, desc: 'A crisp white fence for tidy yards.' },
+  planter_box: { id: 'planter_box', name: 'Planter Box', kind: 'decor', price: 45, cost: { wood: 3, flower: 2 }, footprint: { w: 2, h: 1 }, solid: true, desc: 'A long box of bright flowers.' },
+  hay_bale: { id: 'hay_bale', name: 'Hay Bale', kind: 'decor', price: 25, footprint: { w: 1, h: 1 }, solid: true, desc: 'Farm-fresh and very sit-on-able.' },
+  scarecrow: { id: 'scarecrow', name: 'Scarecrow', kind: 'decor', price: 55, cost: { wood: 3 }, footprint: { w: 1, h: 1 }, solid: true, desc: 'Keeps the gulls off your garden.' },
+  mailbox: { id: 'mailbox', name: 'Mailbox', kind: 'decor', price: 40, cost: { wood: 2 }, footprint: { w: 1, h: 1 }, solid: true, desc: 'For letters from far-off islands.' },
+  birdbath: { id: 'birdbath', name: 'Birdbath', kind: 'decor', price: 60, cost: { stone: 4 }, footprint: { w: 1, h: 1 }, solid: true, desc: 'A splash spot for passing birds.' },
+  stone_lantern: { id: 'stone_lantern', name: 'Stone Lantern', kind: 'decor', price: 70, cost: { stone: 5 }, footprint: { w: 1, h: 1 }, solid: true, lights: [{ x: 0, y: -14, r: 22 }], desc: 'A calm glow carved from stone.' },
+  flag_pole: { id: 'flag_pole', name: 'Island Flag', kind: 'decor', price: 65, cost: { wood: 2 }, footprint: { w: 1, h: 1 }, solid: true, desc: 'Fly your island colours.' },
+  picnic_table: { id: 'picnic_table', name: 'Picnic Table', kind: 'decor', price: 90, cost: { wood: 6 }, footprint: { w: 2, h: 1 }, solid: true, desc: 'Lunch with a sea view.' },
+  crate_stack: { id: 'crate_stack', name: 'Crate Stack', kind: 'decor', price: 30, cost: { wood: 3 }, footprint: { w: 1, h: 1 }, solid: true, desc: 'Who knows what is inside?' },
+  barrel_deco: { id: 'barrel_deco', name: 'Barrel', kind: 'decor', price: 25, cost: { wood: 2 }, footprint: { w: 1, h: 1 }, solid: true, desc: 'A sturdy wooden barrel.' },
+  potted_plant: { id: 'potted_plant', name: 'Potted Plant', kind: 'decor', price: 30, footprint: { w: 1, h: 1 }, solid: true, desc: 'A leafy friend in a pot.' },
+  garden_arch: { id: 'garden_arch', name: 'Garden Arch', kind: 'decor', price: 120, cost: { wood: 5, flower: 4 }, footprint: { w: 2, h: 1 }, solid: false, minLevel: 3, desc: 'A flowery arch you can walk under.' },
+  well: { id: 'well', name: 'Stone Well', kind: 'decor', price: 160, cost: { stone: 10, wood: 3 }, footprint: { w: 2, h: 1 }, solid: true, minLevel: 3, desc: 'A classic village well.' },
+  fish_statue: { id: 'fish_statue', name: 'Fish Statue', kind: 'decor', price: 200, cost: { stone: 8, copper_bar: 1 }, footprint: { w: 1, h: 1 }, solid: true, minLevel: 4, desc: 'A proud tribute to the big one.' },
+  // utility: things you use, not just look at
+  chest: { id: 'chest', name: 'Storage Chest', kind: 'decor', category: 'utility', use: 'chest', price: 40, cost: { wood: 8 }, footprint: { w: 1, h: 1 }, solid: true, desc: 'Store items you don’t want to carry around.' },
+  furnace: { id: 'furnace', name: 'Furnace', kind: 'decor', category: 'utility', use: 'furnace', price: 120, cost: { stone: 15 }, footprint: { w: 1, h: 1 }, solid: true, minLevel: 2, lights: [{ x: 0, y: -8, r: 18 }], desc: 'Smelt ore into bars and grill fish.' },
+  campfire: { id: 'campfire', name: 'Campfire', kind: 'decor', category: 'utility', use: 'campfire', price: 30, cost: { wood: 5, stone: 2 }, footprint: { w: 1, h: 1 }, solid: true, lights: [{ x: 0, y: -6, r: 26 }], desc: 'Grill fish to heal up. Cozy after dark.' },
 };
 
 export const PLACEABLES = { ...BUILDINGS, ...DECOR };

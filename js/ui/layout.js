@@ -22,6 +22,7 @@ export class Layout {
     if ('ResizeObserver' in window) {
       this.ro = new ResizeObserver(update);
       for (const id of ['hud-top', 'nav']) { const el = document.getElementById(id); if (el) this.ro.observe(el); }
+      this.watchHotbar = () => { const hb = document.getElementById('hotbar'); if (hb && !this.hbWatched) { this.hbWatched = true; this.ro.observe(hb); } };
     }
     update();
   }
@@ -38,6 +39,9 @@ export class Layout {
     const set = (k, v) => { if (this.vars[k] !== v) { this.vars[k] = v; a.style.setProperty(k, v + 'px'); } };
     if (status && status.offsetHeight) set('--status-h', status.offsetHeight);
     if (nav && nav.offsetHeight) { set('--menu-h', nav.offsetHeight); set('--menu-w', nav.offsetWidth); }
+    this.watchHotbar?.();
+    const hb = document.getElementById('hotbar');
+    if (hb) { set('--hotbar-h', hb.offsetHeight || 0); set('--hotbar-w', hb.offsetWidth || 0); }
     this.onChange?.();
   }
 
@@ -53,6 +57,8 @@ export class Layout {
     if (this.portrait) {
       const nav = document.getElementById('nav');
       if (nav && nav.offsetParent) ins.bottom = Math.max(ins.bottom, sr.bottom - nav.getBoundingClientRect().top);
+      const hb = document.getElementById('hotbar');
+      if (hb && hb.offsetParent) ins.bottom = Math.max(ins.bottom, sr.bottom - hb.getBoundingClientRect().top);
     }
     for (const id of ['fishing-ui', 'dialogue', 'build-bar']) {
       const el = document.getElementById(id);

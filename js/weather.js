@@ -81,6 +81,33 @@ export function restUntil(phase) {
   commit('rest');
 }
 
+/**
+ * Sleep through the night: wake at 6 AM on the next day (sleeping after
+ * midnight still counts as that night, like Stardew). Returns the new day.
+ */
+export const WAKE_MINUTES = 6 * 60;
+export function sleepToMorning() {
+  const s = getState();
+  const w = s.world;
+  if (w.minutes >= WAKE_MINUTES) w.day += 1;
+  w.minutes = WAKE_MINUTES;
+  rollWeather();
+  lastPhase = null;
+  s.stats.daysSlept = (s.stats.daysSlept || 0) + 1;
+  s.player.hp = s.player.maxHp || 100;
+  emit('newDay', { day: w.day, slept: true });
+  commit('sleep');
+  return w.day;
+}
+
+/** Adopt the host's clock in a multiplayer game. */
+export function setClock({ day, minutes, weather }) {
+  const w = getState().world;
+  if (Number.isFinite(day)) w.day = day;
+  if (Number.isFinite(minutes)) w.minutes = minutes;
+  if (weather && weather !== w.weather) { w.weather = weather; w.weatherUntil = w.day * 1440 + w.minutes + 240; emit('weather', { weather }); }
+}
+
 // ---- lighting keyframes: [hour, r, g, b, alpha]
 const KEYS = [
   [0, 18, 28, 70, 0.56], [4.5, 18, 28, 70, 0.54], [6, 246, 160, 108, 0.16], [7.5, 255, 240, 220, 0],

@@ -727,3 +727,229 @@ export function doormat() {
     for (let x = 5; x < 28; x += 3) p.vline(x, 4, 6, '#a07642');
   });
 }
+
+// ---------------------------------------------------------------- home yard & mine
+export function guestCabin(glow = false) {
+  return O(paint(52, 52, p => {
+    walls(p, 4, 24, 44, 26, '#e9d3a8');
+    p.rect(4, 46, 44, 4, C.stone2);
+    roofShape(p, 1, 4, 50, 22, C.blueRoof, 8);
+    door(p, 21, 36);
+    windowAt(p, 9, 30, glow); windowAt(p, 35, 30, glow);
+    flowerBox(p, 8, 38);
+  }));
+}
+
+export function mineEntrance() {
+  return O(paint(50, 40, p => {
+    // rocky mound
+    p.ellipse(25, 24, 23, 15, C.stone2);
+    p.ellipse(25, 22, 21, 13, C.stone);
+    for (const [x, y] of [[10, 18], [38, 16], [18, 10], [32, 9], [42, 26], [7, 28]]) p.ellipse(x, y, 3, 2, C.stone3);
+    // dark mouth with a timber frame
+    p.rect(15, 18, 20, 21, '#1e1a24');
+    p.rect(13, 16, 3, 23, C.wood2); p.rect(34, 16, 3, 23, C.wood2);
+    p.rect(12, 14, 26, 4, C.wood); p.hline(12, 14, 26, C.woodLight);
+    // rails
+    p.hline(19, 36, 12, C.stone3); p.hline(19, 38, 12, C.stone3);
+    for (let x = 19; x < 31; x += 3) p.vline(x, 35, 4, C.wood3);
+    // little lantern
+    p.rect(38, 20, 3, 4, C.glow); p.px(39, 19, C.ink2);
+  }));
+}
+
+export function mineRock(kind) {
+  const base = { stone: [C.stone2, C.stone], copper: [C.stone2, C.stone], iron: ['#7d7a80', '#a29ea5'], gold: ['#8a7e6a', '#b0a58c'], gem: ['#6d6578', '#8f86a0'] }[kind];
+  const speck = { stone: null, copper: [C.orange2, C.orange], iron: ['#e8eef5', '#a8c4dc'], gold: [C.gold2, C.yellow], gem: [C.lilac2, '#e2d4ff'] }[kind];
+  return O(paint(16, 15, p => {
+    p.ellipse(8, 9, 7, 5, base[0]);
+    p.ellipse(8, 8, 6, 4, base[1]);
+    p.px(5, 6, C.white);
+    if (speck) for (const [x, y] of [[4, 9], [9, 6], [11, 10], [7, 11], [12, 7]]) { p.px(x, y, speck[0]); p.px(x + 1, y, speck[1]); }
+  }));
+}
+
+export function ladder(down) {
+  if (down) return paint(16, 16, p => {
+    p.ellipse(8, 9, 7, 5, '#120f17'); p.ellipse(8, 8, 6, 4, '#0a080d');
+    p.vline(5, 3, 9, C.wood); p.vline(10, 3, 9, C.wood);
+    for (let y = 4; y < 12; y += 3) p.hline(5, y, 6, C.woodLight);
+  });
+  return O(paint(14, 26, p => {
+    p.vline(3, 1, 24, C.wood); p.vline(10, 1, 24, C.wood);
+    p.vline(4, 1, 24, C.wood2); p.vline(11, 1, 24, C.wood2);
+    for (let y = 3; y < 25; y += 4) p.hline(3, y, 9, C.woodLight);
+  }));
+}
+
+export function caveCrystal() {
+  return paint(12, 12, p => {
+    p.rect(5, 2, 2, 8, '#9fe3ff'); p.rect(3, 5, 2, 5, '#7fc8f0'); p.rect(7, 4, 2, 6, '#bdf0ff');
+    p.px(5, 2, C.white); p.hline(2, 10, 8, '#4f6f8a');
+  });
+}
+
+/** Two animation frames per monster type. */
+export function monster(type, f) {
+  if (type === 'slime') return O(paint(16, 14, p => {
+    const sq = f ? 1 : 0;
+    p.ellipse(8, 9 + sq, 6 + sq, 4 - sq, '#5fbf5a');
+    p.ellipse(8, 8 + sq, 5 + sq, 3 - sq, '#8ee07a');
+    p.px(6, 7 + sq, C.ink); p.px(10, 7 + sq, C.ink); p.px(5, 6 + sq, C.white);
+  }));
+  if (type === 'bat') return O(paint(20, 12, p => {
+    p.ellipse(10, 6, 3, 3, '#5a4a6e');
+    const up = f ? -2 : 1;
+    for (let i = 0; i < 6; i++) {
+      p.px(7 - i, 5 + (i > 2 ? up : 0), '#4a3b5c'); p.px(13 + i, 5 + (i > 2 ? up : 0), '#4a3b5c');
+      p.px(7 - i, 6, '#6c5a82'); p.px(13 + i, 6, '#6c5a82');
+    }
+    p.px(9, 5, '#ff8a8a'); p.px(11, 5, '#ff8a8a');
+  }));
+  if (type === 'crab') return O(paint(20, 14, p => {
+    p.ellipse(10, 8, 7, 4, C.stone2); p.ellipse(10, 7, 6, 3, C.stone);
+    p.rect(1, 6 - f, 3, 3, C.coral2); p.rect(16, 6 - f, 3, 3, C.coral2);
+    for (let i = 0; i < 3; i++) { p.px(5 + i * 2, 12 - ((i + f) % 2), C.coral2); p.px(11 + i * 2, 12 - ((i + f + 1) % 2), C.coral2); }
+    p.px(8, 5, C.ink); p.px(12, 5, C.ink);
+  }));
+  // shadow wisp
+  return paint(14, 16, p => {
+    p.ellipse(7, 7, 5, 5, 'rgba(120,90,190,0.85)');
+    p.ellipse(7, 6, 3, 3, 'rgba(200,180,255,0.9)');
+    for (let i = 0; i < 3; i++) p.px(4 + i * 3, 12 + ((i + f) % 2), 'rgba(120,90,190,0.7)');
+    p.px(6, 6, C.ink); p.px(9, 6, C.ink);
+  });
+}
+
+// ---------------------------------------------------------------- utilities
+export function furnace(lit = false) {
+  return O(paint(16, 24, p => {
+    p.rect(2, 4, 12, 19, C.stone2);
+    for (let y = 6; y < 22; y += 4) p.hline(2, y, 12, C.stone3);
+    p.rect(1, 2, 14, 3, C.stone); p.rect(6, 0, 4, 3, C.stone3);
+    p.rect(4, 12, 8, 7, '#2a1c1c');
+    p.rect(5, 15, 6, 4, lit ? C.orange : C.orange2); p.rect(6, 16, 4, 2, C.yellow);
+  }));
+}
+
+export function campfire() {
+  return O(paint(16, 16, p => {
+    for (const [x, y] of [[2, 12], [5, 13], [9, 13], [12, 12], [7, 14]]) p.ellipse(x + 1, y, 2, 1, C.stone2);
+    p.line(3, 13, 12, 9, C.wood2); p.line(3, 9, 12, 13, C.wood3);
+    p.ellipse(8, 8, 3, 4, C.orange); p.ellipse(8, 9, 2, 2, C.yellow); p.px(8, 3, C.orange); p.px(6, 5, C.orange);
+  }));
+}
+
+// ---------------------------------------------------------------- more decorations
+export function picketFence(rot) {
+  if (rot === 1) return O(paint(8, 22, p => {
+    p.rect(3, 1, 2, 20, C.white); p.vline(4, 1, 20, '#dcd8cc');
+    p.rect(2, 4, 4, 2, C.white); p.rect(2, 14, 4, 2, C.white);
+  }));
+  return O(paint(18, 18, p => {
+    for (let x = 1; x < 17; x += 4) { p.rect(x, 3, 3, 13, C.white); p.px(x + 1, 2, C.white); p.vline(x + 2, 3, 13, '#dcd8cc'); }
+    p.rect(1, 6, 16, 2, '#e8e4d8'); p.rect(1, 12, 16, 2, '#e8e4d8');
+  }));
+}
+
+export function planterBox() {
+  return O(paint(32, 18, p => {
+    p.rect(1, 9, 30, 8, C.wood); p.hline(1, 9, 30, C.woodLight); p.hline(1, 13, 30, C.wood2);
+    for (let i = 0; i < 7; i++) { const x = 3 + i * 4; p.vline(x + 1, 4, 5, C.grass3); p.ellipse(x + 1, 3, 1.5, 1.5, [C.coral, C.yellow, C.pink, C.lilac][i % 4]); }
+  }));
+}
+
+export function hayBale() {
+  return O(paint(16, 14, p => {
+    p.rect(1, 2, 14, 11, '#e8c66a'); p.hline(1, 2, 14, '#f4dc8a');
+    for (let x = 2; x < 15; x += 3) p.vline(x, 4, 8, '#d0a94a');
+    p.vline(5, 2, 11, C.wood3); p.vline(10, 2, 11, C.wood3);
+  }));
+}
+
+export function scarecrow() {
+  return O(paint(18, 30, p => {
+    p.rect(8, 10, 2, 19, C.wood2);
+    p.rect(2, 12, 14, 2, C.wood);
+    p.rect(5, 12, 8, 9, C.coral2); p.hline(5, 16, 8, C.red2);
+    p.ellipse(9, 7, 3, 3, '#e8c66a'); p.px(8, 7, C.ink); p.px(10, 7, C.ink);
+    p.rect(4, 3, 10, 2, '#c99b52'); p.rect(6, 1, 6, 3, '#c99b52');
+    p.px(2, 14, '#e8c66a'); p.px(15, 14, '#e8c66a');
+  }));
+}
+
+export function mailbox() {
+  return O(paint(12, 24, p => {
+    p.rect(5, 10, 2, 13, C.wood2);
+    p.rrect(1, 3, 10, 8, C.blueRoof); p.hline(1, 3, 10, '#8fb5dc');
+    p.rect(10, 4, 1, 3, C.red); p.px(9, 3, C.red);
+  }));
+}
+
+export function birdbath() {
+  return O(paint(16, 20, p => {
+    p.rect(6, 8, 4, 10, C.stone); p.rect(4, 17, 8, 2, C.stone2);
+    p.ellipse(8, 6, 7, 3, C.stone2); p.ellipse(8, 5, 6, 2, '#86ddd5');
+    p.px(6, 5, C.white);
+  }));
+}
+
+export function stoneLantern(lit) {
+  return O(paint(14, 24, p => {
+    p.rect(4, 15, 6, 8, C.stone2); p.rect(2, 21, 10, 2, C.stone3);
+    p.rect(3, 8, 8, 7, C.stone); p.rect(5, 10, 4, 3, lit ? C.glow : '#5a5560');
+    p.rect(1, 5, 12, 3, C.stone2); p.rect(5, 2, 4, 3, C.stone);
+  }));
+}
+
+export function flagPole() {
+  return O(paint(16, 32, p => {
+    p.vline(3, 1, 30, C.stone2); p.px(3, 0, C.gold);
+    p.rect(4, 2, 10, 7, C.turq); p.rect(4, 5, 10, 2, C.cream); p.ellipse(9, 5, 2, 1.5, C.orange);
+    p.rect(1, 30, 5, 2, C.stone3);
+  }));
+}
+
+export function picnicTable() {
+  return O(paint(32, 20, p => {
+    p.rect(1, 4, 30, 6, '#e07f7d'); for (let x = 1; x < 31; x += 4) p.rect(x, 4, 2, 6, C.white);
+    p.hline(1, 10, 30, C.wood2);
+    p.rect(3, 10, 2, 8, C.wood2); p.rect(27, 10, 2, 8, C.wood2);
+    p.rect(1, 14, 30, 2, C.wood); p.hline(1, 14, 30, C.woodLight);
+  }));
+}
+
+export function crateStack() {
+  return O(paint(16, 26, p => {
+    for (const [x, y, w, hh] of [[1, 12, 14, 13], [3, 1, 11, 11]]) {
+      p.rect(x, y, w, hh, C.woodLight); p.rect(x, y, w, 2, C.wood); p.rect(x, y + hh - 2, w, 2, C.wood);
+      p.line(x + 1, y + 2, x + w - 2, y + hh - 3, C.wood);
+    }
+  }));
+}
+
+export function gardenArch() {
+  return O(paint(34, 36, p => {
+    p.rect(2, 10, 3, 25, C.wood); p.rect(29, 10, 3, 25, C.wood);
+    for (let i = 0; i < 30; i++) { const y = 10 - Math.round(Math.sin((i / 29) * Math.PI) * 8); p.rect(2 + i, y, 1, 3, C.wood2); }
+    for (const [x, y, c] of [[4, 12, C.pink], [8, 5, C.coral], [14, 2, C.yellow], [20, 2, C.pink], [26, 5, C.coral], [30, 12, C.yellow], [3, 22, C.coral], [30, 26, C.pink]]) { p.ellipse(x, y, 2, 2, C.grass3); p.px(x, y, c); p.px(x + 1, y - 1, c); }
+  }));
+}
+
+export function well() {
+  return O(paint(32, 34, p => {
+    p.ellipse(16, 24, 13, 7, C.stone2); p.ellipse(16, 22, 12, 6, C.stone);
+    p.ellipse(16, 21, 9, 4, '#2f5f6a');
+    p.rect(4, 6, 2, 18, C.wood2); p.rect(26, 6, 2, 18, C.wood2);
+    roofShape(p, 2, 1, 28, 7, C.roof, 4);
+    p.hline(6, 11, 20, C.wood3); p.rect(15, 11, 2, 6, C.stone3); p.rect(13, 16, 6, 4, C.wood);
+  }));
+}
+
+export function fishStatue() {
+  return O(paint(18, 30, p => {
+    p.rect(3, 22, 12, 7, C.stone2); p.hline(3, 22, 12, C.stone);
+    p.ellipse(9, 12, 5, 8, '#c98a4a'); p.ellipse(9, 11, 4, 7, '#e3a35e');
+    p.rect(6, 1, 6, 3, '#c98a4a'); p.px(10, 8, C.ink); p.vline(9, 19, 3, '#c98a4a');
+  }));
+}

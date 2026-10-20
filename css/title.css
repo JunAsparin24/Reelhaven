@@ -17,7 +17,7 @@
 .title-top { padding-top: clamp(30px, 5vh, 54px); display: flex; flex-direction: column; align-items: center; animation: logo-drop 0.9s cubic-bezier(.3,1.4,.5,1) both 0.25s; }
 @keyframes logo-drop { from { opacity: 0; transform: translateY(-28px); } to { opacity: 1; transform: none; } }
 
-.logo { position: relative; margin: 0; display: flex; align-items: baseline; line-height: 0.95; font-weight: 700; letter-spacing: 0.01em; animation: bob 3.4s ease-in-out infinite 1.2s; }
+.logo { font-family: var(--font-logo); font-synthesis: weight; position: relative; margin: 0; display: flex; align-items: baseline; line-height: 0.95; font-weight: 700; letter-spacing: 0.01em; animation: bob 3.4s ease-in-out infinite 1.2s; }
 .logo span {
   font-size: clamp(2.6rem, 10vh, 5.4rem);
   text-shadow:

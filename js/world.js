@@ -39,6 +39,13 @@ export const OBJECT_TYPES = {
   bed: { solid: true, footprint: { w: 2, h: 2 }, interact: { kind: 'bed', verb: 'Sleep', label: 'Bed' } },
   rug: { solid: false, footprint: { w: 4, h: 2 } },
   doormat: { solid: false, footprint: { w: 2, h: 1 }, interact: { kind: 'exit', verb: 'Leave', label: 'Door' } },
+  // ---- home yard + the Old Mine
+  yard_fence: { solid: true },
+  mine_entrance: { solid: true, footprint: { w: 3, h: 2 }, interact: { kind: 'mine_enter', verb: 'Enter', label: 'Old Mine' } },
+  mine_rock: { solid: true, interact: { kind: 'mine', verb: 'Mine', label: 'Rock' } },
+  ladder_up: { solid: true, interact: { kind: 'ascend', verb: 'Climb up', label: 'Ladder' } },
+  ladder_down: { solid: false, interact: { kind: 'descend', verb: 'Climb down', label: 'Ladder' } },
+  cave_crystal: { solid: false },
 };
 
 export class World {
@@ -53,6 +60,8 @@ export class World {
     this.applyFlags();
     this.objects = this.map.objects.map(o => ({ ...o, def: OBJECT_TYPES[o.type] || {}, variant: (o.x * 7 + o.y * 3) % 4 }));
     this.spots = this.map.spots;
+    this.broken = new Set();      // mine rocks broken this visit
+    this.monsters = (this.map.monsters || []).map((m, i) => ({ id: 'm' + i, ...m, x: m.x * TILE + 8, y: m.y * TILE + 12, hp: null, vx: 0, vy: 0, cool: 0, flash: 0, anim: Math.random() * 4, dir: 'down' }));
     this.npcs = (this.def.npcs || []).map(n => ({
       id: n.id, def: NPCS[n.id], x: n.x * TILE + 8, y: n.y * TILE + 12, homeX: n.x * TILE + 8, homeY: n.y * TILE + 12,
       wander: (n.wander || 0) * TILE, dir: 'down', frame: 0, anim: 0, timer: 1 + Math.random() * 2, tx: null, ty: null,
@@ -78,6 +87,7 @@ export class World {
   isWater(x, y) { return WATERY.has(this.tile(x, y)); }
 
   objectHidden(o) {
+    if (this.broken.has(o.id)) return true;
     if (o.type === 'bridgeSite' && this.islandState.flags.bridgeRepaired) return true;
     const res = o.def.resource;
     if (res && !o.def.keepWhenEmpty && !this.nodeReady(o)) return true;

@@ -54,4 +54,24 @@ export const INTERIORS = {
     },
     npcs: [],
   },
+
+  // Each friend who joins your game gets one of these in your yard.
+  cabin_interior: {
+    id: 'cabin_interior', name: 'Guest Cabin', interior: true, theme: THEME,
+    size: { w: 8, h: 8 },
+    spawn: { x: 4, y: 6 },
+    exit: { x: 3, y: 7, w: 2 },
+    build(m) {
+      const { I, L } = m.T;
+      m.fill(L);
+      m.rect(1, 2, 6, 5, I);
+      m.rect(3, 7, 2, 1, I);
+      m.obj('bed', 1, 2);
+      m.obj('nightstand', 3, 2);
+      m.obj('bookshelf', 5, 2);
+      m.obj('plant', 6, 6);
+      m.obj('doormat', 3, 7);
+    },
+    npcs: [],
+  },
 };

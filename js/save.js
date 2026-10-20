@@ -2,7 +2,7 @@
 // migrations, validation and export/import. A failed load never overwrites
 // the stored data — corrupt saves are preserved under a separate key.
 import { SAVE_VERSION, createIslandState, defaultSettings } from './state.js';
-import { ISLAND_ORDER } from '../data/island-data.js';
+import { ISLAND_ORDER, ISLANDS } from '../data/island-data.js';
 import { emit } from './events.js';
 
 const KEY = 'tidetown.save';
@@ -29,7 +29,33 @@ const MIGRATIONS = {
     s.settings = { ...defaultSettings(), ...(s.settings || {}) };
     return s;
   },
+  4: s => {
+    // v4 -> v5: Sunny Shores grew a home yard in the west, so everything built
+    // there moves east with the rest of the island and the cottage moves into
+    // the yard. Also: health, tools and the mine.
+    const sunny = s.islands?.sunny;
+    if (sunny) shiftSunnyLayout(sunny);
+    if (s.player.island === 'sunny' && s.player.pos) s.player.pos = { ...ISLANDS.sunny.spawn };
+    return s;
+  },
 };
+
+/** Move a pre-v5 Sunny Shores layout onto the bigger map. */
+export function shiftSunnyLayout(isl) {
+  const { x: dx, y: dy } = ISLANDS.sunny.layoutShift;
+  const home = ISLANDS.sunny.home.cottage;
+  for (const p of isl.placements || []) {
+    if (p.type === 'cottage') { p.x = home.x; p.y = home.y; p.rot = 0; }
+    else { p.x += dx; p.y += dy; }
+  }
+  const nodes = {};
+  for (const [id, t] of Object.entries(isl.nodes || {})) {
+    const m = /^(.*)_(\d+)_(\d+)$/.exec(id);
+    nodes[m ? `${m[1]}_${+m[2] + dx}_${+m[3] + dy}` : id] = t;
+  }
+  isl.nodes = nodes;
+  isl.layout = 2;
+}
 
 function storageAvailable() {
   try { localStorage.setItem('__tt', '1'); localStorage.removeItem('__tt'); return true; } catch { return false; }
@@ -73,6 +99,15 @@ export function migrate(s) {
   s.milestones = s.milestones || [];
   s.orders = s.orders || { list: [], nextAt: 0 };
   s.daily = s.daily || { date: null, goals: [], bonusClaimed: false };
+  // health, tools and the mine (v5)
+  const p = s.player;
+  p.maxHp = p.maxHp || 100;
+  p.hp = Number.isFinite(p.hp) ? Math.max(1, Math.min(p.maxHp, p.hp)) : p.maxHp;
+  s.inventory.tools = { pickaxe: 0, sword: 0, ...(s.inventory.tools || {}) };
+  s.inventory.held = s.inventory.held || 'rod';
+  for (const k of ['mineDeepest', 'monstersSlain', 'rocksBroken', 'daysSlept']) s.stats[k] = s.stats[k] || 0;
+  for (const isl of Object.values(s.islands)) isl.chests = isl.chests || {};
+  s.islands.sunny.layout = 2;
   return s;
 }
 

@@ -4,7 +4,8 @@ import { getState, commit } from '../../state.js';
 import { toast } from '../../events.js';
 import { fishStacks, sellFish, sellAllFish, capacity, fishCount, sellResource } from '../../inventory.js';
 import { FISH_BY_ID, VARIANT } from '../../../data/fish-data.js';
-import { RODS, BAIT, RESOURCES, RESOURCE_SELL } from '../../../data/item-data.js';
+import { RODS, BAIT, RESOURCES, RESOURCE_SELL, FOOD, TOOLS } from '../../../data/item-data.js';
+import { eat } from '../../combat.js';
 import { DECOR } from '../../../data/building-data.js';
 import { RARITY_COLORS } from '../../art/palette.js';
 import { countBuilt } from '../../building-count.js';
@@ -73,7 +74,16 @@ function renderFish(body) {
 function renderItems(body) {
   const s = getState();
   const items = s.inventory.items;
-  const res = Object.values(RESOURCES);
+  const res = Object.values(RESOURCES).filter(r => (items[r.id] || 0) > 0 || ['wood', 'stone', 'shell', 'seaglass', 'flower'].includes(r.id));
+  const foods = Object.values(FOOD).filter(f => (items[f.id] || 0) > 0);
+  if (foods.length) {
+    body.append(h('h4.section', `Food · ${Math.ceil(s.player.hp)}/${s.player.maxHp} HP`));
+    const fl = h('div.list');
+    for (const f of foods) fl.append(h('div.item-row', icon(f.icon, 'item-icon'),
+      h('div.item-main', h('div.item-name', f.name, h('span.count', '×' + items[f.id])), h('div.item-sub', f.desc)),
+      button('Eat', () => { const r = eat(null, f.id); toast(r.message, 'heart', r.ok ? 'good' : 'info'); refreshSheet(); }, { cls: 'small', sound: null })));
+    body.append(fl);
+  }
   body.append(h('h4.section', 'Materials'));
   const grid = h('div.list');
   for (const r of res) {
@@ -105,6 +115,15 @@ function renderItems(body) {
 
 function renderGear(body, ctx) {
   const s = getState();
+  body.append(h('h4.section', 'Tools'));
+  const tl = h('div.list');
+  for (const [kind, tiers] of Object.entries(TOOLS)) {
+    const t = tiers[s.inventory.tools[kind] || 0];
+    tl.append(h('div.item-row', icon(kind, 'item-icon'), h('div.item-main', h('div.item-name', t.name), h('div.item-sub', t.desc),
+      h('div.statline', h('span', kind === 'pickaxe' ? `Power ${t.power}` : `Damage ${t.damage}`))),
+      s.inventory.held === kind ? h('span.tag', 'In hand') : button('Hold', () => { s.inventory.held = kind; commit('held'); refreshSheet(); }, { cls: 'small' })));
+  }
+  body.append(tl);
   body.append(h('h4.section', 'Fishing Rods'));
   const list = h('div.list');
   for (const id of s.inventory.rods) {

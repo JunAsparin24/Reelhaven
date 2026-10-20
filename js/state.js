@@ -6,9 +6,10 @@ import { ISLANDS, ISLAND_ORDER } from '../data/island-data.js';
 import { MAIN_QUESTS } from '../data/quest-data.js';
 import { defaultPlacements } from './world-gen.js';
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 export const GAME_NAME = 'Reelhaven';
-export const GAME_VERSION = '2.0.0';
+// Version: 26 = the year (2026), then .1, then the number of commits so far.
+export const GAME_VERSION = '26.1.47';
 
 let state = null;
 
@@ -37,7 +38,9 @@ export function createIslandState(id) {
     placements: defaultPlacements(id).map(p => ({ ...p, uid: uid('p') })),
     nodes: {},          // resource node id -> timestamp when it is ready again
     gardens: {},        // placement uid -> last harvest timestamp
+    chests: {},         // chest placement uid -> { itemId: count }
     flags: {},
+    layout: 2,          // map layout version (2 = Sunny Shores with the home yard)
   };
 }
 
@@ -53,6 +56,7 @@ export function createNewState({ name = 'Islander', look }) {
       name: name.slice(0, 16) || 'Islander',
       look,
       level: 1, xp: 0, coins: 75, pearls: 0,
+      hp: 100, maxHp: 100,
       island: 'sunny',
       pos: { ...ISLANDS.sunny.spawn },
       facing: 'up',
@@ -65,6 +69,8 @@ export function createNewState({ name = 'Islander', look }) {
       equippedBait: 'none',
       hats: ['none', 'straw', 'bandana'],
       storedDecor: {},            // decorations picked up from the island
+      tools: { pickaxe: 0, sword: 0 },   // tier index into TOOLS (data/item-data.js)
+      held: 'rod',                // what the hotbar has selected: rod | pickaxe | sword
     },
     collection: {},               // fishId -> { count, maxSize, first, variant }
     quests: {
@@ -82,6 +88,7 @@ export function createNewState({ name = 'Islander', look }) {
       nightCatches: 0, rareCaught: 0, uncommonCaught: 0, legendaryCaught: 0, treasures: 0,
       ordersDone: 0, buildingsBuilt: 0, decorPlaced: 0, speciesNew: 0, casts: 0, escapes: 0,
       zoneCatch: {}, talked: {},
+      mineDeepest: 0, monstersSlain: 0, rocksBroken: 0, daysSlept: 0,
     },
     flags: {},
     islands,

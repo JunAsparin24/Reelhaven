@@ -58,7 +58,10 @@ export class ServerSaveBackend {
   async fetch() {
     const { save } = await this.net.request('save_get');
     if (!save) return null;
-    return { data: save.data, revision: save.revision, updated_at: save.updatedAt, device_label: save.device };
+    // Older cloud copies are upgraded the same way local saves are.
+    let data = save.data;
+    try { if (data && typeof data === 'object') { Save.validate(data); data = Save.migrate(data); } } catch (err) { console.warn('Cloud save could not be upgraded', err); }
+    return { data, revision: save.revision, updated_at: save.updatedAt, device_label: save.device };
   }
 
   async put(row, base) {

@@ -10,16 +10,52 @@ export const ISLAND_ORDER = ['sunny', 'coral', 'mangrove', 'moon'];
 
 export const ISLANDS = {
   sunny: {
-    id: 'sunny', name: 'Sunny Shores', size: { w: 48, h: 44 },
+    id: 'sunny', name: 'Sunny Shores', size: { w: 80, h: 56 },
     tagline: 'Your home island. Gentle waves and friendly faces.',
-    features: ['Starter shops', 'Hidden lagoon past the old bridge', 'Freshwater pond'],
+    features: ['Your own fenced home yard', 'Starter shops', 'The Old Mine', 'Hidden lagoon past the old bridge', 'Freshwater pond'],
     mapPos: { x: 0.24, y: 0.66 },
     theme: { deep: 'deep', near: 'ocean', shallow: 'shallow', pond: 'pond', reef: 'reef', grass: 'grass', sand: 'sand' },
     unlock: null,
-    spawn: { x: 22, y: 33 },
+    spawn: { x: 11, y: 27 },
+    // Where the home yard is and where friends' cabins go (see game.js).
+    home: { cottage: { x: 9, y: 24 }, yard: { x: 6, y: 22, w: 22, h: 19 } },
+    guestSpots: [{ x: 19, y: 24 }, { x: 23, y: 24 }, { x: 19, y: 34 }, { x: 23, y: 34 }],
+    // Older saves used the smaller map; their placements move by this much.
+    layoutShift: { x: 30, y: 8 },
     build(m) {
       const { W, S, G, P, D, X, O, H } = m.T;
       m.fill(W);
+
+      // ---- the home yard (west): a fenced clearing for the cottage, friends'
+      // cabins and whatever you want to grow or build
+      m.blob(17, 31, 15.5, 14.5, S, 0.08, 7);
+      m.rect(5, 20, 24, 23, G);
+      m.blob(12, 16, 9, 6.5, S, 0.1, 10);
+      m.blob(12, 16, 7, 4.5, G, 0.1, 9);                  // the hill by the mine
+      m.rect(27, 26, 16, 10, S);                          // land bridge to town
+      m.rect(27, 27, 16, 8, G);
+      // fence around the yard, with gates east (to town) and north (to the mine)
+      const { x: fx, y: fy, w: fw, h: fh } = { x: 6, y: 22, w: 22, h: 19 };
+      for (let x = fx; x < fx + fw; x++) {
+        if (x !== 16 && x !== 17) m.obj('yard_fence', x, fy);
+        m.obj('yard_fence', x, fy + fh - 1);
+      }
+      for (let y = fy + 1; y < fy + fh - 1; y++) {
+        m.obj('yard_fence', fx, y, { vert: true });
+        if (y !== 30 && y !== 31) m.obj('yard_fence', fx + fw - 1, y, { vert: true });
+      }
+      m.path([[11, 26], [11, 30], [33, 30]], P, 2);       // cottage door -> east gate -> town
+      m.path([[16, 23], [16, 19], [12, 19]], P, 2);       // north gate -> mine
+      m.place('cottage', 9, 24);
+      m.obj('mine_entrance', 11, 16);
+      for (const [x, y] of [[8, 15], [15, 14], [17, 17], [7, 18]]) m.obj('rock', x, y);
+      for (const [x, y] of [[3, 27], [4, 38], [30, 22], [29, 40], [2, 33]]) m.obj('palm', x, y);
+      for (const [x, y] of [[8, 21], [25, 21], [8, 41]]) m.obj('flowers', x, y);
+      m.obj('shells', 14, 44); m.obj('driftwood', 24, 44);
+      m.spot('home_beach', 'beach', 3, 31, 'left', 'Home Beach');
+
+      // ---- the original island, moved east to make room
+      m.offset(30, 8);
       m.blob(22, 23, 16, 14, S, 0.1, 1);
       m.blob(22, 22, 13, 11, G, 0.1, 2);
       m.blob(39, 9, 6, 5, S, 0.1, 3);
@@ -36,36 +72,36 @@ export const ISLANDS = {
       m.path([[22, 24], [22, 19], [30, 19], [30, 12]], P, 1);
       m.path([[29, 11], [30, 11]], P, 2);
       m.path([[14, 25], [14, 26]], P, 1);
+      m.path([[3, 22], [14, 22]], P, 2);  // from the land bridge into town
       // dock
       m.rect(21, 35, 2, 6, D);
       m.rect(18, 40, 7, 2, D);
 
-      m.place('cottage', 12, 17);
       m.obj('shop', 25, 16);
       m.obj('board', 18, 22);
       m.obj('boat', 26, 41);
       m.obj('bridgeSite', 29, 13);
-      for (const [x, y] of [[9, 15], [17, 12], [34, 21], [8, 30], [26, 31], [35, 29], [24, 12], [37, 7], [42, 10], [10, 20], [33, 15]]) m.obj('palm', x, y);
+      for (const [x, y] of [[9, 15], [17, 12], [34, 21], [8, 30], [26, 31], [35, 29], [24, 12], [37, 7], [42, 10], [33, 15]]) m.obj('palm', x, y);
       for (const [x, y] of [[31, 35], [9, 34]]) m.obj('driftwood', x, y);
       for (const [x, y] of [[33, 17], [17, 31], [41, 12]]) m.obj('boulder', x, y);
       for (const [x, y] of [[16, 36], [28, 36], [37, 22], [7, 25], [36, 32]]) m.obj('shells', x, y);
       m.obj('seaglass', 44, 9);
       for (const [x, y] of [[18, 29], [27, 22], [38, 11]]) m.obj('flowerbush', x, y);
-      for (const [x, y] of [[11, 22], [33, 24], [16, 15], [25, 27], [40, 7]]) m.obj('bush', x, y);
-      for (const [x, y] of [[19, 18], [10, 26], [28, 25], [16, 21], [24, 21], [36, 9], [31, 27]]) m.obj('flowers', x, y);
+      for (const [x, y] of [[33, 24], [16, 15], [25, 27], [40, 7]]) m.obj('bush', x, y);
+      for (const [x, y] of [[19, 18], [10, 26], [28, 25], [16, 21], [24, 21], [36, 9], [31, 27], [12, 17]]) m.obj('flowers', x, y);
       for (const [x, y] of [[12, 35], [34, 34], [38, 26]]) m.obj('rock', x, y);
 
       m.spot('dock_end', 'ocean', 21, 41, 'down', 'Dock End');
       m.spot('dock_west', 'ocean', 18, 40, 'left', 'Dock Corner');
       m.spot('east_beach', 'beach', 34, 25, 'right', 'East Beach');
-      m.spot('west_beach', 'beach', 10, 22, 'left', 'West Beach');
       m.spot('pond', 'pond', 13, 24, 'down', 'Lily Pond');
       m.spot('lagoon', 'lagoon', 39, 9, 'up', 'Hidden Lagoon');
+      m.offset(0, 0);
     },
     npcs: [
-      { id: 'mira', x: 23, y: 40 },
-      { id: 'rowan', x: 28, y: 14 },
-      { id: 'pip', x: 17, y: 26, wander: 3 },
+      { id: 'mira', x: 53, y: 48 },
+      { id: 'rowan', x: 58, y: 22 },
+      { id: 'pip', x: 47, y: 34, wander: 3 },
     ],
   },
 

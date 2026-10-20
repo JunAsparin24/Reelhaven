@@ -4,11 +4,11 @@
 import { ISLANDS } from '../data/island-data.js';
 import { INTERIORS } from '../data/interior-data.js';
 
-export const T = { W: 0, S: 1, G: 2, P: 3, D: 4, B: 5, X: 6, O: 7, M: 8, K: 9, N: 10, R: 11, H: 12, I: 13, L: 14 };
-export const TERRAIN_NAMES = ['water', 'sand', 'grass', 'path', 'dock', 'bridge', 'bridgeBroken', 'pond', 'mud', 'darkgrass', 'moongrass', 'reef', 'shallows', 'floor', 'wall'];
+export const T = { W: 0, S: 1, G: 2, P: 3, D: 4, B: 5, X: 6, O: 7, M: 8, K: 9, N: 10, R: 11, H: 12, I: 13, L: 14, C: 15, V: 16 };
+export const TERRAIN_NAMES = ['water', 'sand', 'grass', 'path', 'dock', 'bridge', 'bridgeBroken', 'pond', 'mud', 'darkgrass', 'moongrass', 'reef', 'shallows', 'floor', 'wall', 'cave', 'rockwall'];
 
 /** Tiles you can stand on. */
-export const WALKABLE = new Set([T.S, T.G, T.P, T.D, T.B, T.M, T.K, T.N, T.H, T.I]);
+export const WALKABLE = new Set([T.S, T.G, T.P, T.D, T.B, T.M, T.K, T.N, T.H, T.I, T.C]);
 /** Tiles that count as water for fishing / bobbers. */
 export const WATERY = new Set([T.W, T.O, T.R]);
 /** Tiles where buildings and decorations may be placed. */
@@ -16,8 +16,8 @@ export const BUILDABLE = new Set([T.S, T.G, T.M, T.K, T.N]);
 
 /** What each walkable terrain sounds like underfoot (see js/footsteps.js). */
 export const SURFACE = {
-  [T.S]: 'sand', [T.G]: 'grass', [T.K]: 'grass', [T.N]: 'grass', [T.P]: 'stone',
-  [T.D]: 'wood', [T.B]: 'wood', [T.M]: 'mud', [T.H]: 'shallow_water', [T.I]: 'wood',
+  [T.S]: 'sand', [T.G]: 'grass', [T.K]: 'grass', [T.N]: 'grass', [T.P]: 'mud',
+  [T.D]: 'wood', [T.B]: 'wood', [T.M]: 'mud', [T.H]: 'shallow_water', [T.I]: 'wood', [T.C]: 'stone',
 };
 
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
@@ -32,6 +32,9 @@ export function buildIslandMap(id) {
   const objects = [];
   const spots = [];
   const placements = [];
+  const monsters = [];
+  // Everything a map script draws can be shifted (used when an island grows).
+  let ox = 0, oy = 0;
   const idx = (x, y) => y * w + x;
   const inb = (x, y) => x >= 0 && y >= 0 && x < w && y < h;
   const get = (x, y) => (inb(x, y) ? terrain[idx(x, y)] : T.W);
@@ -39,7 +42,9 @@ export function buildIslandMap(id) {
   const m = {
     T,
     fill(t) { terrain.fill(t); },
-    set(x, y, t) { if (inb(x, y)) terrain[idx(x, y)] = t; },
+    offset(x, y) { ox = x; oy = y; },
+    raw(x, y, t) { if (inb(x, y)) terrain[idx(x, y)] = t; },
+    set(x, y, t) { x += ox; y += oy; if (inb(x, y)) terrain[idx(x, y)] = t; },
     rect(x, y, rw, rh, t) { for (let j = y; j < y + rh; j++) for (let i = x; i < x + rw; i++) m.set(i, j, t); },
     blob(cx, cy, rx, ry, t, wobble = 0.1, seed = 0) {
       for (let y = Math.floor(cy - ry - 3); y <= cy + ry + 3; y++) {
@@ -63,9 +68,10 @@ export function buildIslandMap(id) {
         }
       }
     },
-    obj(type, x, y, extra = {}) { objects.push({ id: `${type}_${x}_${y}`, type, x, y, ...extra }); },
-    place(type, x, y, rot = 0) { placements.push({ type, x, y, rot }); },
-    spot(sid, zone, x, y, facing, name, extra = {}) { spots.push({ id: sid, zone, x, y, facing, name, ...extra }); },
+    obj(type, x, y, extra = {}) { x += ox; y += oy; objects.push({ id: `${type}_${x}_${y}`, type, x, y, ...extra }); },
+    place(type, x, y, rot = 0) { placements.push({ type, x: x + ox, y: y + oy, rot }); },
+    spot(sid, zone, x, y, facing, name, extra = {}) { spots.push({ id: sid, zone, x: x + ox, y: y + oy, facing, name, ...extra }); },
+    monster(type, x, y) { monsters.push({ type, x: x + ox, y: y + oy }); },
   };
 
   def.build(m);
@@ -103,10 +109,13 @@ export function buildIslandMap(id) {
     }
   }
 
-  const map = { id, w, h, terrain, objects, spots, placements, get, inb };
+  const map = { id, w, h, terrain, objects, spots, placements, monsters, get, inb };
   cache.set(id, map);
   return map;
 }
+
+/** Drop a cached map (mine floors are regenerated on every visit). */
+export function forgetMap(id) { cache.delete(id); }
 
 export function defaultPlacements(id) {
   return buildIslandMap(id).placements;

@@ -35,7 +35,8 @@ export function islandSnapshot(state) {
     islands: Object.entries(state.islands).filter(([, v]) => v.unlocked).map(([id, v]) => ({
       id, name: ISLANDS[id].name,
       flags: { bridgeRepaired: !!v.flags?.bridgeRepaired },
-      placements: v.placements.map(({ type, x, y, rot }) => ({ type, x, y, rot })),
+      layout: v.layout || 1,
+      placements: v.placements.map(({ type, x, y, rot, owner, ownerName }) => ({ type, x, y, rot, ...(owner ? { owner, ownerName } : {}) })),
     })),
   };
 }

@@ -30,7 +30,12 @@ import { countBuilt } from './building-count.js';
 import { hasBlueprint } from './shop.js';
 import { reasonText } from './building.js';
 import { addXp } from './progression.js';
-import { commit } from './state.js';
+import { commit, uid } from './state.js';
+import { mineFloor } from '../data/mine-data.js';
+import { forgetMap } from './world-gen.js';
+import { swing, updateMonsters, faceToward as facePoint } from './combat.js';
+import { sleepToMorning, setClock } from './weather.js';
+import { shiftSunnyLayout } from './save.js';
 
 export class Game {
   constructor({ canvas, ui }) {
@@ -45,7 +50,9 @@ export class Game {
     this.build = new BuildMode(this);
     this.footsteps = new FootstepSystem(this);
     this.visit = null;
-    this.indoor = null;           // { id, outside: World, ret: {x, y} } while inside a building
+    this.indoor = null;           // { id, outside: World, ret: {x, y}, mine? } while inside a building or the mine
+    this.sleeping = false;        // in bed, waiting for everyone else (multiplayer)
+    this.sleepers = new Set();    // other players on this island who are in bed
     this.remotes = new Map();
     this.charCache = new Map();
     this.interactTarget = null;
@@ -61,6 +68,7 @@ export class Game {
       onInteractKey: e => this.onInteractKey(e),
       onEscape: () => this.onEscape(),
       onRotateKey: () => { if (this.build.active && this.build.type) this.build.rotate(); },
+      onHotkey: n => this.onHotkey(n),
       onKeyNudge: dir => this.build.active && this.build.type && this.build.nudge(...{ up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[dir]),
       onDrag: (dx, dy) => this.onBuildDrag(dx, dy),
       onDragEnd: () => { this.dragAcc = null; },
@@ -205,6 +213,8 @@ export class Game {
     const islands = snapshot?.islands?.length ? snapshot.islands : [{ id: islandId || 'sunny', placements: [], flags: {} }];
     const isl = islands.find(i => i.id === islandId) || (member ? { id: islandId, placements: [], flags: {} } : islands[0]);
     if (!isl || !ISLANDS[isl.id]) { toast('That island can’t be visited right now.', null, 'error'); return; }
+    // A friend whose game hasn't updated yet still shares the old, smaller map.
+    if (isl.id === 'sunny' && (isl.layout || 1) < 2 && isl.placements?.length) shiftSunnyLayout(isl);
     this.syncPlayerToState();
     this.ui.fade(() => {
       this.leaveChannel();
@@ -213,6 +223,8 @@ export class Game {
         placements: isl.placements.filter(p => p && typeof p.type === 'string').map((p, i) => ({ ...p, uid: 'visit' + i })),
       };
       this.indoor = null;
+      this.sleeping = false;
+      this.sleepers = new Set();
       this.visit = { hostId, hostName, islandId: isl.id, islandName: isl.name || ISLANDS[isl.id].name, hostHere: false, member };
       this.world = new World(isl.id, temp);
       this.renderer.setWorld(this.world);
@@ -260,12 +272,21 @@ export class Game {
         for (const id of [...this.remotes.keys()]) if (!ids.has(id)) this.remotes.delete(id);
         for (const p of list) {
           const r = this.remotes.get(p.id) || { x: p.x, y: p.y, tx: p.x, ty: p.y, f: p.f || 'down', anim: 0 };
-          Object.assign(r, { name: p.name, look: p.look, host: p.host });
+          Object.assign(r, { name: p.name, look: p.look, host: p.host, member: p.member });
           this.remotes.set(p.id, r);
         }
+        for (const id of [...this.sleepers]) if (!ids.has(id)) this.sleepers.delete(id);
         if (this.visit) { this.visit.hostHere = list.some(p => p.host); this.ui.refreshVisit(); }
-        else this.shareLayout();   // newcomers get the host's live layout
+        else {
+          this.ensureGuestCabins(list);
+          this.shareLayout();      // newcomers get the host's live layout
+          this.shareClock(true);
+        }
+        if (this.sleeping) this.ui.online?.social.relay('sleep', { on: true });
+        this.ui.refreshSleep?.();
+        this.checkSleep();
       },
+      onRelay: m => this.onRelay(m),
       onCoopEdit: m => this.hostCoopEdit(m),
       onCoopLayout: m => this.applyCoopLayout(m),
       onMove: (id, pos) => {
@@ -278,7 +299,7 @@ export class Game {
 
   leaveChannel() {
     if (this.channel) { try { this.channel.leave(); } catch { /* already closed */ } }
-    this.channel = null; this.channelKey = null; this.remotes = new Map();
+    this.channel = null; this.channelKey = null; this.remotes = new Map(); this.sleepers = new Set();
   }
 
   /** Throttled position broadcast + smooth movement of other players. */
@@ -296,6 +317,8 @@ export class Game {
       this.lastSent = { x: Math.round(p.x), y: Math.round(p.y), f: p.facing };
       try { this.channel.send(this.lastSent); } catch { /* reconnecting */ }
     }
+    this.clockT = (this.clockT || 0) - dt;
+    if (this.clockT <= 0) { this.clockT = 8; this.shareClock(); }
     for (const r of this.remotes.values()) {
       const dx = r.tx - r.x, dy = r.ty - r.y, d = Math.hypot(dx, dy);
       r.moving = d > 0.6;
@@ -342,7 +365,7 @@ export class Game {
 
   // ---------------------------------------------------------------- input
   inputBlocked() {
-    return this.mode !== 'play' || this.ui.blocking() || (this.fishing && this.fishing.active);
+    return this.mode !== 'play' || this.ui.blocking() || (this.fishing && this.fishing.active) || this.sleeping;
   }
 
   onTap(cssX, cssY) {
@@ -399,8 +422,12 @@ export class Game {
       test(o.x * TILE + fp.w * 8, (o.y + fp.h) * TILE - 10, o.x + Math.floor(fp.w / 2), o.y + fp.h, it => it.obj === o, fp.w > 1 || o.type === 'boat' ? 30 : 18);
     }
     for (const p of w.placed) {
-      if (p.def.kind !== 'building') continue;
-      test(p.x * TILE + p.fw * 8, (p.y + p.fh) * TILE - 12, p.x + Math.floor(p.fw / 2), p.y + p.fh, it => it.placement === p, 30);
+      if (p.def.kind !== 'building' && !p.def.use) continue;
+      test(p.x * TILE + p.fw * 8, (p.y + p.fh) * TILE - 12, p.x + Math.floor(p.fw / 2), p.y + p.fh, it => it.placement === p, p.def.use ? 18 : 30);
+    }
+    for (const m of w.monsters) {
+      if (m.dead) continue;
+      test(m.x, m.y - 8, Math.floor(m.x / TILE), Math.floor((m.y - 1) / TILE), it => it.monster === m, 20, true);
     }
     return best;
   }
@@ -424,7 +451,14 @@ export class Game {
     if (this.fishing && this.fishing.active) return false; // fishing UI handles keys
     if (this.ui.blocking()) return false;
     if (this.interactTarget) { this.interact(this.interactTarget); return true; }
+    if (swing(this)) return true;
     return false;
+  }
+
+  /** Number keys pick a hotbar slot. */
+  onHotkey(n) {
+    if (this.mode !== 'play' || this.ui.blocking()) return false;
+    return this.ui.hotbar?.pick(n - 1) || false;
   }
 
   onEscape() {
@@ -457,8 +491,11 @@ export class Game {
 
   canUse(it) {
     if (!this.visit) return true;
-    if (it.kind === 'npc' || it.kind === 'enter' || it.kind === 'exit') return true;
-    return this.visit.member && ['spot', 'gather', 'shop', 'board'].includes(it.kind);
+    if (['npc', 'enter', 'exit'].includes(it.kind)) return true;
+    // Joined players can fish, gather, shop, mine and sleep (their own progress);
+    // a host's chests stay the host's.
+    if (it.kind === 'use') return this.visit.member && it.placement?.def.use !== 'chest';
+    return this.visit.member && ['spot', 'gather', 'shop', 'board', 'bed', 'mine_enter', 'mine', 'attack', 'descend', 'ascend', 'swing'].includes(it.kind);
   }
 
   // ---------------------------------------------------------------- co-op
@@ -468,7 +505,7 @@ export class Game {
     if (this.visit || !this.channel || !online?.auth.signedIn) return;
     const isl = getState().islands[this.outdoor.id];
     online.social.shareLayout({ bridgeRepaired: !!isl.flags.bridgeRepaired },
-      isl.placements.map(({ uid, type, x, y, rot }) => ({ uid, type, x, y, rot })));
+      isl.placements.map(({ uid, type, x, y, rot, owner, ownerName }) => ({ uid, type, x, y, rot, ...(owner ? { owner, ownerName } : {}) })));
   }
 
   /** Host: a visiting friend wants to place or move something. */
@@ -585,7 +622,27 @@ export class Game {
       case 'shop': this.ui.open('shop'); break;
       case 'enter': this.enterInterior(it); break;
       case 'exit': this.exitInterior(); break;
-      case 'bed': this.ui.restMenu(); break;
+      case 'bed': this.ui.sleepPrompt(); break;
+      case 'use': this.ui.useUtility(it.placement); break;
+      case 'mine_enter': this.ui.mineMenu(); break;
+      case 'descend': this.enterMine((this.world.def.level || 0) + 1); break;
+      case 'ascend': this.exitInterior(); break;
+      case 'mine': {
+        const o = it.obj;
+        getState().inventory.held = 'pickaxe';
+        p.facing = facePoint(p, o.x * TILE + 8, o.y * TILE + 12);
+        swing(this, 'pickaxe');
+        this.ui.hotbar?.render();
+        break;
+      }
+      case 'attack': {
+        getState().inventory.held = 'sword';
+        p.facing = facePoint(p, it.monster.x, it.monster.y);
+        swing(this, 'sword');
+        this.ui.hotbar?.render();
+        break;
+      }
+      case 'swing': swing(this); break;
       case 'boat': this.ui.open('map'); break;
       case 'bridge': this.ui.bridge(); break;
       case 'building': this.ui.building(it.placement); break;
@@ -600,7 +657,7 @@ export class Game {
   /** Walk into a building: the shop object or a cottage placement. */
   enterInterior(it) {
     if (this.indoor || this.ui.fading) return;
-    const id = it.obj ? it.obj.def.interior : 'cottage_interior';
+    const id = it.obj ? it.obj.def.interior : it.placement?.type === 'guest_cabin' ? 'cabin_interior' : 'cottage_interior';
     const def = INTERIORS[id];
     if (!def) return;
     // Where to stand when coming back out: the tile in front of the door.
@@ -638,6 +695,164 @@ export class Game {
       this.camera.snap(this.player.x, this.player.y, this.world);
       this.syncPlayerToState();
     }, '');
+  }
+
+  // ---------------------------------------------------------------- the mine
+  /** Go down to a mine floor (from the entrance or a ladder). */
+  enterMine(level) {
+    if (this.ui.fading) return;
+    const surface = this.outdoor;
+    let ret = this.indoor?.ret;
+    if (!this.indoor) {
+      const ent = surface.objects.find(o => o.type === 'mine_entrance');
+      ret = ent ? { x: ent.x + 1, y: ent.y + 2 } : { x: this.player.tileX, y: this.player.tileY };
+    }
+    const s = getState();
+    sfx('ladder');
+    this.ui.fade(() => {
+      forgetMap('mine_' + level);
+      const def = mineFloor(level, Date.now() & 0xffffff);
+      this.indoor = { id: def.id, outside: surface, ret, mine: true };
+      this.world = new World(def.id, { unlocked: true, visited: true, nodes: {}, gardens: {}, flags: {}, placements: [] });
+      this.renderer.setWorld(this.world);
+      this.player.placeAtTile(def.spawn.x, def.spawn.y);
+      this.player.facing = 'down';
+      this.onResize();
+      this.camera.snap(this.player.x, this.player.y, this.world);
+      this.ui.closeAll();
+      if (level > (s.stats.mineDeepest || 0)) {
+        s.stats.mineDeepest = level;
+        if (level % 5 === 0) setTimeout(() => toast(`Floor ${level} reached! You can start here next time.`, 'sparkle', 'gold'), 500);
+        commit('mine');
+      }
+      this.ui.refreshWhere?.();
+    }, `Floor ${level}`);
+  }
+
+  /** HP ran out: wake up outside the mine, a little lighter in the pocket. */
+  faint() {
+    if (this.fainting) return;
+    this.fainting = true;
+    const s = getState();
+    const lost = Math.min(300, Math.floor(s.player.coins * 0.1));
+    this.ui.fade(() => {
+      const ind = this.indoor;
+      if (ind) {
+        this.indoor = null;
+        this.world = ind.outside;
+        this.world.rebuild();
+        this.renderer.setWorld(this.world);
+        this.player.placeAtTile(ind.ret.x, ind.ret.y);
+      }
+      this.player.facing = 'down';
+      this.player.invuln = 2;
+      s.player.coins -= lost;
+      s.player.hp = Math.ceil(s.player.maxHp * 0.5);
+      this.onResize();
+      this.camera.snap(this.player.x, this.player.y, this.world);
+      this.syncPlayerToState();
+      commit('faint');
+      this.fainting = false;
+      this.ui.refreshWhere?.();
+      setTimeout(() => toast(lost ? `You passed out and dropped ${lost} coins. Take some food next time!` : 'You passed out. Take some food next time!', 'sleep', 'error'), 500);
+    }, 'You passed out…');
+  }
+
+  // ---------------------------------------------------------------- sleeping
+  /** Players whose bed time counts: the host and everyone who joined the game. */
+  bedPeers() { return [...this.remotes.entries()].filter(([, r]) => r.host || r.member).map(([id]) => id); }
+
+  /** Get into bed. Alone you wake up next morning; together, once everyone is in bed. */
+  goToSleep() {
+    const others = this.channel ? this.bedPeers() : [];
+    if (!others.length) { this.wakeUp(false); return; }
+    this.sleeping = true;
+    this.player.cancelPath();
+    this.ui.online?.social.relay('sleep', { on: true });
+    this.ui.refreshSleep?.();
+    this.checkSleep();
+  }
+
+  getUp() {
+    if (!this.sleeping) return;
+    this.sleeping = false;
+    this.ui.online?.social.relay('sleep', { on: false });
+    this.ui.refreshSleep?.();
+  }
+
+  /** The host starts the new day once every player is in bed. */
+  checkSleep() {
+    if (this.visit || !this.sleeping) return;
+    if (this.bedPeers().every(id => this.sleepers.has(id))) this.wakeUp(true);
+  }
+
+  /** Fade out, skip to 6 AM tomorrow, fade in. broadcast = tell the others. */
+  wakeUp(broadcast, clock = null) {
+    this.ui.fade(() => {
+      if (clock) {
+        setClock(clock);
+        const s = getState();
+        s.player.hp = s.player.maxHp;
+        s.stats.daysSlept = (s.stats.daysSlept || 0) + 1;
+        emit('newDay', { day: clock.day, slept: true });
+        commit('sleep');
+      } else sleepToMorning();
+      this.sleeping = false;
+      this.sleepers = new Set();
+      if (broadcast) {
+        const w = getState().world;
+        this.ui.online?.social.relay('wake', { day: w.day, minutes: Math.floor(w.minutes), weather: w.weather });
+      }
+      this.ui.refreshSleep?.();
+      const day = getState().world.day;
+      setTimeout(() => toast(`Day ${day} — good morning!`, 'sun', 'good'), 500);
+    }, 'Zzz…');
+  }
+
+  onRelay(m) {
+    const fromHost = this.visit && m.user === this.visit.hostId;
+    if (m.kind === 'sleep') {
+      if (m.data.on) this.sleepers.add(m.user); else this.sleepers.delete(m.user);
+      this.ui.refreshSleep?.();
+      this.checkSleep();
+    } else if (m.kind === 'wake' && fromHost && this.visit.member) {
+      this.wakeUp(false, m.data);
+    } else if (m.kind === 'clock' && fromHost && this.visit.member && !this.ui.fading) {
+      const w = getState().world;
+      if (w.day !== m.data.day || Math.abs(w.minutes - m.data.minutes) > 3 || w.weather !== m.data.weather) setClock(m.data);
+    }
+  }
+
+  /** Host: keep joined players on the same day and time. */
+  shareClock(now = false) {
+    if (this.visit || !this.channel || !this.bedPeers().length) return;
+    if (!now && this.ui.fading) return;
+    const w = getState().world;
+    this.ui.online?.social.relay('clock', { day: w.day, minutes: Math.floor(w.minutes), weather: w.weather });
+  }
+
+  /** Host: every friend who joins gets their own cabin in the home yard. */
+  ensureGuestCabins(list) {
+    const world = this.outdoor;
+    if (this.visit || world.id !== 'sunny') return;
+    const isl = getState().islands.sunny;
+    const def = ISLANDS.sunny;
+    let added = false;
+    for (const p of list) {
+      if (!p.member || p.host) continue;
+      if (isl.placements.some(q => q.type === 'guest_cabin' && q.owner === p.id)) continue;
+      let spot = def.guestSpots.find(g => world.canPlace('guest_cabin', g.x, g.y, 0).ok);
+      if (!spot) {
+        const yd = def.home.yard;
+        for (let y = yd.y + 1; y < yd.y + yd.h - 3 && !spot; y++) for (let x = yd.x + 1; x < yd.x + yd.w - 3; x++) if (world.canPlace('guest_cabin', x, y, 0).ok) { spot = { x, y }; break; }
+      }
+      if (!spot) continue;
+      isl.placements.push({ uid: uid('p'), type: 'guest_cabin', x: spot.x, y: spot.y, rot: 0, owner: p.id, ownerName: p.name || 'Friend' });
+      world.rebuild();
+      added = true;
+      toast(`A cabin went up in your yard for ${p.name || 'your friend'}!`, 'home', 'good');
+    }
+    if (added) commit('build');
   }
 
   startFishing(spot) {
@@ -683,7 +898,12 @@ export class Game {
     if (!this.build.active) this.player.update(dt, input, this.world);
     else this.player.moving = false;
     this.footsteps.update(dt);
-    if (this.indoor && !this.ui.fading && this.player.tileY >= this.world.def.exit.y) this.exitInterior();
+    if (this.indoor && this.world.def.exit && !this.ui.fading && this.player.tileY >= this.world.def.exit.y) this.exitInterior();
+    const pl = this.player;
+    if (pl.swingCool > 0) pl.swingCool -= dt;
+    if (pl.swing) { pl.swing.t += dt; if (pl.swing.t >= pl.swing.dur) pl.swing = null; }
+    if (pl.invuln > 0) pl.invuln -= dt;
+    if (this.world.monsters.length && !this.ui.fading) updateMonsters(this, dt);
     this.updateNpcs(dt);
     if (this.fishing) this.fishing.update(dt);
     this.interactTarget = this.build.active || this.fishing ? null : findInteractable(this);
@@ -766,7 +986,7 @@ export class Game {
     const scene = {
       camera: this.camera,
       world: this.world,
-      player: play ? this.player : null,
+      player: play && !this.sleeping ? this.player : null,
       playerSprite: play ? sprite('player') : null,
       state: st,
       fishing: this.fishing,

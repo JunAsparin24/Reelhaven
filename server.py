@@ -172,9 +172,14 @@ def clean_snapshot(snap):
         placements = []
         for p in isl.get("placements", [])[:600]:
             if isinstance(p, dict) and isinstance(p.get("type"), str) and len(p["type"]) <= 32:
-                placements.append({"type": p["type"], "x": int(p.get("x", 0)), "y": int(p.get("y", 0)), "rot": int(p.get("rot", 0)) % 4})
+                q = {"type": p["type"], "x": int(p.get("x", 0)), "y": int(p.get("y", 0)), "rot": int(p.get("rot", 0)) % 4}
+                if p.get("owner"):              # friends' guest cabins remember who they belong to
+                    q["owner"] = clean_text(p.get("owner"), 16)
+                    q["ownerName"] = clean_text(p.get("ownerName"), 20)
+                placements.append(q)
         flags = isl.get("flags") if isinstance(isl.get("flags"), dict) else {}
-        islands.append({"id": isl["id"], "name": clean_text(isl.get("name"), 30), "flags": {"bridgeRepaired": bool(flags.get("bridgeRepaired"))}, "placements": placements})
+        islands.append({"id": isl["id"], "name": clean_text(isl.get("name"), 30), "flags": {"bridgeRepaired": bool(flags.get("bridgeRepaired"))},
+                        "layout": max(1, min(9, int(isl.get("layout", 1) or 1))), "placements": placements})
     return {"schema": 2, "name": clean_text(snap.get("name"), 20), "level": int(snap.get("level", 1)), "look": clean_look(snap.get("look")),
             "species": int(snap.get("species", 0)), "speciesTotal": int(snap.get("speciesTotal", 0)), "islands": islands}
 
@@ -635,11 +640,36 @@ class Server:
                 o.ws.send(msg)
         return None
 
+    RELAY_KINDS = {"sleep", "wake", "clock"}
+
+    def on_room_relay(self, c, m):
+        """Small game events shared with everyone on the same island: who is in
+        bed, and (from the host only) the shared clock and the new morning."""
+        if not c.user or not c.room:
+            return None
+        kind = str(m.get("kind", ""))
+        if kind not in self.RELAY_KINDS:
+            return None
+        host = c.room[0] == c.user
+        d = m.get("data") if isinstance(m.get("data"), dict) else {}
+        if kind == "sleep":
+            data = {"on": bool(d.get("on"))}
+        else:
+            if not host:
+                return None
+            weather = d.get("weather") if d.get("weather") in ("sunny", "rain", "storm") else "sunny"
+            data = {"day": max(1, min(10**6, int(d.get("day", 1)))), "minutes": max(0, min(1439, int(d.get("minutes", 0)))), "weather": weather}
+        msg = {"t": "relay", "kind": kind, "user": c.user, "host": c.room[0], "island": c.room[1], "data": data}
+        for o in self.rooms.get(c.room, ()):
+            if o is not c:
+                o.ws.send(msg)
+        return None
+
     def push_peers(self, key):
         members = self.rooms.get(key, set())
         for c in members:
             peers = [{"user": o.user, "name": self.store.accounts[o.user]["name"], "look": self.store.accounts[o.user].get("look", {}),
-                      "host": o.user == key[0], **(o.pos or {})} for o in members if o is not c and o.user]
+                      "host": o.user == key[0], "member": self.is_member(o.user, key[0]), **(o.pos or {})} for o in members if o is not c and o.user]
             c.ws.send({"t": "peers", "host": key[0], "island": key[1], "list": peers})
 
     def leave_room(self, c):

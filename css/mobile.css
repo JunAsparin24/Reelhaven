@@ -10,7 +10,10 @@
   .nav-btn { flex: 1 1 0; max-width: 64px; width: auto; height: 48px; }
   .nav-sep { display: none; }
   #hud-top { max-width: calc(100% - 2 * var(--pad)); }
-  #action-region { bottom: calc(var(--edge-b) + var(--menu-h) + 10px); }
+  #hotbar { bottom: calc(var(--edge-b) + var(--menu-h) + 8px); right: var(--edge-r); align-items: stretch; }
+  #hotbar .slots { justify-content: space-between; }
+  #hotbar .slot { flex: 1 1 0; max-width: 46px; width: auto; height: 40px; }
+  #action-region { bottom: calc(var(--edge-b) + var(--menu-h) + var(--hotbar-h, 0px) + 16px); }
   #fishing-ui, #dialogue, #build-bar { bottom: calc(var(--edge-b) + var(--menu-h) + 8px); }
   #fishing-ui { grid-template-columns: 1fr 104px; }
   .fish-head .chip.static { display: none; }
@@ -87,6 +90,10 @@
   .nav-btn { width: 66px; height: 66px; font-size: 0.66rem; gap: 2px; }
   .nav-btn .px-icon { width: 34px; height: 34px; }
   .nav-sep { width: 8px; }
+  #hotbar .slot { width: 56px; height: 56px; }
+  #hotbar .slot .px-icon { width: 34px; height: 34px; }
+  .bar.hp { width: 150px; height: 11px; }
+  .hp-bar { font-size: 0.85rem; }
   #nav { gap: 6px; }
   #hud-top { gap: 8px; }
   .pinfo { width: 150px; }
@@ -108,6 +115,8 @@
   #app { --pad: 20px; }
   .nav-btn { width: 80px; height: 80px; }
   .nav-btn .px-icon { width: 42px; height: 42px; }
+  #hotbar .slot { width: 68px; height: 68px; }
+  #hotbar .slot .px-icon { width: 42px; height: 42px; }
   .pinfo { width: 180px; }
   .pill, .profile { min-height: 66px; }
   .pill .px-icon { width: 30px; height: 30px; }

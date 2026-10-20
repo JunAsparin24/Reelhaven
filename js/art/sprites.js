@@ -76,6 +76,24 @@ export function buildAllSprites() {
   put('nightstand', OBJ.nightstand()); put('fireplace', OBJ.fireplace()); put('bookshelf', OBJ.bookshelf());
   put('table', OBJ.table()); put('rug', OBJ.rug()); put('doormat', OBJ.doormat());
 
+  // home yard, mine, monsters
+  put('guest_cabin', OBJ.guestCabin(false)); put('guest_cabin_lit', OBJ.guestCabin(true));
+  put('mine_entrance', OBJ.mineEntrance());
+  for (const k of ['stone', 'copper', 'iron', 'gold', 'gem']) put('rock_' + k, OBJ.mineRock(k));
+  put('ladder_down', OBJ.ladder(true)); put('ladder_up', OBJ.ladder(false));
+  put('cave_crystal', OBJ.caveCrystal());
+  put('mine_rock', store.get('rock_stone')); put('flowerbush', store.get('flowerbush_ready'));
+  for (const t of ['slime', 'bat', 'crab', 'shade']) for (let f = 0; f < 2; f++) put(`mon_${t}_${f}`, OBJ.monster(t, f));
+  // utilities + extra decorations
+  put('furnace', OBJ.furnace(false)); put('furnace_lit', OBJ.furnace(true));
+  put('campfire', OBJ.campfire());
+  put('picket_fence', OBJ.picketFence(0)); put('picket_fence_r1', OBJ.picketFence(1));
+  put('planter_box', OBJ.planterBox()); put('hay_bale', OBJ.hayBale()); put('scarecrow', OBJ.scarecrow());
+  put('mailbox', OBJ.mailbox()); put('birdbath', OBJ.birdbath());
+  put('stone_lantern', OBJ.stoneLantern(false)); put('stone_lantern_lit', OBJ.stoneLantern(true));
+  put('flag_pole', OBJ.flagPole()); put('picnic_table', OBJ.picnicTable()); put('crate_stack', OBJ.crateStack());
+  put('garden_arch', OBJ.gardenArch()); put('well', OBJ.well()); put('fish_statue', OBJ.fishStatue());
+
   // decorations
   put('bench', OBJ.bench(0)); put('bench_r1', OBJ.bench(1));
   put('lantern', OBJ.lantern(false)); put('lantern_lit', OBJ.lantern(true));
@@ -92,6 +110,7 @@ export function buildAllSprites() {
   put('hammock', OBJ.hammock());
   put('topiary', OBJ.topiary());
   put('coral_planter', OBJ.coralPlanter());
+  put('barrel_deco', store.get('barrel')); put('potted_plant', store.get('plant'));
 
   // fish (+ shimmering variants + silhouettes)
   for (const f of FISH) {

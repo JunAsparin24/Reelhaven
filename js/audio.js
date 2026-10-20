@@ -276,6 +276,16 @@ const SFX = {
   perfect: t => { tone(N(84), t, 0.12, { vol: 0.1, type: 'sine' }); tone(N(91), t + 0.06, 0.2, { vol: 0.1, type: 'sine' }); },
   thunder: t => noise(t, 1.6, { vol: 0.25, freq: 200, sweep: -150, q: 0.4, type: 'lowpass' }),
   step: t => noise(t, 0.04, { vol: 0.03, freq: 1800, q: 3 }),
+  // mine & combat
+  swing: t => noise(t, 0.12, { vol: 0.12, freq: 1800, sweep: -1200, q: 0.8 }),
+  pick: t => { noise(t, 0.07, { vol: 0.22, freq: 2600, q: 3 }); tone(1300, t, 0.05, { type: 'square', vol: 0.04 }); },
+  rockbreak: t => { noise(t, 0.3, { vol: 0.28, freq: 700, sweep: -400, q: 0.7 }); noise(t + 0.05, 0.15, { vol: 0.15, freq: 2400, q: 2 }); },
+  hit: t => { noise(t, 0.08, { vol: 0.2, freq: 900, q: 1 }); tone(220, t, 0.1, { type: 'square', vol: 0.06, slide: -120 }); },
+  squish: t => { tone(300, t, 0.15, { type: 'sine', vol: 0.12, slide: -220 }); noise(t, 0.12, { vol: 0.1, freq: 500, q: 1 }); },
+  hurt: t => { tone(N(62), t, 0.1, { type: 'square', vol: 0.08 }); tone(N(55), t + 0.08, 0.18, { type: 'square', vol: 0.07 }); },
+  eat: t => { for (let i = 0; i < 3; i++) noise(t + i * 0.1, 0.06, { vol: 0.12, freq: 1400, q: 2 }); tone(N(79), t + 0.32, 0.15, { vol: 0.08 }); },
+  ladder: t => { [67, 64, 60].forEach((n, i) => tone(N(n), t + i * 0.08, 0.15, { vol: 0.1 })); },
+  smelt: t => { noise(t, 0.6, { vol: 0.15, freq: 300, sweep: 300, q: 0.5, type: 'lowpass' }); tone(N(84), t + 0.5, 0.2, { vol: 0.08, type: 'sine' }); },
 };
 
 export function sfx(name) {

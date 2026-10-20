@@ -11,7 +11,7 @@ import { TitleScene } from './title-scene.js';
 
 const GRASSY = new Set([T.G, T.K, T.N]);
 // Floor coverings indoors, drawn under everything and bottom-aligned.
-const FLOOR_OBJECTS = new Set(['rug', 'doormat']);
+const FLOOR_OBJECTS = new Set(['rug', 'doormat', 'ladder_down']);
 const FLAT_OBJECTS = new Set(['shells', 'seaglass', 'tidepool', 'flowers', 'lily', 'coral', 'driftwood', 'reeds']);
 const TARGET_TILES = 13.5; // tiles visible across the shorter screen side
 
@@ -182,6 +182,18 @@ export class Renderer {
         if (w.tile(x, y - 1) === T.L) g.fillRect(px, py, 16, 3);
         if (w.tile(x - 1, y) === T.L) g.fillRect(px, py, 2, 16);
         if (w.tile(x + 1, y) === T.L) g.fillRect(px + 14, py, 2, 16);
+        continue;
+      }
+      if (t === T.C) {
+        g.drawImage(pick(ts.cave, x, y), px, py);
+        g.fillStyle = 'rgba(10,6,16,0.35)';
+        if (w.tile(x, y - 1) === T.V) g.fillRect(px, py, 16, 4);
+        if (w.tile(x - 1, y) === T.V) g.fillRect(px, py, 3, 16);
+        if (w.tile(x + 1, y) === T.V) g.fillRect(px + 13, py, 3, 16);
+        continue;
+      }
+      if (t === T.V) {
+        g.drawImage(w.tile(x, y + 1) === T.C ? ts.caveFace[0] : pick(ts.caveTop, x, y), px, py);
         continue;
       }
       if (t === T.L) {
@@ -386,6 +398,11 @@ export class Renderer {
       drawList.push({ y: r.y, spr, x: r.x, by: r.y + 1, remote: true });
       this.nameTags.push({ text: r.name || 'Islander', x: r.x, y: r.y - spr.height - 1, host: r.host });
     }
+    for (const m of w.monsters) {
+      if (m.dead || !inView(m.x, m.y)) continue;
+      const spr = sprite(`mon_${m.type}_${Math.floor(m.anim) % 2}`);
+      if (spr) drawList.push({ y: m.y, spr, x: m.x, by: m.y + (m.type === 'bat' || m.type === 'shade' ? -6 : 1), monster: m });
+    }
     if (scene.player && !scene.title) {
       const p = scene.player;
       const wading = w.tile(Math.floor(p.x / TILE), Math.floor((p.y - 2) / TILE)) === T.H;
@@ -406,6 +423,21 @@ export class Renderer {
         ctx.globalAlpha = 1;
         continue;
       }
+      if (d.monster) {
+        const m = d.monster;
+        ctx.fillStyle = 'rgba(10,6,16,0.35)';
+        ctx.fillRect(Math.round(d.x - 5 - cam.x), Math.round(m.y - 1 - cam.y), 10, 2);
+        if (m.flash > 0 && Math.floor(t * 30) % 2) ctx.globalAlpha = 0.35;
+        ctx.drawImage(d.spr, Math.round(d.x - d.spr.width / 2 - cam.x), Math.round(d.by - d.spr.height - cam.y));
+        ctx.globalAlpha = 1;
+        if (m.maxHp && m.hp < m.maxHp) {
+          const bx = Math.round(d.x - 8 - cam.x), by = Math.round(d.by - d.spr.height - 5 - cam.y);
+          ctx.fillStyle = C.ink; ctx.fillRect(bx - 1, by - 1, 18, 4);
+          ctx.fillStyle = '#e05a5a'; ctx.fillRect(bx, by, Math.max(0, Math.round(16 * m.hp / m.maxHp)), 2);
+        }
+        continue;
+      }
+      if (d.player && scene.player.invuln > 0 && Math.floor(t * 14) % 2) continue;
       if (d.player || d.npc || d.remote) {
         ctx.fillStyle = 'rgba(30,30,50,0.22)';
         ctx.fillRect(Math.round(d.x - 5 - cam.x), Math.round(d.by - 2 - cam.y), 10, 2);
@@ -418,6 +450,8 @@ export class Renderer {
         ctx.drawImage(m, Math.round(d.x - m.width / 2 - cam.x), Math.round(d.by - d.spr.height - 14 - hop - cam.y));
       }
     }
+    // tool swing
+    if (scene.player?.swing) this.drawSwing(ctx, scene.player, cam);
     // 6. fishing line, bobber, jumping fish
     if (scene.fishing) this.drawFishing(ctx, scene, cam, t);
     // 7. particles
@@ -482,6 +516,8 @@ export class Renderer {
       case 'coral': return sprite('coral_' + (o.variant % 3));
       case 'lily': return sprite('lily_' + (o.variant % 2));
       case 'shop': return sprite(night ? 'shop_lit' : 'shop');
+      case 'yard_fence': return sprite(o.vert ? 'fence_r1' : 'fence');
+      case 'mine_rock': return sprite('rock_' + (o.kind || 'stone'));
       default: return sprite(o.type);
     }
   }
@@ -711,8 +747,51 @@ export class Renderer {
     }
   }
 
+  /** The held pickaxe / sword sweeping in front of the player. */
+  drawSwing(ctx, p, cam) {
+    const sw = p.swing;
+    const spr = sprite('icon_' + sw.tool);
+    if (!spr) return;
+    const u = Math.min(1, sw.t / sw.dur);
+    const base = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 }[p.facing];
+    const a = base - 1.1 + u * 2.2;
+    const cx = p.x - cam.x, cy = p.y - 9 - cam.y;
+    ctx.save();
+    ctx.translate(Math.round(cx + Math.cos(a) * 9), Math.round(cy + Math.sin(a) * 9));
+    ctx.rotate(a + Math.PI / 4);
+    ctx.drawImage(spr, -9, -9);
+    ctx.restore();
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    for (let k = 0; k < 6; k++) {
+      const b = base - 1.1 + (u * 2.2) * (k / 5);
+      ctx.fillRect(Math.round(cx + Math.cos(b) * 15), Math.round(cy + Math.sin(b) * 15), 1, 1);
+    }
+  }
+
+  /** The mine is dark: you see around yourself and the glowing crystals. */
+  drawMineLight(ctx, scene, cam) {
+    const lc = this.lctx, w = this.world;
+    lc.globalCompositeOperation = 'source-over';
+    lc.clearRect(0, 0, this.viewW, this.viewH);
+    lc.fillStyle = 'rgba(6,4,12,0.78)';
+    lc.fillRect(0, 0, this.viewW, this.viewH);
+    lc.globalCompositeOperation = 'destination-out';
+    const lights = [];
+    if (scene.player) lights.push([scene.player.x, scene.player.y - 8, 78]);
+    for (const o of w.objects) if (o.type === 'cave_crystal') lights.push([o.x * TILE + 8, o.y * TILE + 8, 26]);
+    for (const [x, y, r] of lights) {
+      for (const [rr, a] of [[1, 0.3], [0.75, 0.4], [0.5, 0.6]]) {
+        lc.fillStyle = `rgba(0,0,0,${a})`;
+        lc.beginPath(); lc.arc(Math.round(x - cam.x), Math.round(y - cam.y), Math.round(r * rr), 0, Math.PI * 2); lc.fill();
+      }
+    }
+    lc.globalCompositeOperation = 'source-over';
+    ctx.drawImage(this.light, 0, 0);
+  }
+
   /** Indoors: no weather, just a warm lamp-lit glow (a touch dimmer at night). */
   drawIndoorLight(ctx, scene, cam, t) {
+    if (this.world.def.mine) { this.drawMineLight(ctx, scene, cam); return; }
     const dark = scene.light ? scene.light.dark : 0;
     ctx.fillStyle = `rgba(40,24,40,${0.06 + dark * 0.22})`;
     ctx.fillRect(0, 0, this.viewW, this.viewH);
@@ -748,7 +827,7 @@ export class Renderer {
     // floating texts
     if (this.texts.length) {
       ctx.textAlign = 'center';
-      ctx.font = `600 ${Math.round(15 * this.dpr)}px "Pixelify Sans", monospace`;
+      ctx.font = `${Math.round(18 * this.dpr)}px "Reel Pixel", monospace`;
       const cam = scene.camera;
       this.texts = this.texts.filter(tx => (tx.life += 1 / 60) < tx.max);
       for (const tx of this.texts) {
@@ -768,7 +847,7 @@ export class Renderer {
     if (this.nameTags?.length && scene.camera) {
       const cam = scene.camera;
       ctx.textAlign = 'center';
-      ctx.font = `600 ${Math.round(11 * this.dpr)}px "Pixelify Sans", monospace`;
+      ctx.font = `${Math.round(14 * this.dpr)}px "Reel Pixel", monospace`;
       for (const n of this.nameTags) {
         const x = (n.x - cam.x) * s, y = (n.y - cam.y) * s;
         const w = ctx.measureText(n.text).width + 10 * this.dpr;

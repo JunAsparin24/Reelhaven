@@ -25,6 +25,9 @@ export class Social {
       if (!r || m.host !== r.host || m.island !== r.island) return;
       r.handlers.onPeers?.((m.list || []).map(p => ({ id: p.user, ...p })));
     });
+    net.on('relay', m => {
+      if (this.room && m.host === this.room.host && m.island === this.room.island) this.room.handlers.onRelay?.(m);
+    });
     net.on('pos', m => {
       if (this.room) this.room.handlers.onMove?.(m.user, m);
     });
@@ -109,6 +112,8 @@ export class Social {
   }
   coopResult(to, req, ok, error = '') { this.net.send('coop_result', { to, req, ok, error }); }
   shareLayout(flags, placements) { this.net.send('coop_layout', { flags, placements }); }
+  /** Tell everyone on this island something small (sleep / wake / clock). */
+  relay(kind, data) { this.net.send('room_relay', { kind, data }); }
 
   // ------------------------------------------------------------ islands
   /**

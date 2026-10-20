@@ -10,6 +10,7 @@ import { sprite } from './art/sprites.js';
 import { addXp, checkAchievements } from './progression.js';
 import { sfx } from './audio.js';
 import { ISLANDS } from '../data/island-data.js';
+import { chestEmpty } from './crafting.js';
 
 /** Why the player can't build this right now (null if they can). */
 export function buildBlocker(type) {
@@ -174,6 +175,7 @@ export class BuildMode {
   store(placement) {
     const def = PLACEABLES[placement.type];
     if (def.kind !== 'decor') return { ok: false, message: 'Buildings can be moved, but not stored.' };
+    if (def.use === 'chest' && !chestEmpty(this.world.id, placement.uid)) return { ok: false, message: 'Empty the chest before storing it.' };
     const s = getState();
     const isl = s.islands[this.world.id];
     isl.placements = isl.placements.filter(p => p.uid !== placement.uid);

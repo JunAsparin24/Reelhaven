@@ -22,6 +22,10 @@ import { nearbyInteractables } from '../interactions.js';
 import { Layout } from './layout.js';
 import { AccountUI } from './account-ui.js';
 import { friendlyError } from '../online/auth.js';
+import { Hotbar } from './hotbar.js';
+import { chestItems, transfer, smelt, missingFor, recipesFor } from '../crafting.js';
+import { RESOURCES, FOOD, BAIT } from '../../data/item-data.js';
+import { toolTier } from '../combat.js';
 
 // Menu bar: one compact row of icon buttons (top-right in landscape,
 // bottom edge in portrait). null = visual separator.
@@ -45,6 +49,10 @@ function actionIcon(it) {
     case 'enter': return it.obj ? 'shop' : 'home';
     case 'exit': return 'home';
     case 'bed': return 'sleep';
+    case 'use': return { chest: 'chest', furnace: 'fire', campfire: 'fire' }[it.placement.def.use] || 'sparkle';
+    case 'mine_enter': case 'mine': case 'swing': return it.kind === 'swing' && getState().inventory.held === 'sword' ? 'sword' : 'pickaxe';
+    case 'attack': return 'sword';
+    case 'descend': case 'ascend': return 'ladder';
     case 'board': return 'quest';
     case 'boat': return 'boat';
     case 'bridge': return 'build';
@@ -67,6 +75,7 @@ export class UI {
     this.game = game;
     initLayers();
     this.buildHud();
+    this.hotbar = new Hotbar(this);
     this.fishingUI = new FishingUI(this);
     this.dialogueUI = new DialogueUI(this);
     this.buildUI = new BuildUI(this);
@@ -87,6 +96,7 @@ export class UI {
     this.el.pearls = h('span.num');
     this.el.clockIcon = h('img.px-icon', { alt: '' });
     this.el.clock = h('span.clock-text');
+    this.el.day = h('span.day-text');
     this.el.saving = h('span.save-dot', { title: 'Saved', 'aria-live': 'polite' });
     top.append(
       h('button.profile.hud-glass', { type: 'button', 'aria-label': 'Profile', on: { click: () => this.open('profile') } },
@@ -94,7 +104,7 @@ export class UI {
         h('div.pinfo', this.el.name, h('div.bar.xp', this.el.xpFill))),
       h('div.pill.coins.hud-glass', { title: 'Coins' }, icon('coin'), this.el.coins),
       h('div.pill.pearls.hud-glass', { title: 'Pearls' }, icon('pearl'), this.el.pearls),
-      h('div.pill.clock.hud-glass', { title: 'Time & weather' }, this.el.clockIcon, this.el.clock, this.el.saving));
+      h('div.pill.clock.hud-glass', { title: 'Day, time & weather' }, this.el.clockIcon, h('span.clock-stack', this.el.day, this.el.clock), this.el.saving));
 
     const nav = document.getElementById('nav');
     this.navButtons = {};
@@ -116,7 +126,11 @@ export class UI {
     this.el.info = document.getElementById('hud-info');
     this.el.sync = h('div.hud-note.sync-note.hud-glass', { hidden: true, role: 'status' });
     this.el.visit = h('div.visit-banner.hud-glass', { hidden: true });
-    this.el.info.append(this.el.visit, this.el.questChip, this.el.sync, this.el.rotate);
+    this.el.sleep = h('div.visit-banner.sleep-banner.hud-glass', { hidden: true, role: 'status' });
+    this.el.where = h('div.hud-note.where-note.hud-glass', { hidden: true });
+    this.el.info.append(this.el.visit, this.el.sleep, this.el.where, this.el.questChip, this.el.sync, this.el.rotate);
+    this.el.hurt = h('div.hurt-flash', { 'aria-hidden': 'true' });
+    document.getElementById('stage').append(this.el.hurt);
     this.el.actions = document.getElementById('action-region');
     this.layout = new Layout();
   }
@@ -125,7 +139,10 @@ export class UI {
   renderActions() {
     const g = this.game;
     const usable = g.mode === 'play' && !this.blocking() && !g.build.active && !g.fishing;
-    const list = usable ? nearbyInteractables(g, 3) : [];
+    let list = usable ? nearbyInteractables(g, 3) : [];
+    // Underground with nothing in reach: a big swing button for your tool.
+    const held = getState()?.inventory.held;
+    if (usable && !list.length && g.world?.def.mine && (held === 'pickaxe' || held === 'sword')) list = [{ kind: 'swing', verb: 'Swing', label: toolTier(held).name }];
     const key = list.map(it => it.kind + ':' + it.verb + ':' + it.label).join('|');
     if (key === this.actionKey) return;
     this.actionKey = key;
@@ -169,6 +186,8 @@ export class UI {
     const qp = questProgress();
     const dailyReady = s.daily.goals.some(g => !g.claimed && dailyProgress(g) >= g.count);
     this.el.questBadge.hidden = !(qp && qp.ready) && !dailyReady;
+    this.hotbar?.render();
+    this.refreshWhere();
     if (qp) {
       this.el.questChip.hidden = false;
       this.el.questChip.classList.toggle('ready', qp.ready);
@@ -181,6 +200,8 @@ export class UI {
     const ic = w === 'storm' ? 'storm' : w === 'rain' ? 'rain' : ph === 'night' ? 'moon' : ph === 'evening' ? 'sunset' : 'sun';
     if (this.el.clockIcon.dataset.ic !== ic) { this.el.clockIcon.src = icon(ic).src; this.el.clockIcon.dataset.ic = ic; }
     const isl = ISLANDS[getState().player.island];
+    const day = 'Day ' + getState().world.day;
+    if (this.el.day.textContent !== day) this.el.day.textContent = day;
     const txt = isl.alwaysNight ? 'Night' : clockText();
     if (this.el.clock.dataset.t !== txt) {
       this.el.clock.dataset.t = txt;
@@ -422,6 +443,129 @@ export class UI {
       h('div.row.end', button('Change hat', () => { close(); this.open('profile'); }, { cls: 'ghost', iconName: 'hat' }), button('Close', () => close(), { cls: 'ghost' }))));
   }
 
+
+  // ---------------------------------------------------------------- sleep, mine, utilities
+  /** Bed: sleep through to the next morning (together in multiplayer). */
+  sleepPrompt() {
+    const s = getState();
+    const g = this.game;
+    const together = g.channel && g.bedPeers().length > 0;
+    let close;
+    close = modal(h('div.confirm',
+      h('h3', 'Go to sleep?'),
+      h('p', `It is ${clockText()} on Day ${s.world.day}. You’ll wake up at 6:00 AM on Day ${s.world.minutes >= 360 ? s.world.day + 1 : s.world.day}, fully rested.`),
+      together ? h('p.muted', 'Playing together: the new day starts once everyone is in bed.') : null,
+      h('div.row.end',
+        button('Not yet', () => close(), { cls: 'ghost' }),
+        button('Sleep', () => { close(); g.goToSleep(); }, { cls: 'primary', iconName: 'sleep' }))));
+  }
+
+  /** "In bed, waiting for others" banner (multiplayer). */
+  refreshSleep() {
+    const g = this.game, el = this.el.sleep;
+    if (!el) return;
+    if (!g.sleeping) { el.hidden = true; return; }
+    const need = g.bedPeers();
+    const ready = need.filter(id => g.sleepers.has(id)).length + 1;
+    const hostAway = g.visit && !g.visit.hostHere;
+    el.hidden = false;
+    el.replaceChildren(icon('sleep'),
+      h('span', hostAway ? 'In bed — waiting for the host' : `In bed — ${ready}/${need.length + 1} asleep`),
+      button('Get up', () => g.getUp(), { cls: 'small' }));
+  }
+
+  /** Little "Old Mine · Floor 3" note while underground. */
+  refreshWhere() {
+    const w = this.game.world;
+    const el = this.el.where;
+    if (!el) return;
+    if (w?.def.mine) { el.hidden = false; el.replaceChildren(icon('pickaxe'), h('span', `Old Mine · Floor ${w.def.level}`)); }
+    else el.hidden = true;
+    this.hotbar?.renderHp();
+  }
+
+  hurtFlash() {
+    const f = this.el.hurt;
+    if (!f) return;
+    f.classList.remove('on'); void f.offsetWidth; f.classList.add('on');
+    this.hotbar?.renderHp();
+  }
+
+  /** Choose which floor to start the mine from (every 5th floor is a checkpoint). */
+  mineMenu() {
+    const deep = getState().stats.mineDeepest || 0;
+    const floors = [1];
+    for (let f = 5; f <= deep; f += 5) floors.push(f);
+    if (floors.length === 1) { this.game.enterMine(1); return; }
+    let close;
+    close = modal(h('div.confirm',
+      h('h3', 'The Old Mine'),
+      h('p', `Deepest floor reached: ${deep}. Where would you like to start?`),
+      h('div.rest-grid', floors.map(f => button(f === 1 ? 'Top (Floor 1)' : `Floor ${f}`, () => { close(); this.game.enterMine(f); }, { iconName: 'ladder' }))),
+      h('div.row.end', button('Cancel', () => close(), { cls: 'ghost' }))));
+  }
+
+  useUtility(pl) {
+    if (pl.def.use === 'chest') return this.chestModal(pl);
+    return this.furnaceModal(pl);
+  }
+
+  /** Move items between your bag and a storage chest. */
+  chestModal(pl) {
+    const islandId = this.game.outdoor.id;
+    const body = h('div.chest-cols');
+    let close;
+    const render = () => {
+      const s = getState();
+      const box = chestItems(islandId, pl.uid);
+      const name = id => RESOURCES[id]?.name || FOOD[id]?.name || BAIT[id]?.name || id;
+      const ic = id => RESOURCES[id]?.icon || FOOD[id]?.icon || BAIT[id]?.icon || 'bag';
+      const col = (title, entries, toChest) => h('div.chest-col',
+        h('h4.section', title),
+        entries.length ? h('div.list', entries.map(([id, n]) => h('div.item-row.compact',
+          icon(ic(id), 'item-icon'),
+          h('div.item-main', h('div.item-name', name(id), h('span.count', '×' + n))),
+          button(toChest ? 'Store 1' : 'Take 1', () => { transfer(islandId, pl.uid, id, 1, toChest); render(); }, { cls: 'small ghost', sound: null }),
+          button(toChest ? 'All' : 'All', () => { transfer(islandId, pl.uid, id, n, toChest); render(); }, { cls: 'small', sound: null }))))
+          : h('p.muted', toChest ? 'Your bag has no items.' : 'This chest is empty.'));
+      const bag = Object.entries(s.inventory.items).filter(([, n]) => n > 0);
+      const inBox = Object.entries(box).filter(([, n]) => n > 0);
+      body.replaceChildren(col('Your bag', bag, true), col('Chest', inBox, false));
+    };
+    render();
+    close = modal(h('div.confirm.chest-modal', h('h3', icon('chest'), ' Storage Chest'), body,
+      h('div.row.end', button('Done', () => close(), { cls: 'primary' }))));
+  }
+
+  /** Smelt ore into bars, or grill fish. */
+  furnaceModal(pl) {
+    const station = pl.def.use;
+    const list = h('div.list');
+    let close;
+    const nameOf = id => (id === 'fish' ? 'Any fish' : RESOURCES[id]?.name || FOOD[id]?.name || id);
+    const render = () => {
+      const s = getState();
+      const have = id => (id === 'fish' ? s.inventory.fish.length : s.inventory.items[id] || 0);
+      list.replaceChildren(...recipesFor(station).map(r => {
+        const [outId, outN] = Object.entries(r.out)[0];
+        const miss = missingFor(r);
+        return h('div.item-row' + (miss.length ? '.locked' : ''),
+          icon(RESOURCES[outId]?.icon || FOOD[outId]?.icon || 'sparkle', 'item-icon'),
+          h('div.item-main',
+            h('div.item-name', `${nameOf(outId)}${outN > 1 ? ' ×' + outN : ''}`),
+            h('div.item-sub', Object.entries(r.in).map(([id, n]) => `${n} ${nameOf(id)} (${have(id)})`).join(' + '))),
+          button(station === 'campfire' ? 'Cook' : 'Smelt', () => { const res = smelt(r); toast(res.ok ? `Made ${nameOf(outId)}!` : res.message, res.ok ? 'fire' : null, res.ok ? 'good' : 'error'); render(); },
+            { cls: 'small primary', disabled: miss.length > 0, sound: null }));
+      }));
+    };
+    render();
+    close = modal(h('div.confirm.furnace-modal',
+      h('h3', icon('fire'), station === 'campfire' ? ' Campfire' : ' Furnace'),
+      h('p.muted', station === 'campfire' ? 'Grill a fish from your bag to make a healing snack.' : 'Bring ore up from the Old Mine. Wood keeps the fire going.'),
+      list,
+      h('div.row.end', button('Done', () => close(), { cls: 'primary' }))));
+  }
+
   levelUp({ level, coins, unlocks }) {
     initAudio(); sfx('levelup');
     this.game.player?.cheer(1.6);
@@ -487,7 +631,7 @@ export class UI {
       if (weather === 'storm') toast('A storm rolls in… Stormrays are stirring.', 'storm');
     });
     on('phase', ({ phase }) => { if (this.game?.mode === 'play' && phase === 'night') toast('Night falls. Nocturnal fish are rising.', 'moon'); });
-    on('newDay', () => { if (this.game?.mode === 'play') toast('A new day dawns on the islands.', 'sun'); });
+    on('newDay', d => { if (this.game?.mode === 'play' && !d?.slept) toast(`Day ${d?.day || getState().world.day} — a new day dawns on the islands.`, 'sun'); });
     document.addEventListener('sheet', () => this.syncNav(sheetOpen()));
   }
 }

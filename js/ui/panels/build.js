@@ -13,11 +13,12 @@ export const buildPanel = {
   render(body, ctx) {
     const s = getState();
     const have = id => id === 'coins' ? s.player.coins : id === 'pearls' ? s.player.pearls : (s.inventory.items[id] || 0);
-    body.append(tabs([['buildings', 'Buildings', 'home'], ['decor', 'Decor', 'flower'], ['stored', 'Stored', 'bag']], tab, t => { tab = t; refreshSheet(); }));
+    body.append(tabs([['buildings', 'Buildings', 'home'], ['decor', 'Decor', 'flower'], ['utility', 'Utility', 'chest'], ['stored', 'Stored', 'bag']], tab, t => { tab = t; refreshSheet(); }));
     body.append(button('Move or store what you’ve built', () => ctx.ui.buildUI.edit(), { cls: 'ghost wide', iconName: 'move' }));
     const list = h('div.build-grid');
-    if (tab === 'buildings' || tab === 'decor') {
-      const defs = Object.values(tab === 'buildings' ? BUILDINGS : DECOR).filter(d => d.buildable !== false);
+    if (tab === 'buildings' || tab === 'decor' || tab === 'utility') {
+      const defs = Object.values(tab === 'buildings' ? BUILDINGS : DECOR).filter(d => d.buildable !== false)
+        .filter(d => tab === 'buildings' || (tab === 'utility') === (d.category === 'utility'));
       for (const d of defs) {
         const block = buildBlocker(d.id);
         const cost = fullCost(d);

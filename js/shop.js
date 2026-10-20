@@ -3,7 +3,7 @@
 import { getState, commit } from './state.js';
 import { emit } from './events.js';
 import { checkCost, spend, addItem, describeMissing } from './economy.js';
-import { RODS, BAIT, HATS } from '../data/item-data.js';
+import { RODS, BAIT, HATS, TOOLS, FOOD } from '../data/item-data.js';
 import { DECOR, BUILDINGS } from '../data/building-data.js';
 import { hasBuilding } from './building-count.js';
 import { sfx } from './audio.js';
@@ -42,6 +42,11 @@ export function requirement(kind, id) {
     case 'decor': return need(DECOR[id]);
     case 'blueprint': return hasBlueprint(id) ? 'Owned' : need(BUILDINGS[id]);
     case 'hat': return s.inventory.hats.includes(id) ? 'Owned' : null;
+    case 'tool': {
+      const next = TOOLS[id][(s.inventory.tools[id] || 0) + 1];
+      return next ? need(next) : 'Owned';
+    }
+    case 'food': return null;
     default: return null;
   }
 }
@@ -54,6 +59,8 @@ export function priceOf(kind, id) {
     case 'decor': return { coins: DECOR[id].price, ...(DECOR[id].cost || {}) };
     case 'blueprint': return { coins: BLUEPRINTS[id].price };
     case 'hat': return { pearls: HATS[id].pearls };
+    case 'tool': return { ...(TOOLS[id][(getState().inventory.tools[id] || 0) + 1]?.cost || {}) };
+    case 'food': return { coins: FOOD[id].price };
     default: return {};
   }
 }
@@ -89,6 +96,15 @@ export function purchase(kind, id) {
     case 'blueprint':
       s.flags.blueprints = [...(s.flags.blueprints || []), id];
       message = `${BUILDINGS[id].name} blueprint unlocked!`;
+      break;
+    case 'tool': {
+      s.inventory.tools[id] = (s.inventory.tools[id] || 0) + 1;
+      message = `${TOOLS[id][s.inventory.tools[id]].name} ready!`;
+      break;
+    }
+    case 'food':
+      addItem(id, 1);
+      message = `+1 ${FOOD[id].name}`;
       break;
     case 'hat':
       s.inventory.hats.push(id);
