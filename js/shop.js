@@ -5,6 +5,8 @@ import { emit } from './events.js';
 import { checkCost, spend, addItem, describeMissing } from './economy.js';
 import { RODS, BAIT, HATS, TOOLS, FOOD, RESOURCES } from '../data/item-data.js';
 import { CROPS, seasonOf } from '../data/farm-data.js';
+import { BACKPACKS, hasRoomFor } from './bag.js';
+import { SWORDS } from '../data/weapon-data.js';
 import { DECOR, BUILDINGS } from '../data/building-data.js';
 import { hasBuilding } from './building-count.js';
 import { sfx } from './audio.js';
@@ -48,6 +50,20 @@ export function requirement(kind, id) {
       return next ? need(next) : 'Owned';
     }
     case 'food': return null;
+    case 'sword': {
+      const tier = Number(id), sw = SWORDS[tier];
+      const cur = s.inventory.tools.sword;
+      if (cur === undefined) return 'Get a starter sword from Nori';
+      if (tier <= cur) return 'Owned';
+      if ((s.stats.mineDeepest || 0) < (sw.floor || 0)) return `Reach mine floor ${sw.floor}`;
+      return null;
+    }
+    case 'backpack': {
+      const b = BACKPACKS.find(x => x.id === id);
+      const size = s.inventory.bagSize || 12;
+      if (size >= b.size) return 'Owned';
+      return size < b.size - 12 ? 'Buy the smaller backpack first' : null;
+    }
     case 'seed': {
       const it = RESOURCES[id], crop = CROPS[it.seed];
       if (it.minLevel && lvl < it.minLevel) return `Reach level ${it.minLevel}`;
@@ -67,6 +83,8 @@ export function priceOf(kind, id) {
     case 'hat': return { pearls: HATS[id].pearls };
     case 'tool': return { ...(TOOLS[id][(getState().inventory.tools[id] || 0) + 1]?.cost || {}) };
     case 'food': return { coins: FOOD[id].price };
+    case 'backpack': return { coins: BACKPACKS.find(x => x.id === id).price };
+    case 'sword': return { coins: SWORDS[Number(id)].price || 0, ...(SWORDS[Number(id)].cost || {}) };
     case 'seed': return { coins: RESOURCES[id].price * 5 };
     default: return {};
   }
@@ -79,10 +97,22 @@ export function purchase(kind, id) {
   const cost = priceOf(kind, id);
   const check = checkCost(cost);
   if (!check.ok) { sfx('error'); return { ok: false, message: 'Not enough: ' + describeMissing(check.missing) + '.' }; }
+  // Stackable things need a free slot in your bag (or a stack to join).
+  if (['bait', 'material', 'food', 'seed'].includes(kind) && !hasRoomFor(id)) { sfx('error'); return { ok: false, message: 'Your bag is full — make room first.' }; }
   if (!spend(cost)) return { ok: false, message: 'Purchase failed.' };
   const s = getState();
   let message = '';
   switch (kind) {
+    case 'sword':
+      s.inventory.tools.sword = Number(id);
+      message = `${SWORDS[Number(id)].name} — ${SWORDS[Number(id)].damage} damage!`;
+      break;
+    case 'backpack': {
+      const b = BACKPACKS.find(x => x.id === id);
+      s.inventory.bagSize = b.size;
+      message = `${b.name}! Your bag now has ${b.size} slots.`;
+      break;
+    }
     case 'rod':
       s.inventory.rods.push(id);
       s.inventory.equippedRod = id;

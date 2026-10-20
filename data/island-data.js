@@ -92,7 +92,10 @@ export const ISLANDS = {
       m.rect(18, 40, 7, 2, D);
 
       m.obj('shop', 25, 16);
-      m.obj('mine_entrance', 13, 7);
+      m.obj('mine_entrance', 12, 6);
+      m.rect(16, 8, 6, 4, G);             // a little yard for the Wayfarers' Hall
+      m.obj('hall', 17, 8);
+      m.path([[19, 10], [19, 12], [14, 12]], P, 1);
       m.obj('board', 18, 22);
       m.obj('boat', 26, 41);
       m.obj('bridgeSite', 29, 13);

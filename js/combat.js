@@ -12,6 +12,7 @@ import { T } from './world-gen.js';
 import { sfx, vibrate } from './audio.js';
 import { addXp } from './progression.js';
 import { hitDebris, till, water, plant, harvest } from './farm.js';
+import { SWORDS } from '../data/weapon-data.js';
 
 const DIRV = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const SWING_TIME = 0.26, SWING_COOLDOWN = 0.36;
@@ -64,7 +65,7 @@ export function swing(game, tool = getState().inventory.held) {
   if (tool === 'hoe') { const t = frontTile(p); if (!harvest(game, t.x, t.y)) till(game, t.x, t.y); return true; }
   if (tool === 'watering_can') { const t = frontTile(p); water(game, t.x, t.y); return true; }
   if (tool === 'axe') {
-    const o = nearest(o => o.type === 'debris_tree' || o.type === 'debris_twig');
+    const o = nearest(o => o.type === 'debris_tree' || o.type === 'debris_twig' || o.type === 'debris_stump');
     if (o) hitDebris(game, o, toolTier('axe').power); else sfx('swing');
     return true;
   }
@@ -72,14 +73,16 @@ export function swing(game, tool = getState().inventory.held) {
     // A wide sweep: every weed in front of you, and ripe crops get picked.
     let hit = false;
     for (const o of [...w.objects]) {
-      if (o.type !== 'debris_weed' || !w.inBounds(o.x, o.y)) continue;
-      if (Math.hypot(o.x * TILE + 8 - hx, o.y * TILE + 8 - hy) < 20) { hitDebris(game, o, 1); hit = true; }
+      if ((o.type !== 'debris_weed' && o.type !== 'debris_grass') || !w.inBounds(o.x, o.y)) continue;
+      if (Math.hypot(o.x * TILE + 8 - hx, o.y * TILE + 8 - hy) < 22) { hitDebris(game, o, 1); hit = true; }
     }
     const t = frontTile(p);
     if (harvest(game, t.x, t.y)) hit = true;
     if (!hit) sfx('swing');
     return true;
   }
+  const crate = (tool === 'pickaxe' || tool === 'sword') && nearest(o => o.type === 'mine_crate');
+  if (crate) { hitCrate(game, crate); return true; }
   if (tool === 'pickaxe') {
     const best = nearest(o => o.type === 'mine_rock' || o.type === 'debris_stone');
     if (best?.type === 'mine_rock') hitRock(game, best, toolTier('pickaxe').power);
@@ -106,6 +109,7 @@ function hitRock(game, o, power) {
   const def = ROCKS[o.kind] || ROCKS.stone;
   if (o.hp == null) o.hp = def.hp;
   o.hp -= power;
+  o.shake = 1;
   const cx = o.x * TILE + 8, cy = o.y * TILE + 8;
   game.renderer.emit('sparkle', cx, cy, 3, { speed: 40, gravity: 60, color: '#d8d2c8', life: 0.4 });
   if (o.hp > 0) { sfx('pick'); return; }
@@ -133,6 +137,41 @@ function hitRock(game, o, power) {
   commit('mine', false);
 }
 
+/** The next sword up the ladder, if this floor is deep enough to find it. */
+export function maybeSwordDrop(game, level, chance, x, y) {
+  const s = getState();
+  const cur = s.inventory.tools.sword;
+  if (cur === undefined || Math.random() > chance) return false;
+  const next = SWORDS[cur + 1];
+  if (!next || (next.floor || 0) > level) return false;
+  s.inventory.tools.sword = cur + 1;
+  game.renderer.floatText(next.name + '!', x, y - 30, '#f8dc7c');
+  toast(`You found a ${next.name}! (${next.damage} damage)`, 'sword', 'gold');
+  sfx('levelup');
+  game.ui.hotbar?.render();
+  return true;
+}
+
+/** Breakable mine crates: coins, snacks, ore — and once in a while a sword. */
+function hitCrate(game, o) {
+  const w = game.world;
+  o.hp = (o.hp ?? 2) - 1;
+  o.shake = 1;
+  const cx = o.x * TILE + 8, cy = o.y * TILE + 8;
+  game.renderer.emit('leaf', cx, cy, 4, { speed: 40, gravity: 120, life: 0.5, color: '#b9794f' });
+  if (o.hp > 0) { sfx('chop'); return; }
+  sfx('rockbreak');
+  w.broken.add(o.id);
+  const level = w.def.level || 1;
+  const r = Math.random();
+  if (r < 0.45) { const c = 5 + Math.floor(Math.random() * (10 + level)); addCoins(c, 'treasure'); game.renderer.floatText(`+${c} coins`, cx, cy - 10, '#f8dc7c'); }
+  else if (r < 0.7) { addItem('seaweed_snack', 1); game.renderer.floatText('+1 Seaweed Snack', cx, cy - 10); }
+  else if (r < 0.95) { const ore = level >= 10 ? 'gold_ore' : level >= 5 ? 'iron_ore' : 'copper_ore'; addItem(ore, 2); game.renderer.floatText(`+2 ${RESOURCES[ore].name}`, cx, cy - 10); }
+  maybeSwordDrop(game, level, 0.05, cx, cy);
+  w.rebuild();
+  commit('crate', false);
+}
+
 /** Monster stats scaled for the current floor. */
 export function monsterStats(m, level = 1) {
   const d = MONSTERS[m.type];
@@ -155,6 +194,10 @@ function hitMonster(game, m, dmg, dx, dy) {
   sfx('squish');
   const s = getState();
   s.stats.monstersSlain = (s.stats.monstersSlain || 0) + 1;
+  s.stats.kills = s.stats.kills || {};
+  s.stats.kills[m.type] = (s.stats.kills[m.type] || 0) + 1;
+  // A very rare blade drop, never past what this depth would unlock.
+  maybeSwordDrop(game, level, 0.006, m.x, m.y);
   game.renderer.emit('sparkle', m.x, m.y - 6, 10, { speed: 50, gravity: 40, color: m.type === 'slime' ? '#8ee07a' : '#c9b8e6' });
   const coins = st.coins[0] + Math.floor(Math.random() * (st.coins[1] - st.coins[0] + 1)) + Math.floor(level / 3);
   addCoins(coins, 'treasure');

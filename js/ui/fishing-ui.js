@@ -202,7 +202,7 @@ export class FishingUI {
       actions = [h('p.note', 'You record the encounter in your journal and gently let it swim free. It leaves 3 pearls behind as thanks.'),
         h('div.row.center', button('Keep fishing', () => done(true), { cls: 'primary' }), button('Done', () => done(false), { cls: 'ghost' }))];
     } else if (!res.stored) {
-      actions = [h('p.note.warn', `Your bag is full (${fishCount()}/${capacity()}). Sell this fish now or release it.`),
+      actions = [h('p.note.warn', `Your bag is full (all ${capacity()} slots are used). Sell this fish now or release it.`),
         h('div.row.center',
           button(`Sell now +${value}`, () => {
             const s = getState();

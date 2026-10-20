@@ -61,6 +61,10 @@ export const DEBRIS = {
   twig: { label: 'Twig', tool: 'axe', verb: 'Chop', hp: 1, drops: [['wood', 1, 2, 1]] },
   stone: { label: 'Stone', tool: 'pickaxe', verb: 'Break', hp: 2, drops: [['stone', 1, 2, 1]] },
   weed: { label: 'Weeds', tool: 'scythe', verb: 'Cut', hp: 1, drops: [['fiber', 1, 1, 0.6]] },
+  // tall grass you can walk through; cut it with the scythe for fiber
+  grass: { label: 'Tall Grass', tool: 'scythe', verb: 'Cut', hp: 1, drops: [['fiber', 1, 1, 0.3]] },
+  // what's left after a tree falls
+  stump: { label: 'Stump', tool: 'axe', verb: 'Chop', hp: 3, drops: [['wood', 2, 3, 1]] },
 };
 
 /** What the TV says. */
@@ -69,7 +73,7 @@ export const TV_TIPS = [
   'Each crop grows in certain seasons. Plant out of season and it won’t sprout; when the season changes, old crops wither.',
   'Go to bed before 2 AM, or you’ll pass out and drop some coins.',
   'Chop trees for wood: a Storage Chest takes 50, and it keeps your bag tidy.',
-  'Mira at the pier can set you up with a fishing rod.',
+  'Nori in town hands new islanders a starter rod and sword. Go say hi!',
   'Every 5th floor of the Old Mine is a checkpoint you can start from.',
   'Furnaces turn 5 ore into a bar. Bars upgrade your tools at Nori’s.',
   'Grilled fish heals a lot in the mine. Cook one at a campfire.',

@@ -41,8 +41,9 @@ export class Controls {
         this.h.onEscape?.();
       } else if (e.code === 'KeyR') {
         this.h.onRotateKey?.();
-      } else if (/^Digit[0-9]$/.test(e.code)) {
-        if (this.h.onHotkey?.(Number(e.code.slice(5)) || 10)) e.preventDefault();
+      } else if (/^Digit[0-9]$/.test(e.code) || e.code === 'Minus' || e.code === 'Equal') {
+        const n = e.code === 'Minus' ? 11 : e.code === 'Equal' ? 12 : Number(e.code.slice(5)) || 10;
+        if (this.h.onHotkey?.(n)) e.preventDefault();
       }
     });
     this.listen(window, 'keyup', e => { if (KEYMAP[e.code]) this.keys.delete(KEYMAP[e.code]); });

@@ -24,7 +24,7 @@ import { AccountUI } from './account-ui.js';
 import { friendlyError } from '../online/auth.js';
 import { Hotbar } from './hotbar.js';
 import { chestItems, transfer, smelt, missingFor, recipesFor } from '../crafting.js';
-import { RESOURCES, FOOD, BAIT } from '../../data/item-data.js';
+import { RESOURCES, FOOD, BAIT, TOOLS } from '../../data/item-data.js';
 import { toolTier } from '../combat.js';
 import { seasonOf, SEASON_NAMES, TV_TIPS } from '../../data/farm-data.js';
 
@@ -151,7 +151,7 @@ export class UI {
     // At home with a farming tool or seeds: a big "Use" button for the tile in front of you.
     const held = getState()?.inventory.held;
     if (usable && !list.length && g.world?.def.mine && (held === 'pickaxe' || held === 'sword')) list = [{ kind: 'swing', verb: 'Swing', label: toolTier(held).name }];
-    else if (usable && !list.length && g.world?.area === 'home' && !g.visit && held && held !== 'rod' && held !== 'sword') {
+    else if (usable && !list.length && g.world?.areas && !g.visit && held && held !== 'rod' && held !== 'sword' && (TOOLS[held] || held.startsWith('seed:'))) {
       const seed = held.startsWith('seed:') ? RESOURCES[held.slice(5)] : null;
       const verb = seed ? 'Plant' : { hoe: 'Till', watering_can: 'Water', axe: 'Chop', pickaxe: 'Break', scythe: 'Cut' }[held] || 'Use';
       list = [{ kind: 'swing', verb, label: seed ? seed.name : toolTier(held).name, icon: seed ? seed.icon : held }];
@@ -289,7 +289,6 @@ export class UI {
   // ---------------------------------------------------------------- features
   openBuild() {
     const v = this.game.visit;
-    if (v && !v.member) { toast('You’re visiting, so you can only look around. Join their game to build.', 'build'); return; }
     if (v && !v.hostHere) { toast(`${v.hostName} needs to be on this island for you to build.`, 'build'); return; }
     if (this.game.indoor) { toast('Step outside to build.', 'build'); return; }
     if (this.game.fishing) this.game.stopFishing();
@@ -326,27 +325,36 @@ export class UI {
     el.replaceChildren(icon(ic), h('span', text));
   }
 
-  /** Visitor banner with a clear way home. */
+  /** "Playing in <friend>'s world" banner with a clear way home. */
   refreshVisit() {
     const v = this.game.visit;
     const el = this.el.visit;
     this.app.classList.toggle('visiting', !!v);
     if (!v) { el.hidden = true; return; }
     el.hidden = false;
-    el.replaceChildren(icon('island'), h('span', `${v.hostName}’s ${v.islandName}`, h('small', (v.member ? ' · playing together' : ' · visiting') + (v.hostHere ? '' : ' · host is away'))),
+    el.replaceChildren(icon('island'), h('span', v.worldName || `${v.hostName}’s world`, h('small', ` · your character here · ${v.hostHere ? 'with ' + v.hostName : 'host is away'}`)),
       button('Leave', () => this.game.leaveVisit(), { cls: 'small', iconName: 'home' }));
   }
 
-  /** Join a hosted game; from the title screen your own game loads first. */
+  /** Join a friend's world (from a code, an invite or the friends list). */
   async joinHosted(res) {
     closeSheet(true);
-    if (this.game.mode !== 'play') {
-      if (!this.title.loaded?.state) { toast('Start a game first, then you can join friends.', 'island'); this.online.social.leaveSession(); return; }
-      await this.title.continueGame();
-      setTimeout(() => this.game.joinGame(res), 900);
-      return;
-    }
-    this.game.joinGame(res);
+    try { await this.game.joinWorld(res); }
+    catch (err) { console.error(err); toast('Couldn’t join: ' + (err?.message || err), null, 'error'); }
+  }
+
+  /**
+   * First time in a world: make a character just for it. Resolves with
+   * { name, look } or null if the player backs out.
+   */
+  worldCharacter(res) {
+    return new Promise(resolve => this.title.creator({
+      title: `Your character in ${res.worldName || res.name + '’s world'}`,
+      note: `This character, their bag, coins and quests belong to ${res.worldName || 'this world'} only. Your own islands stay exactly as they are.`,
+      cta: 'Enter world',
+      onDone: profile => resolve(profile),
+      onCancel: () => resolve(null),
+    }));
   }
 
   /** Popups and events for hosted games. */
@@ -357,51 +365,26 @@ export class UI {
       let close;
       close = modal(h('div.confirm',
         h('h3', `${m.name} invited you!`),
-        h('p', `Join ${m.name}’s game to fish, gather and build together on their island. Your own island and progress stay safe.`),
+        h('p', `Join ${m.name}’s world with a character made for it. Your own worlds and characters stay untouched.`),
         h('div.row.end',
           button('Not now', () => close(), { cls: 'ghost' }),
-          button('Join game', async () => {
+          button('Join world', async () => {
             close();
             try { this.joinHosted(await social.joinInvite(m.from)); }
             catch (err) { toast(friendlyError(err), null, 'error'); }
           }, { cls: 'primary', iconName: 'boat' }))), { cls: 'invite-modal' });
     };
-    social.handlers.onJoined = m => toast(`${m.name} joined your game!`, 'friends', 'good');
+    social.handlers.onJoined = m => toast(`${m.name} joined your world!`, 'friends', 'good');
     social.handlers.onSessionEnd = m => {
       const v = this.game.visit;
-      const why = { stopped: 'The host closed the game.', host_left: 'The host left.', removed: 'The host removed you from the game.' }[m.reason] || 'The game ended.';
-      toast(why + ' Heading home.', 'home');
-      if (v && v.member && v.hostId === m.host) { v.member = false; this.game.leaveVisit(); }
+      const why = { stopped: 'The host closed their world.', host_left: 'The host left.', removed: 'The host removed you from their world.' }[m.reason] || 'The game ended.';
+      toast(why + ' Your character there is saved. Heading home.', 'home');
+      if (v && v.hostId === m.host) this.game.leaveVisit();
     };
     social.handlers.onSessionMove = m => {
       const v = this.game.visit;
-      if (v && v.member && v.hostId === m.host && v.islandId !== m.island) this.game.joinGame({ host: m.host, name: v.hostName, island: m.island });
+      if (v && v.hostId === m.host && v.islandId !== m.island) this.game.joinGame({ host: m.host, name: v.hostName, island: m.island });
     };
-  }
-
-  /** Load a friend's public island snapshot and go visit. */
-  async visitFriend(fr) {
-    // From the title screen: load your own game first, then sail over.
-    if (this.game.mode !== 'play') {
-      const st = this.title.loaded?.state;
-      if (!st) { toast('Start a game first, then you can visit friends.', 'island'); return; }
-      closeSheet(true);
-      await this.title.continueGame();
-      setTimeout(() => this.visitFriend(fr), 900);
-      return;
-    }
-    try {
-      const snap = await this.online.social.snapshotOf(fr.user);
-      if (!snap?.data?.islands?.length) { toast(`${fr.name} hasn’t synced an island yet.`, 'island'); return; }
-      const go = islandId => { closeSheet(true); this.game.startVisit({ hostId: fr.user, hostName: fr.name, snapshot: snap.data, islandId }); };
-      if (snap.data.islands.length === 1) { go(snap.data.islands[0].id); return; }
-      let close;
-      close = modal(h('div.confirm', h('h3', `Visit ${fr.name}`), h('p', 'Which island would you like to see?'),
-        h('div.list', snap.data.islands.map(i => button(`${i.name} · ${i.placements.length} things built`, () => { close(); go(i.id); }, { cls: 'wide', iconName: 'boat' }))),
-        h('div.row.end', button('Cancel', () => close(), { cls: 'ghost' }))));
-    } catch (err) {
-      toast(friendlyError(err), null, 'error');
-    }
   }
 
   fishingStart(session) { this.fishingUI.start(session); this.app.classList.add('fishing'); }
@@ -465,7 +448,7 @@ export class UI {
     close = modal(h('div.confirm.gift-modal',
       h('h3', icon('gift'), ' A welcome gift!'),
       h('p', h('b', '15 Island Radish Seeds'), ' — with a note from Mira:'),
-      h('p.note', '“Welcome home! Clear a patch of the yard, till it with your hoe, plant these and water them every day. Come find me at the pier when you’re settled — I’ve got a fishing rod with your name on it.”'),
+      h('p.note', '“Welcome home! Clear a patch of the yard, till it with your hoe, plant these and water them every day. When you’re settled, walk into town and say hi to Nori at the shop — she’s got a starter rod and sword for you.” — Mira'),
       h('ul.howto',
         h('li', 'Pick a tool on the hotbar (or press 1–0).'),
         h('li', 'Face a tile and press ', h('b', 'Use'), ' (or E / Space).'),

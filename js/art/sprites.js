@@ -79,7 +79,9 @@ export function buildAllSprites() {
 
   // home yard, mine, monsters
   put('guest_cabin', OBJ.guestCabin(false)); put('guest_cabin_lit', OBJ.guestCabin(true));
-  put('mine_entrance', OBJ.mineEntrance());
+  put('mine_entrance', OBJ.mineEntrance(false)); put('mine_entrance_lit', OBJ.mineEntrance(true));
+  put('hall', OBJ.hallBuilding(false)); put('hall_lit', OBJ.hallBuilding(true));
+  put('weapon_rack', OBJ.weaponRack());
   for (const k of ['stone', 'copper', 'iron', 'gold', 'gem']) put('rock_' + k, OBJ.mineRock(k));
   put('ladder_down', OBJ.ladder(true)); put('ladder_up', OBJ.ladder(false));
   put('cave_crystal', OBJ.caveCrystal());
@@ -88,11 +90,14 @@ export function buildAllSprites() {
   for (const s of SEASONS) {
     put('debris_tree_' + s, OBJ.yardTree(s));
     put('debris_weed_' + s + '_0', OBJ.weed(0, s)); put('debris_weed_' + s + '_1', OBJ.weed(1, s));
+    for (let v = 0; v < 2; v++) for (let sw = 0; sw < 3; sw++) put(`debris_grass_${s}_${v * 3 + sw}`, OBJ.tallGrass(v, s, sw));
   }
+  put('debris_grass', store.get('debris_grass_spring_1')); put('debris_stump', store.get('stump'));
   put('debris_tree', store.get('debris_tree_spring')); put('debris_weed', store.get('debris_weed_spring_0'));
   put('debris_twig', OBJ.twig()); put('debris_stone', OBJ.yardStone());
   for (const c of Object.values(CROPS)) for (let st = 0; st < 4; st++) put(`crop_${c.id}_${st}`, OBJ.crop(c, st));
   put('gift_box', OBJ.giftBox()); put('tv', OBJ.tvSet());
+  put('hall_counter', store.get('counter')); put('mine_crate', store.get('crate')); put('mine_chest', store.get('chest'));
   for (const t of ['slime', 'bat', 'crab', 'shade']) for (let f = 0; f < 2; f++) put(`mon_${t}_${f}`, OBJ.monster(t, f));
   // utilities + extra decorations
   put('furnace', OBJ.furnace(false)); put('furnace_lit', OBJ.furnace(true));

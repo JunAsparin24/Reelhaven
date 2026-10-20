@@ -3,6 +3,19 @@
 // `action` opens a feature after the conversation (shop, bridge, travel...).
 
 export const NPCS = {
+  bram: {
+    id: 'bram', name: 'Bram', role: 'Wayfarers’ Hall Keeper',
+    look: { skin: '#c48a62', hair: '#c9c4bc', hairStyle: 'short', shirt: '#6f5d44', pants: '#45384f', beard: '#c9c4bc', hat: 'explorer' },
+    dialogue: [
+      { when: c => !c.flag('mineOpen'), lines: ['The Old Mine’s blocked for now. Once Rowan clears the rocks, come back and I’ll see you properly armed.'], action: 'hall' },
+      { when: () => true, lines: [
+        'Welcome to the Wayfarers’ Hall. Every sword on my wall has a story — the deeper you go, the better the ones I’ll sell you.',
+        'Slimes, bats, rock crabs… bring down enough of them and the Hall pays a bounty.',
+        'Floor 20 has an old chest nobody’s opened. Rumour says there’s a cutlass inside.',
+        'Pack food before you go down. Grilled fish keeps you on your feet.',
+      ], random: true, action: 'hall' },
+    ],
+  },
   mira: {
     id: 'mira', name: 'Mira', role: 'Friendly Fisher',
     look: { skin: '#e8b48f', hair: '#7a4a2c', hairStyle: 'long', shirt: '#5b9be0', pants: '#4f5f86', hat: 'straw' },

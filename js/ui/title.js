@@ -10,6 +10,10 @@ import { GAME_VERSION, GAME_NAME } from '../state.js';
 import { PANELS } from './panels/index.js';
 import { enterLandscape } from './device.js';
 import { spriteUrl } from '../art/sprites.js';
+import { registry, lastPersonal, newSlotId, notePersonal, forgetPersonal, personalName, MAX_WORLDS } from '../worlds.js';
+import { toast } from '../events.js';
+import { friendlyError } from '../online/auth.js';
+import { icon } from './dom.js';
 
 export class TitleUI {
   constructor(ui) {
@@ -23,6 +27,10 @@ export class TitleUI {
   show() {
     this.visible = true;
     this.ui.app.classList.add('on-title');
+    // "Continue" opens the world you played last.
+    this.slot = lastPersonal() || 'main';
+    Save.setSlot(this.slot);
+    this.ui.online?.cloud?.setSlot?.({ id: this.slot });
     const loaded = Save.load();
     this.loaded = loaded;
     const hasSave = !!loaded.state;
@@ -35,15 +43,15 @@ export class TitleUI {
           h('span.logo-reel', 'Reel'), h('span.logo-haven', 'haven')),
         h('p.tagline', 'A cozy island fishing tale')),
       h('nav.title-menu', { 'aria-label': 'Main menu' },
-        hasSave ? button('Continue', () => this.continueGame(), { cls: 'title-btn primary', sound: null, title: name ? `Continue as ${name}` : 'Continue' }) : null,
-        button('New Game', () => this.newGame(hasSave), { cls: 'title-btn' + (hasSave ? '' : ' primary'), sound: null }),
+        hasSave ? button('Continue', () => this.continueGame(), { cls: 'title-btn primary', sound: null, title: name ? `Continue “${personalName(this.slot)}” as ${name}` : 'Continue' }) : null,
+        hasSave ? button('Worlds', () => this.worldsMenu(), { cls: 'title-btn', iconName: 'island', sound: null }) : button('New World', () => this.createWorld(), { cls: 'title-btn primary', sound: null }),
         button('Friends', () => this.ui.open('friends'), { cls: 'title-btn', iconName: 'friends' }),
         button(account?.signedIn ? 'Account' : 'Sign In', () => this.ui.openAccount(), { cls: 'title-btn', iconName: 'home' }),
         button('Settings', () => this.settings(), { cls: 'title-btn', iconName: 'gear' }),
         button('Credits', () => this.credits(), { cls: 'title-btn', iconName: 'sparkle' })),
       h('div.title-foot',
         h('span.title-status', account ? [h('span.dot' + (account.signedIn ? '.on' : '')), account.text] : [h('span.dot'), 'Playing offline']),
-        hasSave ? h('span.title-save', `${name} · Lv ${loaded.state.player.level}`) : null,
+        hasSave ? h('span.title-save', `${personalName(this.slot)} · ${name} · Lv ${loaded.state.player.level}`) : null,
         h('span.version', 'v' + GAME_VERSION)),
       loaded.error ? h('p.title-warn', { role: 'alert' }, loaded.error) : null,
       !Save.canPersist ? h('p.title-warn', 'Saving is unavailable in this browser mode (private window?). Progress will be lost when you close the tab.') : null,
@@ -96,22 +104,97 @@ export class TitleUI {
     initAudio(); sfx('quest'); enterLandscape();
     // When signed in, make sure we continue from the right copy (local vs cloud).
     const state = this.ui.cloud ? await this.ui.cloud.resolveBeforePlay(this.loaded.state) : this.loaded.state;
-    if (state) this.ui.game.continueGame(state);
+    if (state) { this.ui.game.usePersonalSlot(this.slot); this.ui.game.continueGame(state); }
   }
 
-  newGame(hasSave) {
+  /** Open one of your own worlds. */
+  async playWorld(slot) {
+    initAudio(); sfx('quest'); enterLandscape();
+    Save.setSlot(slot);
+    this.ui.online?.cloud?.setSlot?.({ id: slot });
+    let state = Save.load().state;
+    if (this.ui.cloud) state = await this.ui.cloud.resolveBeforePlay(state);
+    if (!state) { toast('That world has no save yet.', 'island', 'error'); return; }
+    this.ui.game.usePersonalSlot(slot);
+    this.ui.game.continueGame(state);
+  }
+
+  /** A brand-new world: its own save, character and progress. */
+  createWorld() {
     initAudio(); sfx('click');
-    if (!hasSave) { this.creator(); return; }
-    const s = this.loaded.state;
-    const cloudNote = this.ui.cloud?.signedIn?.()
-      ? ' You are signed in, so your cloud save will also switch to the new island the next time it syncs.'
-      : '';
-    confirmModal('Start a new island?',
-      `Your current island (${s.player.name}, level ${s.player.level}) will be kept as a backup on this device — you can restore it any time from Settings → Save data.${cloudNote}`,
-      'Start fresh', () => {
-        Save.archiveSave(s, 'new-game');
-        this.creator();
-      }, { danger: true });
+    const reg = registry();
+    if (reg.personal.length >= MAX_WORLDS) { toast(`You can have up to ${MAX_WORLDS} worlds. Delete one first.`, 'island', 'error'); return; }
+    const first = !reg.personal.length && !Save.hasSlot('main');
+    let close;
+    const input = h('input.field', { type: 'text', maxlength: '24', value: first ? 'My Island' : `Island ${reg.personal.length + 1}`, 'aria-label': 'World name' });
+    const go = () => {
+      const worldName = input.value.trim() || 'My Island';
+      close();
+      this.creator({
+        title: `Create your islander for “${worldName}”`,
+        onDone: profile => {
+          const slot = first ? 'main' : newSlotId();
+          Save.setSlot(slot);
+          this.ui.online?.cloud?.setSlot?.({ id: slot });
+          notePersonal(slot, { name: worldName, createdAt: Date.now() });
+          if (this.ui.online?.auth.signedIn && slot !== 'main') this.ui.online.auth.net.request('world_create', { world: slot, name: worldName }).catch(err => console.warn('world_create', err));
+          enterLandscape();
+          this.ui.game.newGame(profile, { worldName });
+        },
+      });
+    };
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    close = modal(h('div.confirm',
+      h('h3', 'New world'),
+      h('p', 'Every world is a separate save with its own character, bag, coins and progress.'),
+      h('label.form-row', h('span', 'World name'), input),
+      h('div.row.end', button('Cancel', () => close(), { cls: 'ghost' }), button('Next', go, { cls: 'primary' }))));
+    setTimeout(() => input.select(), 50);
+  }
+
+  /** World selection: my worlds, friends' open worlds, worlds I've joined, invite code. */
+  async worldsMenu() {
+    initAudio();
+    const online = this.ui.online;
+    const signedIn = !!online?.auth.signedIn;
+    if (signedIn) await online.refreshWorlds();
+    let open = [];
+    if (signedIn) { try { open = await online.social.joinable(); } catch { open = []; } }
+    const reg = registry();
+    let close;
+    const when = t => (t ? new Date(t).toLocaleDateString() : 'never');
+    const mine = h('div.list', reg.personal.filter(w => Save.hasSlot(w.slot) || w.cloud).map(w => h('div.item-row.world-row',
+      icon('island', 'item-icon'),
+      h('div.item-main', h('div.item-name', w.name || 'My Island'), h('div.item-sub', `${w.charName || 'No character yet'}${w.level ? ' · Lv ' + w.level : ''} · last played ${when(w.lastPlayed)}`)),
+      button('Play', () => { close(); this.playWorld(w.slot); }, { cls: 'small primary' }),
+      w.slot !== 'main' ? button('Delete', () => confirmModal('Delete this world?', `“${w.name}” and its character will be removed from this device${signedIn ? ' and your account' : ''}. This can’t be undone.`, 'Delete', () => {
+        forgetPersonal(w.slot);
+        if (signedIn) online.auth.net.request('world_delete', { world: w.slot }).catch(() => {});
+        close(); this.worldsMenu();
+      }, { danger: true }), { cls: 'small ghost' }) : null)));
+    const joinBtn = (label, fn) => button(label, async () => { try { close(); this.ui.joinHosted(await fn()); } catch (err) { toast(friendlyError(err), null, 'error'); } }, { cls: 'small primary', iconName: 'boat' });
+    const openList = open.length ? h('div.list', open.map(o => h('div.item-row.world-row', icon('friends', 'item-icon'),
+      h('div.item-main', h('div.item-name', o.worldName), h('div.item-sub', `${o.name} is hosting · ${o.players} playing · ${o.joined ? 'you have a character here' : 'you’ll create a new character'}`)),
+      joinBtn(o.joined ? 'Join' : 'Join (new character)', () => online.social.joinFriend(o.host)))))
+      : h('p.muted', signedIn ? 'No friends are hosting a world right now.' : 'Sign in to join friends’ worlds.');
+    const joined = reg.joined.length ? h('div.list', reg.joined.map(j => h('div.item-row.world-row', icon('boat', 'item-icon'),
+      h('div.item-main', h('div.item-name', j.worldName || 'A friend’s world'), h('div.item-sub', `${j.ownerName || j.owner}’s world · you play ${j.charName || '—'}${j.level ? ' (Lv ' + j.level + ')' : ''}`)),
+      open.some(o => o.world === j.world) || j.open ? joinBtn('Join', () => online.social.joinFriend(j.owner)) : h('span.tag', 'Host offline'))))
+      : null;
+    const code = h('input.field.code-input', { type: 'text', maxlength: '6', placeholder: 'INVITE CODE', 'aria-label': 'Invite code', on: { input: e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); } } });
+    const codeBtn = button('Join', async () => {
+      if (code.value.length !== 6) { toast('Invite codes have 6 letters and numbers.', null, 'error'); return; }
+      try { const res = await online.social.joinCode(code.value); close(); this.ui.joinHosted(res); } catch (err) { toast(friendlyError(err), null, 'error'); }
+    }, { cls: 'small primary', disabled: !signedIn });
+    close = modal(h('div.worlds-menu',
+      h('h3', icon('island'), ' Worlds'),
+      h('h4.section', 'My worlds'), mine,
+      button('Create new world', () => { close(); this.createWorld(); }, { cls: 'ghost wide', iconName: 'build' }),
+      h('h4.section', 'Join a friend'), openList,
+      joined ? h('h4.section', 'Worlds you’ve joined') : null, joined,
+      h('h4.section', 'Enter an invite code'),
+      h('div.add-friend', code, codeBtn),
+      h('div.row.end', button('Close', () => close(), { cls: 'primary' }))), { cls: 'worlds-modal' });
   }
 
   settings() {
@@ -131,13 +214,16 @@ export class TitleUI {
         h('dt', 'Game design, code & art'), h('dd', 'Original work for this project — every sprite is drawn in code as pixel art.'),
         h('dt', 'Music & sound'), h('dd', 'Music: “1 Hour Video Game Ambient Music”. Sound effects synthesized with Web Audio; grass, sand, wood and mud footsteps from Epidemic Sound; other footsteps generated by tools/generate_footsteps.py.'),
         h('dt', 'Font'), h('dd', 'Jersey 15 by Sarah Cadigan-Fried and Pixelify Sans (logo) by Stefie Justprince, both SIL Open Font License.'),
-        h('dt', 'Online services'), h('dd', 'Accounts, cloud saves, friends and visits run on the game’s own server (server.py).')),
+        h('dt', 'Online services'), h('dd', 'Accounts, cloud saves, friends and shared worlds run on the game’s own server (server.py).')),
       h('p.muted', 'Thank you for playing!'),
       h('div.row.end', button('Close', () => close(), { cls: 'primary' }))));
   }
 
-  /** Character creation: name, skin, hair, outfit, hat. */
-  creator() {
+  /**
+   * Character creation: name, skin, hair, outfit, hat. Used for new worlds
+   * and for your character in a friend's world.
+   */
+  creator({ title = 'Create your islander', note = null, cta = 'Start adventure', onDone = null, onCancel = null } = {}) {
     const look = { skin: SKIN_TONES[1], hair: HAIR_COLORS[0], hairStyle: 'short', shirt: SHIRT_COLORS[0], pants: '#4f5f86', hat: 'straw' };
     const preview = h('img.creator-preview', { alt: 'Your character' });
     const refresh = () => { preview.src = scaleUp(buildPortrait(look), 6).toDataURL(); };
@@ -157,11 +243,13 @@ export class TitleUI {
       const name = nameInput.value.trim() || 'Islander';
       close();
       enterLandscape();
-      this.ui.game.newGame({ name, look: { ...look } });
+      if (onDone) onDone({ name, look: { ...look } });
+      else this.ui.game.newGame({ name, look: { ...look } });
     };
     nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') start(); });
     close = modal(h('div.creator',
-      h('h3', 'Create your islander'),
+      h('h3', title),
+      note ? h('p.muted.creator-note', note) : null,
       h('div.creator-cols',
         h('div.creator-top', h('div.preview-frame', preview), h('div.creator-name', h('label', 'Name'), nameInput)),
         h('div.creator-opts',
@@ -170,7 +258,7 @@ export class TitleUI {
           options('Style', HAIR_STYLES, 'hairStyle', v => v[0].toUpperCase() + v.slice(1)),
           swatches('Outfit', SHIRT_COLORS, 'shirt'),
           options('Hat', STARTING_HATS, 'hat', v => HATS[v].name))),
-      h('div.row.end', button('Back', () => close(), { cls: 'ghost' }), button('Start adventure', start, { cls: 'primary', sound: null }))), { dismissable: false, cls: 'creator-modal' });
+      h('div.row.end', button('Back', () => { close(); onCancel?.(); }, { cls: 'ghost' }), button(cta, start, { cls: 'primary', sound: null }))), { dismissable: false, cls: 'creator-modal' });
     refresh();
     setTimeout(() => nameInput.focus(), 60);
   }

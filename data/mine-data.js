@@ -2,6 +2,7 @@
 // (in exactly one of them) the ladder down. Monsters get tougher with depth,
 // and every 5th floor becomes a checkpoint you can start from next time.
 import { INTERIORS } from './interior-data.js';
+import { FLOOR_CHESTS } from './weapon-data.js';
 
 const THEME = { deep: 'deep', near: 'ocean', shallow: 'shallow', pond: 'pond', reef: 'reef', grass: 'grass', sand: 'sand' };
 
@@ -85,6 +86,20 @@ export function mineFloor(level, seed = Date.now()) {
       const far = rocks.filter(t => Math.abs(t.x - sx) + Math.abs(t.y - sy) > 8);
       const pick = (far.length ? far : rocks)[Math.floor(r() * (far.length || rocks.length))];
       def.ladderAt = pick ? { x: pick.x, y: pick.y } : null;
+      // a few breakable crates (coins, snacks, ore, rare swords)
+      const freeTile = () => {
+        for (let tries = 0; tries < 40; tries++) {
+          const t = tiles[Math.floor(r() * tiles.length)];
+          if (t && !rocks.some(q => q.x === t[0] && q.y === t[1])) { rocks.push({ x: t[0], y: t[1], crate: true }); return t; }
+        }
+        return null;
+      };
+      for (let k = 0; k < 2 + Math.floor(r() * 3); k++) { const t = freeTile(); if (t) m.obj('mine_crate', t[0], t[1]); }
+      // milestone floors hide a treasure chest close to the ladder
+      if (FLOOR_CHESTS[level]) {
+        const spot = [[sx + 2, sy + 1], [sx - 2, sy + 1], [sx + 1, sy + 3], [sx - 1, sy + 3]].find(([x, y]) => open.has(x + ',' + y) && !rocks.some(q => q.x === x && q.y === y));
+        if (spot) m.obj('mine_chest', spot[0], spot[1], { level });
+      }
       // glowing crystals for a little light
       for (let k = 0; k < 6; k++) {
         const t = tiles[Math.floor(r() * tiles.length)];

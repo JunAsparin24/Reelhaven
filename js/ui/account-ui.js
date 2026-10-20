@@ -90,7 +90,7 @@ export class AccountUI {
     };
     close = modal(h('div.auth',
       h('h3', 'Your Reelhaven account'),
-      h('p.muted', 'Sign in to keep your island safe on the server, play on any device, and visit friends.'),
+      h('p.muted', 'Sign in to keep your worlds safe on the server, play on any device, and join friends’ worlds.'),
       tabsEl, body, msg,
       h('div.row.end', button('Not now', () => close(), { cls: 'ghost' }))), { cls: 'auth-modal' });
     render(mode);
@@ -151,10 +151,6 @@ export class AccountUI {
       await a.updateProfile({ name: name.input.value });
       msg.className = 'form-msg ok'; msg.textContent = 'Name saved.';
     }), { cls: 'small', sound: null });
-    const visits = h('input', { type: 'checkbox', checked: p.allowVisits !== false, on: { change: async e => {
-      try { await a.updateProfile({ allowVisits: e.target.checked }); toast(e.target.checked ? 'Friends can visit your island.' : 'Island visits turned off.', 'island'); }
-      catch (err) { e.target.checked = !e.target.checked; toast(friendlyError(err), null, 'error'); }
-    } } });
     const syncBtn = button('Sync now', () => busy(syncBtn, msg, async () => {
       const res = await this.cloud.reconcile();
       if (res.state && this.ui.game.mode === 'play') this.online.applyState(res.state);
@@ -172,7 +168,6 @@ export class AccountUI {
           catch { toast('Copy not available — your code is ' + p.code, 'friends'); }
         }, { cls: 'small ghost' })),
       h('div.form-inline', name.el, saveName),
-      h('label.setting.toggle', h('span', 'Let friends visit my island', h('small', 'Friends can look around your island (to play together, host a game from Friends).')), visits),
       h('div.acct-sync', icon('island'), h('div', h('b', status?.text || 'Cloud save'), h('small', synced ? 'Last synced ' + new Date(synced).toLocaleString() : 'Not synced yet'))),
       msg,
       h('div.row.wrap.end',

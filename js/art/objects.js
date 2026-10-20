@@ -740,21 +740,80 @@ export function guestCabin(glow = false) {
   }));
 }
 
-export function mineEntrance() {
-  return O(paint(50, 40, p => {
-    // rocky mound
-    p.ellipse(25, 24, 23, 15, C.stone2);
-    p.ellipse(25, 22, 21, 13, C.stone);
-    for (const [x, y] of [[10, 18], [38, 16], [18, 10], [32, 9], [42, 26], [7, 28]]) p.ellipse(x, y, 3, 2, C.stone3);
-    // dark mouth with a timber frame
-    p.rect(15, 18, 20, 21, '#1e1a24');
-    p.rect(13, 16, 3, 23, C.wood2); p.rect(34, 16, 3, 23, C.wood2);
-    p.rect(12, 14, 26, 4, C.wood); p.hline(12, 14, 26, C.woodLight);
-    // rails
-    p.hline(19, 36, 12, C.stone3); p.hline(19, 38, 12, C.stone3);
-    for (let x = 19; x < 31; x += 3) p.vline(x, 35, 4, C.wood3);
-    // little lantern
-    p.rect(38, 20, 3, 4, C.glow); p.px(39, 19, C.ink2);
+/**
+ * The Old Mine: a craggy cliff with a timber-braced tunnel, rails running
+ * out of the dark, a mine cart full of ore, lanterns and a carved sign.
+ */
+export function mineEntrance(lit = false) {
+  return O(paint(64, 58, p => {
+    // layered cliff face
+    const rockA = '#7d7680', rockB = '#9a939c', rockC = '#5f5864', moss = '#6aa45a';
+    p.ellipse(32, 34, 31, 23, rockC);
+    p.ellipse(32, 31, 29, 21, rockA);
+    for (const [x, y, rx, ry] of [[12, 22, 9, 8], [52, 20, 10, 9], [32, 13, 14, 9], [20, 10, 7, 5], [46, 9, 8, 5]]) { p.ellipse(x, y, rx, ry, rockA); p.ellipse(x - 1, y - 2, rx - 2, ry - 2, rockB); }
+    // cracks and highlights
+    for (const [x0, y0, x1, y1] of [[8, 30, 13, 38], [55, 28, 50, 36], [27, 6, 30, 12], [40, 5, 37, 11], [16, 16, 20, 21]]) p.line(x0, y0, x1, y1, rockC);
+    for (const [x, y] of [[18, 7], [44, 7], [9, 19], [55, 17], [30, 9]]) p.hline(x, y, 3, '#c4bec6');
+    // moss and a few grass tufts on top
+    for (const [x, y, w] of [[14, 4, 8], [26, 2, 12], [42, 3, 9], [52, 11, 6], [5, 15, 5]]) { p.hline(x, y, w, moss); p.hline(x + 1, y - 1, w - 2, '#8cc78a'); }
+    // dark tunnel mouth
+    p.ellipse(32, 40, 11, 13, '#141018');
+    p.rect(21, 40, 22, 17, '#141018');
+    p.ellipse(32, 38, 8, 9, '#0b080e');
+    // timber frame: posts, lintel, braces
+    p.rect(18, 28, 4, 29, C.wood2); p.vline(18, 28, 29, C.wood3); p.vline(21, 28, 29, C.woodLight);
+    p.rect(42, 28, 4, 29, C.wood2); p.vline(42, 28, 29, C.wood3); p.vline(45, 28, 29, C.woodLight);
+    p.rect(15, 24, 34, 5, C.wood); p.hline(15, 24, 34, C.woodLight); p.hline(15, 28, 34, C.wood3);
+    for (const x of [17, 46]) p.rect(x, 23, 2, 2, C.stone3);           // bolts
+    p.line(22, 29, 27, 34, C.wood3); p.line(41, 29, 36, 34, C.wood3);
+    // carved sign on the lintel
+    p.rect(24, 16, 16, 8, C.wood2); p.rect(25, 17, 14, 6, C.woodLight);
+    p.hline(27, 19, 10, C.wood3); p.hline(28, 21, 8, C.wood3);
+    p.vline(26, 22, 3, C.wood3); p.vline(37, 22, 3, C.wood3);
+    // rails out of the dark
+    p.hline(24, 54, 16, '#8a8f99'); p.hline(23, 57, 18, '#8a8f99');
+    for (let x = 24; x < 41; x += 3) p.rect(x, 53, 2, 5, C.wood3);
+    // mine cart with ore
+    p.rect(46, 45, 13, 8, '#6f6a6e'); p.hline(46, 45, 13, '#918b88'); p.rect(47, 47, 11, 1, '#5a5560');
+    p.ellipse(50, 44, 2, 1.5, C.orange2); p.ellipse(54, 43, 2, 1.5, C.stone); p.ellipse(56, 44, 1.5, 1, C.gold);
+    p.ellipse(49, 54, 2, 2, C.ink2); p.ellipse(56, 54, 2, 2, C.ink2);
+    // pickaxe leaning on the post
+    p.line(9, 56, 14, 41, C.wood2); for (let i = 0; i < 7; i++) p.px(11 + i, 40 + Math.round(Math.abs(i - 3) * 0.5), C.stone);
+    // lanterns either side
+    for (const x of [13, 49]) { p.rect(x, 30, 1, 3, C.ink2); p.rect(x - 2, 33, 5, 6, C.ink2); p.rect(x - 1, 34, 3, 4, lit ? C.glow : '#e8c66a'); }
+  }));
+}
+
+/** The Wayfarers' Hall: a sturdy timber lodge with crossed swords over the door. */
+export function hallBuilding(glow = false) {
+  return O(paint(68, 62, p => {
+    walls(p, 4, 30, 60, 30, '#8a6a4a');
+    for (let y = 33; y < 58; y += 5) p.hline(5, y, 58, '#7a5c3e');
+    p.rect(4, 56, 60, 4, C.stone2);
+    roofShape(p, 0, 8, 68, 24, '#5f6f86', 9);
+    p.rect(4, 30, 60, 2, '#4f5f76');
+    // chimney with smoke stack
+    p.rect(51, 2, 8, 12, C.stone2); p.rect(50, 1, 10, 2, C.stone3);
+    door(p, 29, 44);
+    windowAt(p, 10, 38, glow); windowAt(p, 50, 38, glow);
+    // crossed swords crest over the door
+    p.rect(26, 31, 16, 11, C.wood2); p.rect(27, 32, 14, 9, '#c9a26a');
+    p.line(29, 40, 39, 33, C.stone); p.line(29, 33, 39, 40, C.stone);
+    p.px(39, 33, C.white); p.px(29, 33, C.white); p.rect(33, 35, 2, 2, C.gold);
+    // banner
+    p.rect(5, 18, 6, 12, C.coral2); p.px(7, 30, C.coral2); p.px(9, 30, C.coral2); p.rect(7, 21, 2, 2, C.gold);
+  }));
+}
+
+export function weaponRack() {
+  return O(paint(32, 34, p => {
+    p.rect(2, 4, 28, 3, C.wood); p.rect(2, 26, 28, 3, C.wood);
+    p.rect(2, 4, 3, 28, C.wood2); p.rect(27, 4, 3, 28, C.wood2);
+    // swords hanging point-down
+    const blades = [[8, '#c4c8d0'], [13, '#f0c14b'], [18, '#8fd0e8'], [23, '#b27be0']];
+    for (const [x, col] of blades) { p.rect(x - 1, 7, 3, 2, C.gold2); p.vline(x, 9, 15, col); p.vline(x + 1, 9, 14, '#ffffff'); p.px(x, 24, col); }
+    // a shield below
+    p.ellipse(16, 29, 5, 3, C.blueRoof); p.px(16, 29, C.gold);
   }));
 }
 
@@ -994,6 +1053,22 @@ export function weed(v = 0, season = 'spring') {
     p.hline(2, 12, 10, g[0]);
     if (v === 1 && season !== 'winter') { p.px(5, 4, C.yellow); p.px(9, 5, C.white); }
   }));
+}
+
+/** Tall grass tuft; sway 0..2 leans the blades for a breeze animation. */
+export function tallGrass(v = 0, season = 'spring', sway = 1) {
+  const g = { spring: ['#5b9a52', '#7cc06a', '#4a8244'], summer: ['#5aa04a', '#86c45a', '#3f7f3a'], fall: ['#b08a3e', '#d4a84e', '#8a6a30'], winter: ['#b8c8cc', '#e0ecee', '#94a8ae'] }[season];
+  const lean = sway - 1;
+  return paint(16, 16, p => {
+    const blades = v ? [[2, 9], [5, 12], [8, 14], [11, 11], [13, 8]] : [[3, 11], [6, 14], [9, 12], [12, 13]];
+    for (const [x, hgt] of blades) {
+      for (let i = 0; i < hgt; i++) {
+        const xx = x + Math.round(lean * (i / hgt) * 2);
+        p.px(xx, 15 - i, i > hgt - 3 ? g[1] : i % 3 === 0 ? g[2] : g[0]);
+      }
+    }
+    p.hline(1, 15, 14, g[2]);
+  });
 }
 
 export function giftBox() {

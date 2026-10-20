@@ -7,14 +7,21 @@ import { BASE_FISH_CAPACITY, MARKET_SELL_BONUS, RESOURCE_SELL } from '../data/it
 import { BUILDINGS } from '../data/building-data.js';
 import { countBuilt } from './building-count.js';
 import { eventEffect } from './world-events.js';
+import { START_BAG, hasRoomFor, freeSlots, fishKey, noticeGain } from './bag.js';
 
-export function capacity() {
-  const sheds = countBuilt('storage_shed');
-  return BASE_FISH_CAPACITY + sheds * BUILDINGS.storage_shed.capacity;
-}
+/** Number of bag slots (12 to start; backpacks add rows). */
+export function capacity() { return getState().inventory.bagSize || START_BAG; }
 
 export function fishCount() { return getState().inventory.fish.length; }
-export function isFull() { return fishCount() >= capacity(); }
+
+/**
+ * Is there no room for a fish? Same species stack together, so a fish you
+ * already carry always fits; a new species needs a free slot.
+ */
+export function isFull(fishId = null, variant = false) {
+  if (fishId) return !hasRoomFor(fishKey(fishId, variant));
+  return freeSlots() === 0;
+}
 
 /** Sell value of one caught fish (size and variant adjust the base price). */
 export function fishValue(entry) {
@@ -32,6 +39,7 @@ export function fishValue(entry) {
 export function addFish(id, size, variant) {
   const entry = { uid: uid('f'), id, size, variant: !!variant, caughtAt: Date.now() };
   getState().inventory.fish.push(entry);
+  noticeGain(fishKey(id, variant));
   return entry;
 }
 

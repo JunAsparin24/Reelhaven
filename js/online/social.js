@@ -57,7 +57,12 @@ export class Social {
   }
 
   // ------------------------------------------------------------ hosted games
-  async hostStart() { const r = await this.net.request('host_start'); this.hosting = r; this.emit('session'); return r; }
+  /** Open one of your own worlds ({ slot, name }) to friends. */
+  async hostStart(world = {}) { const r = await this.net.request('host_start', { world: world.slot || 'main', name: world.name, membersBuild: world.membersBuild }); this.hosting = r; this.emit('session'); return r; }
+  async hostSettings(settings) { const r = await this.net.request('host_settings', settings); this.hosting = r; this.emit('session'); return r; }
+  /** Friends' worlds that are open right now. */
+  async joinable() { return (await this.net.request('joinable')).list; }
+  async joinFriend(host) { const r = await this.net.request('join_friend', { host }); this.joined = { host: r.host, name: r.name, world: r.world }; this.emit('session'); return r; }
   async hostStop() { await this.net.request('host_stop'); this.hosting = null; this.emit('session'); }
   async hostStatus() { const r = await this.net.request('host_status'); this.hosting = r.code ? r : null; this.emit('session'); return this.hosting; }
   async kick(user) { await this.net.request('host_kick', { user }); }

@@ -51,14 +51,20 @@ test('addCoins ignores invalid amounts', () => {
 });
 
 // ---------------------------------------------------------------- inventory
-test('bag capacity is enforced and sheds increase it', () => {
+test('the bag has 12 slots, stacks fish by species, and backpacks add rows', () => {
   const s = fresh();
-  const base = capacity();
-  for (let i = 0; i < base; i++) addFish('silver_sardine', 10, false);
+  eq(capacity(), 12);
+  // same species always fits once you carry one
+  for (let i = 0; i < 5; i++) addFish('silver_sardine', 10, false);
+  assert(!isFull('silver_sardine', false), 'sardines stack');
+  // fill every remaining slot with different items
+  const ids = ['stone', 'shell', 'seaglass', 'flower', 'copper_ore', 'iron_ore', 'gold_ore', 'quartz', 'amethyst', 'slime', 'bat_wing', 'fiber'];
+  for (const id of ids) { if (isFull()) break; s.inventory.items[id] = 1; }
   assert(isFull(), 'should be full');
-  s.islands.sunny.placements.push({ uid: 'shed1', type: 'storage_shed', x: 5, y: 5, rot: 0 });
-  eq(capacity(), base + 30);
-  assert(!isFull());
+  assert(isFull('golden_koi', false), 'a new species needs a free slot');
+  assert(!isFull('silver_sardine', false), 'but sardines still stack');
+  s.inventory.bagSize = 24;
+  assert(!isFull('golden_koi', false), 'backpack adds room');
 });
 test('selling removes fish and pays the right amount', () => {
   const s = fresh(); s.player.coins = 0;
@@ -212,7 +218,7 @@ test('quests progress automatically and pay out once', () => {
   s.quests.index = 3;   // skip the farming intro (gift, clearing, planting) to "Welcome to Sunny Shores"
   initQuests();
   eq(questProgress().def.id, 'q_welcome');
-  s.stats.talked.mira = true;
+  s.stats.talked.nori = true;
   eq(questProgress().value, 1);
   checkAchievements();
   s.quests.ready = true;

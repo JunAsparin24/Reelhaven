@@ -10,6 +10,7 @@ import { RESOURCES } from '../data/item-data.js';
 import { sfx } from './audio.js';
 import { MONSTERS } from '../data/mine-data.js';
 import { CROPS } from '../data/farm-data.js';
+import { hasRoomFor, freeSlots } from './bag.js';
 
 export const BRIDGE_COST = { coins: 100, wood: 15, stone: 6 };
 
@@ -41,7 +42,7 @@ function collectInteractables(game, rangeBoost = 1, only = null) {
     consider({ kind: 'npc', npc: n, verb: 'Talk', label: n.def.name, mx: n.x, my: n.y - 30 }, n.x, n.y - 4, npcRange);
   }
   for (const o of w.objects) {
-    if (w.objectHidden(o)) continue;
+    if (w.objectHidden(o) || o.def.quiet) continue;
     const fp = o.def.footprint || { w: 1, h: 1 };
     let cx = o.x * TILE + (fp.w * TILE) / 2;
     const cy = (o.y + fp.h) * TILE - 6;
@@ -84,7 +85,7 @@ function collectInteractables(game, rangeBoost = 1, only = null) {
     consider({ kind: 'attack', monster: m, verb: 'Attack', label: MONSTERS[m.type]?.name || 'Monster', mx: m.x, my: m.y - 22 }, m.x, m.y - 2, 26);
   }
   for (const pl of w.placed) {
-    if (pl.def.kind !== 'building') continue;
+    if (pl.def.kind !== 'building' || pl.def.use) continue;
     const cx = pl.x * TILE + (pl.fw * TILE) / 2, cy = (pl.y + pl.fh) * TILE + 6;
     if (pl.type === 'cottage' || pl.type === 'guest_cabin') {
       const label = pl.type === 'guest_cabin' ? `${pl.ownerName || 'Guest'}’s Cabin` : pl.def.name;
@@ -127,6 +128,8 @@ export function gather(game, o) {
   const w = game.world;
   if (!w.nodeReady(o)) return;
   const res = o.def.resource;
+  const gives = res.item === 'crystal' ? 'seaglass' : res.item === 'tidepool' ? null : res.item;
+  if (gives ? !hasRoomFor(gives) : !freeSlots()) { sfx('error'); toast('Your bag is full! Make room first.', 'bag', 'error'); return; }
   const isl = w.islandState;   // the island being played (a friend's when visiting)
   let respawn = res.respawn;
   if (w.id === 'coral' && (o.type === 'shells' || o.type === 'seaglass')) respawn *= 0.6;

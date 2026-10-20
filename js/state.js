@@ -6,7 +6,7 @@ import { ISLANDS, ISLAND_ORDER } from '../data/island-data.js';
 import { MAIN_QUESTS } from '../data/quest-data.js';
 import { defaultPlacements } from './world-gen.js';
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 8;
 export const GAME_NAME = 'Reelhaven';
 // Version: 26 = the year (2026), then .1, then the number of commits so far.
 export const GAME_VERSION = '26.1.47';
@@ -73,6 +73,8 @@ export function createNewState({ name = 'Islander', look }) {
       tools: { axe: 0, pickaxe: 0, scythe: 0, hoe: 0, watering_can: 0 },
       held: 'axe',                // hotbar selection: a tool id, 'rod', or 'seed:<item id>'
       water: 40,                  // watering can splashes left
+      bagSize: 12,                // slots; backpacks from Nori add rows of 12
+      slots: [],                  // what sits in each slot (see js/bag.js)
     },
     collection: {},               // fishId -> { count, maxSize, first, variant }
     quests: {
@@ -92,6 +94,7 @@ export function createNewState({ name = 'Islander', look }) {
       zoneCatch: {}, talked: {},
       mineDeepest: 0, monstersSlain: 0, rocksBroken: 0, daysSlept: 0,
       debrisCleared: 0, seedsPlanted: 0, cropsHarvested: 0,
+      kills: {},                  // monster type -> defeated (Wayfarers' Hall goals)
     },
     flags: {},
     islands,

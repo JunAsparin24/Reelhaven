@@ -5,6 +5,7 @@ import { AuthService } from './auth.js';
 import { CloudSync, ServerSaveBackend } from './cloud-sync.js';
 import { Social } from './social.js';
 import { on } from '../events.js';
+import { mergeServer } from '../worlds.js';
 
 export class Online {
   constructor() {
@@ -21,7 +22,7 @@ export class Online {
     this.ui = ui;
     this.cloud = new CloudSync({
       auth: this.auth,
-      makeBackend: auth => new ServerSaveBackend(auth.net),
+      makeBackend: (auth, slot) => new ServerSaveBackend(auth.net, slot),
       prompt,
       onStateReplaced: state => this.applyState(state),
     });
@@ -37,9 +38,13 @@ export class Online {
       if (type === 'signedIn') {
         this.social.resync();
         // Work out which copy of the island to use (may ask the player).
+        // In someone else's world the playing state is your character there; it
+        // was reconciled when you joined, so leave it alone.
+        if (this.game.visit) return;
         const res = await this.cloud.reconcile();
         if (this.game.mode === 'play') { if (res.state) this.applyState(res.state); }
         else this.ui.title?.refresh();
+        this.refreshWorlds();
       }
       if (type === 'signedOut') { this.social.clear(); this.game.leaveChannel?.(); }
     });
@@ -48,10 +53,21 @@ export class Online {
 
   /** Swap the running game to a different copy of the save (e.g. newer cloud). */
   applyState(state) {
-    if (!state || this.game.mode !== 'play') return;
+    if (!state || this.game.mode !== 'play' || this.game.visit) return;
     const cur = this.game.currentState?.();
     if (cur && cur === state) return;
     this.game.continueGame(state);
+  }
+
+  /** Pull the list of my worlds and joined worlds from the server. */
+  async refreshWorlds() {
+    if (!this.auth.signedIn) return null;
+    try {
+      const list = await this.auth.net.request('world_list');
+      mergeServer(list);
+      this.ui.title?.refresh?.();
+      return list;
+    } catch (err) { console.warn('world list failed', err); return null; }
   }
 
   /** Called before Continue on the title screen. */

@@ -60,10 +60,40 @@ export function seedYard(world, isl) {
   const y0 = ISLANDS[FARM_ISLAND].home.yard;
   for (let ty = y0.y + 1; ty < y0.y + y0.h - 1; ty++) for (let tx = y0.x + 1; tx < y0.x + y0.w - 1; tx++) {
     const roll = r();
-    if (roll > 0.42 || !freeForDebris(world, farm, tx, ty)) continue;
+    if (roll > 0.62 || !freeForDebris(world, farm, tx, ty)) continue;
     const k = r();
-    const type = k < 0.5 ? 'weed' : k < 0.7 ? 'stone' : k < 0.86 ? 'twig' : 'tree';
+    const type = k < 0.3 ? 'grass' : k < 0.58 ? 'weed' : k < 0.74 ? 'stone' : k < 0.88 ? 'twig' : 'tree';
     if (type === 'tree' && farm.debris.some(d => d.type === 'tree' && Math.abs(d.x - tx) <= 1 && Math.abs(d.y - ty) <= 1)) continue;
+    addDebris(farm, type, tx, ty);
+  }
+  return true;
+}
+
+/**
+ * Wild clutter across the rest of the island: tall grass, stones, twigs and
+ * the odd tree, like Stardew's countryside. Runs once per save.
+ */
+export function seedWild(world, isl) {
+  const farm = farmOf(isl);
+  if (farm.wild) return false;
+  farm.wild = true;
+  const r = rnd(9001 + isl.placements.length);
+  // Keep clear of fishing spots, doors and everything people walk up to.
+  const keep = new Set();
+  const block = (x, y, rad) => { for (let j = y - rad; j <= y + rad; j++) for (let i = x - rad; i <= x + rad; i++) keep.add(i + ',' + j); };
+  for (const s of world.spots) block(s.x, s.y, 2);
+  for (const o of world.objects) if (o.def.interact && !o.type.startsWith('debris_')) { const fp = o.def.footprint || { w: 1, h: 1 }; for (let i = 0; i < fp.w; i++) block(o.x + i, o.y + fp.h, 1); }
+  for (const n of world.npcs) block(Math.floor(n.homeX / TILE), Math.floor(n.homeY / TILE), 2);
+  for (let ty = 1; ty < world.h - 1; ty++) for (let tx = 1; tx < world.w - 1; tx++) {
+    if (inYard(tx, ty) || keep.has(tx + ',' + ty)) continue;
+    const t = world.tile(tx, ty);
+    const grassy = t === T.G;
+    const roll = r();
+    const chance = grassy ? 0.2 : t === T.S ? 0.05 : 0;
+    if (roll > chance || !freeForDebris(world, farm, tx, ty)) continue;
+    const k = r();
+    let type = grassy ? (k < 0.66 ? 'grass' : k < 0.8 ? 'stone' : k < 0.93 ? 'twig' : 'tree') : (k < 0.5 ? 'stone' : 'twig');
+    if (type === 'tree' && farm.debris.some(d => (d.type === 'tree' || d.type === 'stump') && Math.abs(d.x - tx) <= 2 && Math.abs(d.y - ty) <= 2)) type = 'grass';
     addDebris(farm, type, tx, ty);
   }
   return true;
@@ -77,8 +107,17 @@ export function sproutWeeds(world, isl, n = 4) {
   for (let i = 0, tries = 0; i < n && tries < 80; tries++) {
     const tx = y0.x + 1 + Math.floor(Math.random() * (y0.w - 2)), ty = y0.y + 1 + Math.floor(Math.random() * (y0.h - 2));
     if (!freeForDebris(world, farm, tx, ty)) continue;
-    addDebris(farm, 'weed', tx, ty);
+    addDebris(farm, Math.random() < 0.5 ? 'weed' : 'grass', tx, ty);
     i++;
+  }
+  // Grass grows back out in the wild, too.
+  if (farm.wild && farm.debris.length < MAX_DEBRIS + 450) {
+    for (let i = 0, tries = 0; i < n * 3 && tries < 200; tries++) {
+      const tx = 1 + Math.floor(Math.random() * (world.w - 2)), ty = 1 + Math.floor(Math.random() * (world.h - 2));
+      if (inYard(tx, ty) || world.tile(tx, ty) !== T.G || !freeForDebris(world, farm, tx, ty)) continue;
+      addDebris(farm, 'grass', tx, ty);
+      i++;
+    }
   }
 }
 
@@ -93,18 +132,32 @@ export function hitDebris(game, o, power) {
   if (!def) return;
   if (o.hp == null) o.hp = def.hp;
   o.hp -= power;
+  o.shake = 1;   // the renderer wiggles it for a moment
+  const p = game.player;
+  o.shakeDir = p && p.x > o.x * TILE + 8 ? -1 : 1;
   const cx = o.x * TILE + 8, cy = o.y * TILE + 8;
-  const leafy = o.kind === 'tree' || o.kind === 'weed';
-  game.renderer.emit(leafy ? 'leaf' : 'sparkle', cx, cy - (o.kind === 'tree' ? 14 : 2), 4, { speed: 35, gravity: 60, life: 0.5, color: leafy ? '#5b936a' : '#d8d2c8' });
+  const leafy = o.kind === 'tree' || o.kind === 'weed' || o.kind === 'grass';
+  game.renderer.emit(leafy ? 'leaf' : 'sparkle', cx, cy - (o.kind === 'tree' ? 18 : 2), o.kind === 'tree' ? 6 : 4, { speed: 35, gravity: 60, life: 0.6, color: leafy ? '#5b936a' : o.kind === 'stump' ? '#b9794f' : '#d8d2c8' });
+  if (o.kind === 'stump' || o.kind === 'twig') game.renderer.emit('leaf', cx, cy, 3, { speed: 40, gravity: 120, life: 0.4, color: '#d39a6a' });
   if (o.hp > 0) { sfx(def.tool === 'axe' ? 'chop' : 'pick'); return; }
-  sfx(o.kind === 'stone' ? 'rockbreak' : o.kind === 'tree' ? 'treefall' : 'gather');
-  vibrate(10);
   const s = getState();
   const isl = s.islands[game.outdoor.id];
   const farm = farmOf(isl);
-  farm.debris = farm.debris.filter(d => d.id !== o.id);
   const w = game.world;
+  farm.debris = farm.debris.filter(d => d.id !== o.id);
   w.objects = w.objects.filter(x => x !== o);
+  if (o.kind === 'tree') {
+    // Timber! The tree topples away from you and leaves a stump behind.
+    sfx('treefall');
+    game.renderer.fallTree?.(game.renderer.objectSprite(o, 0, false, w), o.x * TILE + 8, (o.y + 1) * TILE, o.shakeDir);
+    addDebris(farm, 'stump', o.x, o.y);
+    w.syncDebris(false);
+  } else {
+    sfx(o.kind === 'stone' ? 'rockbreak' : o.kind === 'stump' ? 'chop' : 'gather');
+    if (o.kind === 'stone') game.renderer.emit('leaf', cx, cy, 8, { speed: 50, gravity: 140, life: 0.5, color: '#918b88' });
+    if (o.kind === 'grass' || o.kind === 'weed') game.renderer.emit('leaf', cx, cy, 7, { speed: 45, gravity: 30, life: 0.9, color: '#76b475' });
+  }
+  vibrate(10);
   const got = [];
   for (const [id, min, max, chance] of def.drops) {
     if (Math.random() > chance) continue;
@@ -141,6 +194,11 @@ export function till(game, tx, ty) {
   const t = w.tile(tx, ty);
   if ((t !== T.G && t !== T.S) || w.occupied[ty * w.w + tx] || w.fronts[ty * w.w + tx]) { sfx('click'); return false; }
   farm.soil[keyOf(tx, ty)] = { water: false, crop: null, age: 0, ready: false };
+  // tilling turns any tall grass under the hoe into soil
+  if (farm.debris.some(d => d.type === 'grass' && d.x === tx && d.y === ty)) {
+    farm.debris = farm.debris.filter(d => !(d.type === 'grass' && d.x === tx && d.y === ty));
+    w.syncDebris(false);
+  }
   sfx('hoe');
   game.renderer.emit('leaf', tx * TILE + 8, ty * TILE + 10, 4, { speed: 25, gravity: 80, life: 0.4, color: '#8a6a48' });
   w.rebuild();

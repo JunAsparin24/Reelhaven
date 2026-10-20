@@ -47,11 +47,20 @@ export const OBJECT_TYPES = {
   ladder_up: { solid: true, interact: { kind: 'ascend', verb: 'Climb up', label: 'Ladder' } },
   ladder_down: { solid: false, interact: { kind: 'descend', verb: 'Climb down', label: 'Ladder' } },
   cave_crystal: { solid: false },
+  mine_crate: { solid: true, interact: { kind: 'mine', verb: 'Break', label: 'Crate' } },
+  mine_chest: { solid: true, interact: { kind: 'floor_chest', verb: 'Open', label: 'Treasure Chest' } },
+  // the Wayfarers' Hall in town (swords + monster goals)
+  hall: { solid: true, footprint: { w: 4, h: 2 }, interact: { kind: 'enter', verb: 'Enter', label: 'Wayfarers’ Hall' }, interior: 'hall_interior' },
+  weapon_rack: { solid: true, footprint: { w: 2, h: 1 } },
+  hall_counter: { solid: true, footprint: { w: 10, h: 1 }, interact: { kind: 'hall', verb: 'Browse', label: 'Hall Counter' } },
   // ---- home-yard clutter (js/farm.js) and cottage extras
   debris_tree: { solid: true, interact: { kind: 'clear', verb: 'Chop', label: 'Tree' }, tool: 'axe' },
   debris_twig: { solid: true, interact: { kind: 'clear', verb: 'Chop', label: 'Twig' }, tool: 'axe' },
   debris_stone: { solid: true, interact: { kind: 'clear', verb: 'Break', label: 'Stone' }, tool: 'pickaxe' },
   debris_weed: { solid: true, interact: { kind: 'clear', verb: 'Cut', label: 'Weeds' }, tool: 'scythe' },
+  // walk-through grass: no button for it, just swing your scythe
+  debris_grass: { solid: false, quiet: true, interact: { kind: 'clear', verb: 'Cut', label: 'Tall Grass' }, tool: 'scythe' },
+  debris_stump: { solid: true, interact: { kind: 'clear', verb: 'Chop', label: 'Stump' }, tool: 'axe' },
   gift_box: { solid: true, interact: { kind: 'gift', verb: 'Open', label: 'Welcome Gift' } },
   tv: { solid: true, interact: { kind: 'tv', verb: 'Watch', label: 'TV' } },
 };
@@ -85,6 +94,13 @@ export class World {
   /** (Re)load the yard clutter saved on the island (see js/farm.js). */
   syncDebris(rebuild = true) {
     this.objects = this.objects.filter(o => !o.type.startsWith('debris_'));
+    // Clutter never sits under the map's own buildings (e.g. one added later).
+    const farm = this.islandState.farm;
+    if (farm?.debris?.length) {
+      const taken = new Set();
+      for (const o of this.objects) { const fp = o.def.footprint || { w: 1, h: 1 }; for (let j = 0; j < fp.h; j++) for (let i = 0; i < fp.w; i++) taken.add((o.x + i) + ',' + (o.y + j)); }
+      farm.debris = farm.debris.filter(d => !taken.has(d.x + ',' + d.y));
+    }
     for (const d of this.islandState.farm?.debris || []) {
       const type = 'debris_' + d.type;
       this.objects.push({ id: d.id, type, kind: d.type, x: d.x, y: d.y, label: OBJECT_TYPES[type]?.interact.label, def: OBJECT_TYPES[type] || {}, variant: (d.x * 7 + d.y * 3) % 4 });
@@ -133,6 +149,7 @@ export class World {
   objectHidden(o) {
     if (this.broken.has(o.id)) return true;
     if (o.type === 'gift_box' && getState()?.flags.giftOpened) return true;
+    if (o.type === 'mine_chest' && getState()?.flags.floorChests?.includes(o.level)) return true;
     if (o.type === 'bridgeSite' && this.islandState.flags.bridgeRepaired) return true;
     const res = o.def.resource;
     if (res && !o.def.keepWhenEmpty && !this.nodeReady(o)) return true;
@@ -166,6 +183,7 @@ export class World {
     for (const o of this.objects) {
       const fp = o.def.footprint || { w: 1, h: 1 };
       const hidden = this.objectHidden(o);
+      if (o.def.quiet) continue;      // tall grass: walk, build and till right over it
       mark(o.x, o.y, fp.w, fp.h, o.def.solid && !hidden);
     }
     // keep fishing spots and NPC homes free from building

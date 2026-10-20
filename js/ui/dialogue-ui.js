@@ -54,6 +54,7 @@ export class DialogueUI {
     const action = this.conv.action;
     this.close();
     if (action === 'shop') this.ui.open('shop');
+    else if (action === 'hall') this.ui.open('hall');
     else if (action === 'map') this.ui.open('map');
     else if (action === 'bridge') this.ui.bridge();
   }

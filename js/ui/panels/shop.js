@@ -5,6 +5,7 @@ import { toast } from '../../events.js';
 import { purchase, requirement, priceOf, MATERIALS, BLUEPRINTS } from '../../shop.js';
 import { RODS, BAIT, HATS, TOOLS, FOOD, RESOURCES, RESOURCE_SELL } from '../../../data/item-data.js';
 import { CROPS, seasonOf } from '../../../data/farm-data.js';
+import { BACKPACKS } from '../../bag.js';
 import { DECOR, BUILDINGS } from '../../../data/building-data.js';
 import { rodStatsView } from './inventory.js';
 
@@ -42,7 +43,7 @@ export const shopPanel = {
     if (tab === 'tools') {
       list.append(h('p.muted', 'Upgrade your pickaxe and sword with bars from the furnace. Better tools break rocks faster and hit harder.'));
       for (const [kind, tiers] of Object.entries(TOOLS)) {
-        if (tiers.length < 2 || s.inventory.tools[kind] === undefined) continue;   // nothing to upgrade / not found yet
+        if (kind === 'sword' || tiers.length < 2 || s.inventory.tools[kind] === undefined) continue;   // swords: Wayfarers' Hall
         const cur = s.inventory.tools[kind] || 0;
         const next = tiers[cur + 1];
         const stat = t => kind === 'pickaxe' ? `Power ${t.power}` : `Damage ${t.damage}`;
@@ -59,7 +60,10 @@ export const shopPanel = {
       list.append(h('p.muted', 'Food heals you in the mine. Tap it on the hotbar to eat. Grill fish at a furnace or campfire for the best meals.'));
       for (const f of Object.values(FOOD)) { if (!f.price) continue; row('food', f.id, icon(f.icon, 'item-icon'), f.name, f.desc, h('div.statline', h('span', 'You have ' + (s.inventory.items[f.id] || 0)))); }
     }
-    if (tab === 'materials') for (const m of Object.values(MATERIALS)) row('material', m.id, icon(m.icon, 'item-icon'), `${m.name} (×${m.qty})`, 'Short on supplies? Gathering is free, but this is faster.');
+    if (tab === 'materials') {
+      for (const b of BACKPACKS) row('backpack', b.id, icon('bag', 'item-icon'), b.name, b.desc, h('div.statline', h('span', `Your bag: ${s.inventory.bagSize || 12} slots`)));
+      for (const m of Object.values(MATERIALS)) row('material', m.id, icon(m.icon, 'item-icon'), `${m.name} (×${m.qty})`, 'Short on supplies? Gathering is free, but this is faster.');
+    }
     if (tab === 'decor') {
       list.append(h('p.muted', 'Decorations bought here go to storage and can be placed for free. You can also buy-and-place directly in Build mode.'));
       for (const d of Object.values(DECOR)) row('decor', d.id, spriteImg(d.id, 1, 'decor-thumb'), d.name, d.desc, h('div.statline', h('span', `In storage: ${s.inventory.storedDecor[d.id] || 0}`)));

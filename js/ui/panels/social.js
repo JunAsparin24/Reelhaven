@@ -12,9 +12,15 @@ import { HATS } from '../../../data/item-data.js';
 import { ISLANDS } from '../../../data/island-data.js';
 import { FISH } from '../../../data/fish-data.js';
 import { xpToNext, speciesDiscovered } from '../../progression.js';
+import { personalName } from '../../worlds.js';
 
 // Friends data is fetched from the server and cached here between renders.
-const social = { list: null, loading: false, error: null, loadedAt: 0, found: null, finding: false, code: '' };
+const social = { list: null, loading: false, error: null, loadedAt: 0, found: null, finding: false, code: '', open: [] };
+
+/** Friends' worlds that are open right now (refreshed with the friend list). */
+function loadOpen(online) {
+  online.social.joinable().then(list => { social.open = list || []; refreshSheet(); }).catch(() => { social.open = []; });
+}
 
 let watching = false;
 function loadFriends(online, force = false) {
@@ -31,6 +37,7 @@ function loadFriends(online, force = false) {
   if (social.loading) return;
   if (!force && social.list && Date.now() - social.loadedAt < 15000) return;
   social.loading = true;
+  loadOpen(online);
   online.social.list()
     .then(list => { social.list = list; social.error = null; social.loadedAt = Date.now(); })
     .catch(err => { social.error = friendlyError(err); })
@@ -52,7 +59,7 @@ export const friendsPanel = {
     if (!auth || auth.status === 'disabled' || auth.status === 'offline' || !auth.signedIn) {
       const st = !auth || auth.status === 'disabled' ? onlineStatus()
         : auth.status === 'offline' ? { message: auth.error || 'Online services are unreachable right now.' }
-        : { message: 'Sign in to save your island to your account, add friends, see who is online and visit their islands.' };
+        : { message: 'Sign in to save your worlds to your account, add friends, and join their worlds with a character made for each one.' };
       body.append(h('div.offline-card',
         h('div.status-dot'),
         h('div', h('b', auth?.status === 'signedOut' ? 'Not signed in' : 'Offline mode'), h('p', st.message),
@@ -130,11 +137,14 @@ export const friendsPanel = {
     else body.append(h('div.list', friends.map(fr => {
       const on = online.social.isOnline(fr.user);
       const pres = online.social.online.get(fr.user);
-      const where = !on ? 'Offline' : pres?.status === 'visiting' ? 'Online · visiting an island' : 'Online';
+      const openWorld = social.open.find(o => o.host === fr.user);
+      const where = !on ? 'Offline' : openWorld ? `Hosting “${openWorld.worldName}”` : pres?.status === 'playing' ? 'Online · in a friend’s world' : 'Online';
       return h('div.item-row.friend', h('span.presence' + (on ? '.on' : ''), { title: where }), lookMini(fr.look),
         h('div.item-main', h('div.item-name', fr.name), h('div.item-sub', `${where} · Level ${fr.level}`)),
-        on ? button('Invite', act(() => online.social.invite(fr.user), `Invite sent to ${fr.name}!`), { cls: 'small primary', iconName: 'friends', title: 'Invite them to join your game' }) : null,
-        button('Visit', () => ctx.ui.visitFriend(fr), { cls: 'small', iconName: 'boat', disabled: !fr.allowVisits, title: fr.allowVisits ? 'Look around their island' : 'They have island visits turned off' }),
+        openWorld && ctx.game.visit?.hostId !== fr.user ? button(openWorld.joined ? 'Join' : 'Join (new character)', async () => {
+          try { ctx.ui.joinHosted(await online.social.joinFriend(fr.user)); } catch (err) { toast(friendlyError(err), null, 'error'); }
+        }, { cls: 'small primary', iconName: 'boat', title: 'Play in their world' }) : null,
+        on && !ctx.game.visit ? button('Invite', act(() => online.social.invite(fr.user), `Invite sent to ${fr.name}!`), { cls: 'small', iconName: 'friends', title: 'Invite them to your world' }) : null,
         button('Remove', () => {
           confirmModal('Remove friend?', `Remove ${fr.name} from your friends?`, 'Remove', act(() => online.social.remove(fr.id), 'Friend removed.'), { danger: true });
         }, { cls: 'small ghost' }));
@@ -157,8 +167,9 @@ function multiplayerSection(body, ctx, online) {
   wrap.append(h('h4.section', 'Multiplayer'));
   const err = e => toast(friendlyError(e), null, 'error');
   const joined = social.joined;
-  if (joined) {
-    wrap.append(h('div.mp-row', icon('boat'), h('div.item-main', h('b', `Playing on ${joined.name}’s island`), h('div.item-sub', 'You can fish, gather and build here with them.')),
+  const v = ctx.game.visit;
+  if (v) {
+    wrap.append(h('div.mp-row', icon('boat'), h('div.item-main', h('b', `In ${v.worldName || v.hostName + '’s world'}`), h('div.item-sub', 'You’re playing your character for this world. Its bag, coins and quests stay here.')),
       button('Leave', () => { closeSheet(true); ctx.game.leaveVisit(); }, { cls: 'small ghost' })));
   }
   const host = social.hosting;
@@ -168,15 +179,20 @@ function multiplayerSection(body, ctx, online) {
         try { await navigator.clipboard.writeText(host.code); toast('Invite code copied!', 'check', 'good'); }
         catch { toast('Your invite code is ' + host.code, 'friends'); }
       }, { cls: 'small' }),
-      button('Stop hosting', () => social.hostStop().then(() => toast('Your game is closed.', 'home')).catch(err), { cls: 'small ghost' })));
+      button('Stop hosting', () => social.hostStop().then(() => toast('Your world is closed.', 'home')).catch(err), { cls: 'small ghost' })));
+    // the owner decides what joined players may do
+    const build = h('input', { type: 'checkbox', checked: host.settings?.membersBuild !== false, on: { change: e => social.hostSettings({ membersBuild: e.target.checked }).then(() => toast(e.target.checked ? 'Friends can build in your world.' : 'Only you can build in your world now.', 'build')).catch(err) } });
+    wrap.append(h('label.setting.toggle', h('span', 'Friends can build here', h('small', 'They pay with their own character’s coins and materials. Chests and your farm stay yours.')), build));
     if (host.members.length) {
       wrap.append(h('div.list', host.members.map(m => h('div.item-row', icon('friends', 'item-icon'),
         h('div.item-main', h('div.item-name', m.name), h('div.item-sub', 'In your game')),
         button('Remove', () => social.kick(m.user).catch(err), { cls: 'small ghost' })))));
     } else wrap.append(h('p.muted', 'Share the code, or tap Invite next to a friend. Players who join can fish, gather and build on your island while you’re here.'));
-  } else if (!joined) {
-    wrap.append(h('div.mp-row', h('div.item-main', h('b', 'Play together'), h('div.item-sub', 'Host a game so friends can join and build on your island with you.')),
-      button('Host a game', () => social.hostStart().then(() => toast('Your game is open!', 'friends', 'good')).catch(err), { cls: 'small primary', iconName: 'home' })));
+  } else if (!v && ctx.game.mode === 'play') {
+    const aw = ctx.game.activeWorld;
+    const name = personalName(aw.slot);
+    wrap.append(h('div.mp-row', h('div.item-main', h('b', 'Play together'), h('div.item-sub', `Open “${name}” so friends can join. Each friend makes a character just for your world.`)),
+      button('Host this world', () => social.hostStart({ slot: aw.slot, name }).then(() => toast(`“${name}” is open to friends!`, 'friends', 'good')).catch(err), { cls: 'small primary', iconName: 'home' })));
   }
   if (!host) {
     const code = h('input.field.code-input', { type: 'text', maxlength: '6', placeholder: 'INVITE CODE', 'aria-label': 'Invite code',

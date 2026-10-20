@@ -353,7 +353,7 @@ export class FishingSession {
     let entry = null, stored = false;
     if (!fish.release) {
       entry = { id: fish.id, size, variant };
-      if (!isFull()) { entry = addFish(fish.id, size, variant); stored = true; }
+      if (!isFull(fish.id, variant)) { entry = addFish(fish.id, size, variant); stored = true; }
     } else {
       addPearls(3);
     }

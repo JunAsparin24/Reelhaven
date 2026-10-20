@@ -9,21 +9,111 @@ import { eat } from '../../combat.js';
 import { DECOR } from '../../../data/building-data.js';
 import { RARITY_COLORS } from '../../art/palette.js';
 import { countBuilt } from '../../building-count.js';
+import { ROW, syncBag, slotInfo, swapSlots, heldFor } from '../../bag.js';
+import { HOTKEYS } from '../hotbar.js';
 
-let tab = 'fish';
+let tab = 'bag';
 const selected = new Set();
+let pickedSlot = -1;     // slot tapped in the bag grid (tap another to swap)
 
 export const inventoryPanel = {
-  title: 'Bag', icon: 'bag',
+  title: 'Bag', icon: 'bag', wide: true,
   render(body, ctx) {
-    if (ctx.opts.tab) { tab = ctx.opts.tab; ctx.opts.tab = null; }
-    body.append(tabs([['fish', 'Fish', 'fish'], ['items', 'Items', 'wood'], ['gear', 'Gear', 'rod']], tab, t => { tab = t; refreshSheet(); }));
-    if (tab === 'fish') renderFish(body);
-    else if (tab === 'items') renderItems(body);
+    if (ctx.opts.tab) { tab = ['fish', 'items'].includes(ctx.opts.tab) ? 'bag' : ctx.opts.tab; ctx.opts.tab = null; }
+    body.append(tabs([['bag', 'Bag', 'bag'], ['gear', 'Gear', 'rod']], tab, t => { tab = t; refreshSheet(); }));
+    if (tab === 'bag') renderBag(body);
     else renderGear(body, ctx);
   },
-  onClose() { selected.clear(); },
+  onClose() { selected.clear(); pickedSlot = -1; },
 };
+
+/** Stardew-style grid: 12 slots per row; the first row is your hotbar. */
+function renderBag(body) {
+  const s = getState();
+  const overflow = syncBag(s);
+  const slots = s.inventory.slots;
+  const used = slots.filter(Boolean).length;
+  if (pickedSlot >= slots.length) pickedSlot = -1;
+  body.append(h('div.cap-row', h('span', `Bag ${used}/${slots.length} slots`), progressBar(used, slots.length, used >= slots.length ? 'full' : ''),
+    h('span.hint', 'Top row = hotbar. Tap an item, then another slot to move it.')));
+  const grid = h('div.bag-grid', { role: 'grid' });
+  slots.forEach((key, i) => {
+    const info = slotInfo(key, s);
+    const cls = 'button.bag-slot' + (i < ROW ? '.hot' : '') + (i === pickedSlot ? '.picked' : '') + (info ? '' : '.empty');
+    grid.append(h(cls, {
+      type: 'button', 'aria-label': info ? info.name : 'Empty slot',
+      on: { click: () => {
+        if (pickedSlot >= 0 && pickedSlot !== i) { swapSlots(pickedSlot, i); pickedSlot = -1; commit('bag', false); }
+        else pickedSlot = pickedSlot === i || !info ? -1 : i;
+        refreshSheet();
+      } },
+    },
+    i < ROW ? h('span.key', HOTKEYS[i]) : null,
+    info ? (info.sprite ? spriteImg(info.sprite, 1, 'px-icon') : icon(info.icon)) : null,
+    info?.count != null ? h('span.cnt', String(info.count)) : null));
+  });
+  body.append(grid);
+  // details + actions for the picked slot
+  const info = pickedSlot >= 0 ? slotInfo(slots[pickedSlot], s) : null;
+  if (info) body.append(slotDetails(info));
+  else body.append(h('p.muted.bag-hint', 'Tap an item to see what it is and what you can do with it.'));
+  if (overflow.length) {
+    body.append(h('h4.section', 'Doesn’t fit — make room'));
+    const ol = h('div.list');
+    for (const key of overflow) {
+      const o = slotInfo(key, s);
+      ol.append(h('div.item-row', o.sprite ? spriteImg(o.sprite, 2, 'fish-thumb') : icon(o.icon, 'item-icon'),
+        h('div.item-main', h('div.item-name', o.name, o.count != null ? h('span.count', '×' + o.count) : null), h('div.item-sub', 'Free a slot to carry this.')),
+        sellButton(o)));
+    }
+    body.append(ol);
+  }
+  // quick sell-all for fish
+  const stacks = fishStacks();
+  if (stacks.length) {
+    const total = stacks.reduce((a, st) => a + st.value, 0);
+    body.append(h('div.sticky-actions',
+      countBuilt('fish_market') ? h('span.hint', '+15% Fish Market bonus') : null,
+      button(`Sell all fish (${fmt(total)})`, () => {
+        const hasRare = stacks.some(st => ['epic', 'legendary'].includes(FISH_BY_ID[st.id].rarity) || st.variant);
+        const go = () => { const earned = sellAllFish(); toast(`Sold every fish for ${fmt(earned)} coins!`, 'coin', 'good'); refreshSheet(); };
+        if (hasRare) confirmModal('Sell every fish?', 'Your bag includes some very rare fish. Sell them all anyway?', 'Sell all', go);
+        else go();
+      }, { iconName: 'coin', sound: null })));
+  }
+}
+
+function sellButton(info) {
+  if (info.kind === 'fish') {
+    const st = fishStacks().find(x => x.key === info.id + (info.variant ? '*' : ''));
+    if (!st) return null;
+    return button(`Sell ${st.entries.length} · ${fmt(st.value)}`, () => { const c = sellFish(st.entries.map(e => e.uid)); if (c) toast(`Sold for ${fmt(c)} coins!`, 'coin', 'good'); pickedSlot = -1; refreshSheet(); }, { cls: 'small', sound: null });
+  }
+  if (RESOURCE_SELL[info.id] && info.count > 0) return button(`Sell 1 · ${RESOURCE_SELL[info.id]}`, () => { sellResource(info.id, 1); refreshSheet(); }, { cls: 'small ghost', sound: null });
+  return null;
+}
+
+function slotDetails(info) {
+  const s = getState();
+  const acts = [];
+  const hold = () => { s.inventory.held = heldFor(info.key); commit('held'); refreshSheet(); };
+  if (info.kind === 'tool' || info.kind === 'rod' || info.kind === 'seed') {
+    acts.push(heldFor(info.key) === s.inventory.held ? h('span.tag', 'In hand') : button('Hold', hold, { cls: 'small primary' }));
+  }
+  if (info.kind === 'food') acts.push(button(`Eat (+${FOOD[info.id].heal} HP)`, () => { const r = eat(null, info.id); toast(r.message, 'heart', r.ok ? 'good' : 'info'); refreshSheet(); }, { cls: 'small primary', sound: null }));
+  if (info.kind === 'bait') {
+    const on = s.inventory.equippedBait === info.id;
+    acts.push(button(on ? 'Take off hook' : 'Use as bait', () => { s.inventory.equippedBait = on ? 'none' : info.id; commit('bait'); refreshSheet(); }, { cls: 'small' + (on ? '' : ' primary') }));
+  }
+  const sb = sellButton(info);
+  if (sb) acts.push(sb);
+  if (info.kind === 'item' && RESOURCE_SELL[info.id] && info.count > 1) acts.push(button(`Sell all · ${fmt(RESOURCE_SELL[info.id] * info.count)}`, () => { sellResource(info.id, info.count); pickedSlot = -1; refreshSheet(); }, { cls: 'small ghost', sound: null }));
+  const sub = info.kind === 'fish' ? `${info.rarity} fish` : info.kind === 'tool' ? 'Tool' : info.kind === 'seed' ? 'Seeds — hold them and Use on tilled soil' : info.desc;
+  return h('div.slot-details',
+    info.sprite ? spriteImg(info.sprite, 2, 'fish-thumb') : icon(info.icon, 'item-icon'),
+    h('div.item-main', h('div.item-name', info.name, info.count != null ? h('span.count', '×' + info.count) : null), h('div.item-sub', sub), info.kind !== 'item' && info.desc && info.desc !== sub ? h('div.item-sub', info.desc) : null),
+    h('div.slot-actions', ...acts));
+}
 
 function renderFish(body) {
   const stacks = fishStacks();

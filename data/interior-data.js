@@ -57,6 +57,30 @@ export const INTERIORS = {
     npcs: [],
   },
 
+  // The Wayfarers' Hall by the Old Mine: Bram sells swords and keeps track of
+  // the monsters you've defeated.
+  hall_interior: {
+    id: 'hall_interior', name: 'Wayfarers’ Hall', interior: true, theme: THEME,
+    size: { w: 12, h: 10 },
+    spawn: { x: 6, y: 8 },
+    exit: { x: 5, y: 9, w: 2 },
+    solid: [{ x: 1, y: 2, w: 10, h: 2 }],
+    build(m) {
+      const { I, L } = m.T;
+      m.fill(L);
+      m.rect(1, 2, 10, 7, I);
+      m.rect(5, 9, 2, 1, I);
+      m.obj('weapon_rack', 1, 2); m.obj('weapon_rack', 3, 2);
+      m.obj('weapon_rack', 7, 2); m.obj('weapon_rack', 9, 2);
+      m.obj('hall_counter', 1, 4);
+      m.obj('rug', 4, 6);
+      m.obj('barrel', 1, 7); m.obj('crate', 10, 7);
+      m.obj('fireplace', 9, 5);
+      m.obj('doormat', 5, 9);
+    },
+    npcs: [{ id: 'bram', x: 6, y: 3 }],
+  },
+
   // Each friend who joins your game gets one of these in your yard.
   cabin_interior: {
     id: 'cabin_interior', name: 'Guest Cabin', interior: true, theme: THEME,

@@ -18,6 +18,7 @@ import { SAVE_VERSION } from '../state.js';
 import { islandSnapshot } from '../multiplayer.js';
 
 const SYNC_KEY = 'tidetown.sync';
+const syncKeyFor = id => (id === 'main' ? SYNC_KEY : SYNC_KEY + '.' + id);
 const PUSH_DELAY = 12_000;           // batch frequent local saves into one upload
 const RETRY = [10, 30, 60, 120, 300]; // seconds
 
@@ -51,12 +52,18 @@ export function deviceLabel() {
   return `${os} · ${br}`;
 }
 
-/** Save backend on the Reelhaven server (tests use an in-memory one). */
+/**
+ * Save backend on the Reelhaven server (tests use an in-memory one).
+ * slot: { id, member, world } — a personal world's save ('main' or 'w-…'),
+ * or (member) your character in someone else's world.
+ */
 export class ServerSaveBackend {
-  constructor(net) { this.net = net; }
+  constructor(net, slot = { id: 'main' }) { this.net = net; this.slot = slot; }
 
   async fetch() {
-    const { save } = await this.net.request('save_get');
+    const sl = this.slot;
+    const res = sl.member ? await this.net.request('char_get', { world: sl.world }) : await this.net.request('save_get', sl.id === 'main' ? {} : { world: sl.id });
+    const save = sl.member ? res.char : res.save;
     if (!save) return null;
     // Older cloud copies are upgraded the same way local saves are.
     let data = save.data;
@@ -65,8 +72,10 @@ export class ServerSaveBackend {
   }
 
   async put(row, base) {
+    const sl = this.slot;
     try {
-      return await this.net.request('save_put', { data: row.data, base, device: row.device_label });
+      if (sl.member) return await this.net.request('char_put', { world: sl.world, data: row.data, base, device: row.device_label });
+      return await this.net.request('save_put', { data: row.data, base, device: row.device_label, ...(sl.id === 'main' ? {} : { world: sl.id }) });
     } catch (err) {
       if (err.code === 'conflict') return null;   // another device saved first
       throw err;
@@ -103,16 +112,40 @@ export class CloudSync {
     this.applying = false;        // true while we write the local save ourselves
     this.paused = false;          // player chose "not now" for this session
     this.reconciling = null;
+    this.slot = { id: 'main', member: false, world: null };   // which world's save this syncs
     this.meta = this.loadMeta();
     if (typeof window !== 'undefined') window.addEventListener?.('online', () => { if (this.status === 'offline') this.schedulePush(500); });
   }
 
   // ------------------------------------------------------------ meta & status
   loadMeta() {
-    try { return { userId: null, revision: 0, dirty: false, syncedAt: null, ...(JSON.parse(localStorage.getItem(SYNC_KEY)) || {}) }; }
+    const key = syncKeyFor(this.slot?.id || 'main');
+    try { return { userId: null, revision: 0, dirty: false, syncedAt: null, ...(JSON.parse(localStorage.getItem(key)) || {}) }; }
     catch { return { userId: null, revision: 0, dirty: false, syncedAt: null }; }
   }
-  saveMeta() { try { localStorage.setItem(SYNC_KEY, JSON.stringify(this.meta)); } catch { /* storage full */ } }
+  saveMeta() { try { localStorage.setItem(syncKeyFor(this.slot?.id || 'main'), JSON.stringify(this.meta)); } catch { /* storage full */ } }
+
+  /**
+   * Switch to another world's save (the game switched Save.setSlot too).
+   * Pending uploads for the old slot are flushed by the caller first.
+   */
+  setSlot(slot) {
+    clearTimeout(this.pushTimer);
+    this.slot = { id: slot.id, member: !!slot.member, world: slot.world || null };
+    this.meta = this.loadMeta();
+    this.paused = false;
+    this.backend = this.signedIn() ? this.makeBackend(this.auth, this.slot) : null;
+    this.setStatus(this.signedIn() ? (this.meta.dirty ? 'local' : 'synced') : 'off');
+  }
+
+  /** A brand-new save in this slot that belongs to the signed-in account: upload it. */
+  claimNew() {
+    if (!this.signedIn()) return;
+    this.meta = { userId: this.userId, revision: 0, dirty: true, syncedAt: null };
+    this.saveMeta();
+    this.backend = this.backend || this.makeBackend(this.auth, this.slot);
+    this.schedulePush(800);
+  }
 
   on(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
   setStatus(status, detail = null) {
@@ -165,7 +198,7 @@ export class CloudSync {
     const local = Save.load().state;
     if (!this.signedIn()) return { state: local };
     const uid = this.userId;
-    this.backend = this.makeBackend(this.auth);
+    this.backend = this.makeBackend(this.auth, this.slot);
     this.paused = false;
     this.setStatus('syncing');
 
@@ -317,6 +350,7 @@ export class CloudSync {
 
   /** Public island snapshot for friends (best effort, throttled). */
   async publish(state) {
+    if (this.slot.member) return;    // only world owners publish their layout
     if (this.lastPublish && this.now() - this.lastPublish < 60_000) return;
     this.lastPublish = this.now();
     try {

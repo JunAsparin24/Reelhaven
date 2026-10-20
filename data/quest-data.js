@@ -24,9 +24,9 @@ export const MAIN_QUESTS = [
     reward: { coins: 40, xp: 25, items: { radish_seeds: 5 } },
   },
   {
-    id: 'q_welcome', title: 'Welcome to Sunny Shores', giver: 'mira',
-    desc: 'Walk east to town, then south to the pier. Mira has a fishing rod for you!',
-    objective: { type: 'talk', npc: 'mira', count: 1 },
+    id: 'q_welcome', title: 'Welcome to Sunny Shores', giver: 'nori',
+    desc: 'Walk east into town and visit Nori’s shop. She has a starter rod and sword for you!',
+    objective: { type: 'talk', npc: 'nori', count: 1 },
     reward: { coins: 20, xp: 10 },
   },
   {

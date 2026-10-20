@@ -5,9 +5,33 @@ import { SAVE_VERSION, createIslandState, defaultSettings } from './state.js';
 import { ISLAND_ORDER, ISLANDS } from '../data/island-data.js';
 import { emit } from './events.js';
 
-const KEY = 'tidetown.save';
-const BACKUP_KEY = 'tidetown.save.backup';
+// Save slots: every world has its own save. 'main' is your first island (the
+// original single save); other personal worlds are 'w-…', and each character
+// you made in a friend's world is 'c-…' (see js/worlds.js).
+let slot = 'main';
+const keyFor = id => (id === 'main' ? 'tidetown.save' : 'tidetown.slot.' + id);
+const KEY_OF = () => keyFor(slot);
+const BACKUP_OF = () => keyFor(slot) + '.backup';
 const CORRUPT_PREFIX = 'tidetown.save.corrupt.';
+
+/** Switch which world's save load()/save() use. */
+export function setSlot(id) { if (id !== slot) { slot = id; lastWrite = 0; } }
+export function currentSlot() { return slot; }
+/** Read another slot without switching to it (for menus). */
+export function peekSlot(id) {
+  const prev = slot;
+  slot = id;
+  try { return load(); } finally { slot = prev; }
+}
+export function hasSlot(id) {
+  if (!canPersist) return false;
+  return !!(localStorage.getItem(keyFor(id)) || localStorage.getItem(keyFor(id) + '.backup'));
+}
+export function deleteSlot(id) {
+  if (!canPersist || id === 'main') return;
+  localStorage.removeItem(keyFor(id));
+  localStorage.removeItem(keyFor(id) + '.backup');
+}
 
 /** Ordered migrations: MIGRATIONS[n] upgrades a save from version n to n+1. */
 const MIGRATIONS = {
@@ -49,6 +73,20 @@ const MIGRATIONS = {
     s.flags = { ...(s.flags || {}), giftOpened: true, mineOpen: true };
     return s;
   },
+  6: s => {
+    // v6 -> v7: the bag became a grid of slots. Existing players get the
+    // biggest backpack so nothing they carry ends up homeless.
+    s.inventory.bagSize = 36;
+    s.inventory.slots = [];
+    return s;
+  },
+  7: s => {
+    // v7 -> v8: swords moved to the Wayfarers' Hall with a longer ladder.
+    // Old copper / iron / gold swords map onto the closest new blade.
+    const t = s.inventory.tools?.sword;
+    if (t !== undefined) s.inventory.tools.sword = { 0: 0, 1: 1, 2: 3, 3: 4 }[t] ?? t;
+    return s;
+  },
 };
 
 /** Move a pre-v5 Sunny Shores layout onto the bigger map. */
@@ -75,7 +113,7 @@ export const canPersist = storageAvailable();
 
 export function hasSave() {
   if (!canPersist) return false;
-  return !!(localStorage.getItem(KEY) || localStorage.getItem(BACKUP_KEY));
+  return !!(localStorage.getItem(KEY_OF()) || localStorage.getItem(BACKUP_OF()));
 }
 
 /** Validate structure; throws with a human-readable message when invalid. */
@@ -117,8 +155,11 @@ export function migrate(s) {
   s.inventory.tools = s.inventory.tools || {};
   s.inventory.held = s.inventory.held || 'axe';
   if (!Number.isFinite(s.inventory.water)) s.inventory.water = 40;
+  if (![12, 24, 36].includes(s.inventory.bagSize)) s.inventory.bagSize = 12;
+  if (!Array.isArray(s.inventory.slots)) s.inventory.slots = [];
   for (const k of ['mineDeepest', 'monstersSlain', 'rocksBroken', 'daysSlept', 'debrisCleared', 'seedsPlanted', 'cropsHarvested']) s.stats[k] = s.stats[k] || 0;
   if (s.world && !Number.isFinite(s.world.weatherUntil)) s.world.weatherUntil = 0;
+  s.stats.kills = s.stats.kills || {};
   for (const isl of Object.values(s.islands)) isl.chests = isl.chests || {};
   s.islands.sunny.layout = 2;
   return s;
@@ -137,13 +178,13 @@ function parse(raw) {
  */
 export function load() {
   if (!canPersist) return { state: null, source: null, error: 'Storage unavailable — progress will not be saved in this browser mode.' };
-  const raw = localStorage.getItem(KEY);
+  const raw = localStorage.getItem(KEY_OF());
   if (raw) {
     try { return { state: parse(raw), source: 'main', error: null }; }
     catch (err) {
       console.warn('Main save failed to load', err);
       try { localStorage.setItem(CORRUPT_PREFIX + Date.now(), raw); } catch { /* storage full */ }
-      const braw = localStorage.getItem(BACKUP_KEY);
+      const braw = localStorage.getItem(BACKUP_OF());
       if (braw) {
         try { return { state: parse(braw), source: 'backup', error: 'Your latest save was damaged, so we restored the backup.' }; }
         catch (err2) { console.warn('Backup save failed too', err2); }
@@ -151,7 +192,7 @@ export function load() {
       return { state: null, source: null, error: 'Your save data could not be read. It has been kept aside safely; you can start a new game.' };
     }
   }
-  const braw = localStorage.getItem(BACKUP_KEY);
+  const braw = localStorage.getItem(BACKUP_OF());
   if (braw) {
     try { return { state: parse(braw), source: 'backup', error: null }; } catch { /* ignore */ }
   }
@@ -165,10 +206,10 @@ export function save(state) {
   try {
     state.savedAt = Date.now();
     const raw = JSON.stringify({ app: 'reelhaven', data: state });
-    const prev = localStorage.getItem(KEY);
+    const prev = localStorage.getItem(KEY_OF());
     // Rotate the backup at most once a minute so it trails the main save.
-    if (prev && Date.now() - lastWrite > 60_000) localStorage.setItem(BACKUP_KEY, prev);
-    localStorage.setItem(KEY, raw);
+    if (prev && Date.now() - lastWrite > 60_000) localStorage.setItem(BACKUP_OF(), prev);
+    localStorage.setItem(KEY_OF(), raw);
     lastWrite = Date.now();
     emit('saved', { at: state.savedAt });
     return true;
@@ -181,8 +222,8 @@ export function save(state) {
 
 export function wipe() {
   if (!canPersist) return;
-  localStorage.removeItem(KEY);
-  localStorage.removeItem(BACKUP_KEY);
+  localStorage.removeItem(KEY_OF());
+  localStorage.removeItem(BACKUP_OF());
 }
 
 export function exportSave(state) {

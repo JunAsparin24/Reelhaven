@@ -446,6 +446,18 @@ export class Renderer {
       const wading = w.tile(Math.floor(p.x / TILE), Math.floor((p.y - 2) / TILE)) === T.H;
       drawList.push({ y: p.y, spr: p.frame(scene.playerSprite), x: p.x, by: p.y + 1, player: true, wading });
     }
+    // falling trees (see fallTree)
+    this.falls = (this.falls || []).filter(f => (f.t += dt) < f.dur);
+    for (const f of this.falls) {
+      drawList.push({ y: f.y, by: f.y, x: f.x, spr: f.spr, fall: f });
+      if (!f.landed && f.t > f.dur * 0.6) {
+        f.landed = true;
+        // leaves and dust where the crown hits the ground
+        const lx = f.x + f.dir * f.spr.height * 0.7;
+        this.emit('leaf', lx, f.y - 4, 14, { speed: 55, gravity: 40, life: 1, color: f.leaf });
+        this.emit('sparkle', lx, f.y - 2, 6, { speed: 40, gravity: 80, life: 0.5, color: '#d8c8a0' });
+      }
+    }
     drawList.sort((a, b) => a.y - b.y);
     for (const d of drawList) {
       let bob = 0;
@@ -473,6 +485,26 @@ export class Renderer {
           ctx.fillStyle = C.ink; ctx.fillRect(bx - 1, by - 1, 18, 4);
           ctx.fillStyle = '#e05a5a'; ctx.fillRect(bx, by, Math.max(0, Math.round(16 * m.hp / m.maxHp)), 2);
         }
+        continue;
+      }
+      if (d.fall) {
+        // a felled tree tipping over from its base, then fading out
+        const f = d.fall, u = Math.min(1, f.t / f.dur);
+        const ang = f.dir * (Math.PI / 2) * u * u;
+        ctx.save();
+        ctx.globalAlpha = u > 0.75 ? 1 - (u - 0.75) / 0.25 : 1;
+        ctx.translate(Math.round(f.x - cam.x), Math.round(f.y - cam.y));
+        ctx.rotate(ang);
+        ctx.drawImage(f.spr, -Math.round(f.spr.width / 2), -f.spr.height);
+        ctx.restore();
+        continue;
+      }
+      if (d.o && d.o.shake > 0) {
+        // hit wiggle for trees, rocks and stumps
+        const o = d.o;
+        o.shake = Math.max(0, o.shake - dt * 4);
+        const off = Math.round(Math.sin(t * 60) * 2 * o.shake * (o.shakeDir || 1));
+        ctx.drawImage(d.spr, Math.round(d.x - d.spr.width / 2 - cam.x + off), Math.round(d.by - d.spr.height - cam.y));
         continue;
       }
       if (d.player && scene.player.invuln > 0 && Math.floor(t * 14) % 2) continue;
@@ -554,9 +586,16 @@ export class Renderer {
       case 'coral': return sprite('coral_' + (o.variant % 3));
       case 'lily': return sprite('lily_' + (o.variant % 2));
       case 'shop': return sprite(night ? 'shop_lit' : 'shop');
+      case 'hall': return sprite(night ? 'hall_lit' : 'hall');
+      case 'mine_entrance': return sprite(night ? 'mine_entrance_lit' : 'mine_entrance');
       case 'yard_fence': return sprite(o.vert ? 'fence_r1' : 'fence');
       case 'debris_tree': return sprite('debris_tree_' + seasonNow());
       case 'debris_weed': return sprite(`debris_weed_${seasonNow()}_${o.variant % 2}`);
+      case 'debris_grass': {
+        // tall grass sways a little in the breeze
+        const sw = this.reducedMotion ? 1 : (Math.sin(t * 1.8 + o.x * 0.9 + o.y * 0.5) > 0.5 ? 2 : Math.sin(t * 1.8 + o.x * 0.9 + o.y * 0.5) < -0.5 ? 0 : 1);
+        return sprite(`debris_grass_${seasonNow()}_${(o.variant % 2) * 3 + sw}`);
+      }
       case 'mine_rock': return sprite('rock_' + (o.kind || 'stone'));
       default: return sprite(o.type);
     }
@@ -752,6 +791,8 @@ export class Renderer {
       }
       for (const o of w.objects) {
         if (o.type === 'shop') lights.push({ x: o.x * TILE + 32, y: (o.y + 2) * TILE - 18, r: 22 });
+        if (o.type === 'hall') lights.push({ x: o.x * TILE + 32, y: (o.y + 2) * TILE - 20, r: 24 });
+        if (o.type === 'mine_entrance') { lights.push({ x: o.x * TILE + 24 - 19, y: (o.y + 2) * TILE - 22, r: 14 }); lights.push({ x: o.x * TILE + 24 + 17, y: (o.y + 2) * TILE - 22, r: 14 }); }
         if (o.type === 'crystal' && w.nodeReady(o)) lights.push({ x: o.x * TILE + 8, y: o.y * TILE + 6, r: 16 });
       }
       if (scene.player && !scene.title) lights.push({ x: scene.player.x, y: scene.player.y - 8, r: 26 });
@@ -798,6 +839,14 @@ export class Renderer {
         ctx.fillRect(Math.round(sx - cam.x), Math.round(sy - cam.y), 1, 1);
       }
     }
+  }
+
+  /** Play the "timber!" animation for a tree that was just chopped down. */
+  fallTree(spr, x, y, dir = 1) {
+    if (!spr) return;
+    const season = seasonNow();
+    const leaf = { spring: '#5fa070', summer: '#4f9a5a', fall: '#d9823f', winter: '#e8f0f4' }[season];
+    (this.falls = this.falls || []).push({ spr, x, y, dir: dir || 1, t: 0, dur: this.reducedMotion ? 0.3 : 0.9, leaf });
   }
 
   /** The held pickaxe / sword sweeping in front of the player. */

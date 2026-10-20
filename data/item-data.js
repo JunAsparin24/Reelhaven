@@ -1,6 +1,7 @@
 // Items: rods, bait, resources, special items and cosmetics.
 // Balance values live here so they can be tuned without touching logic.
 import { FARM_ITEMS, FARM_SELL } from './farm-data.js';
+import { SWORDS } from './weapon-data.js';
 
 export const RODS = {
   wooden_rod: {
@@ -108,12 +109,8 @@ export const TOOLS = {
     { name: 'Iron Pickaxe', power: 3, cost: { coins: 900, iron_bar: 4 }, minLevel: 4, desc: 'Chews through tough ore.' },
     { name: 'Golden Pickaxe', power: 5, cost: { coins: 2200, gold_bar: 4 }, minLevel: 6, desc: 'Shatters rocks in one or two swings.' },
   ],
-  sword: [
-    { name: 'Wooden Sword', damage: 10, desc: 'Better than a stick. Just.' },
-    { name: 'Copper Sword', damage: 17, cost: { coins: 350, copper_bar: 3 }, minLevel: 2, desc: 'A solid blade for slimes and bats.' },
-    { name: 'Iron Sword', damage: 27, cost: { coins: 1000, iron_bar: 3 }, minLevel: 4, desc: 'Cuts through rock crabs.' },
-    { name: 'Golden Sword', damage: 40, cost: { coins: 2400, gold_bar: 3 }, minLevel: 6, desc: 'Gleaming and very sharp.' },
-  ],
+  // swords are sold at the Wayfarers' Hall, not Nori's (data/weapon-data.js)
+  sword: SWORDS,
 };
 
 /** Furnace recipes. `fish: 1` means any one fish from the bag (the least valuable). */

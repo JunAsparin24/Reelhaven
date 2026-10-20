@@ -62,6 +62,8 @@ PBKDF2_ROUNDS = 150_000
 MAX_TOKENS = 10                   # signed-in devices per account
 MAX_PENDING = 50                  # outgoing friend requests
 ISLANDS = {"sunny", "coral", "mangrove", "moon"}
+SLOT_RE = re.compile(r"^(main|w-[a-z0-9]{3,20})$")
+MAX_WORLDS = 6                    # personal worlds per account (incl. main)
 FACINGS = {"up", "down", "left", "right"}
 
 
@@ -86,6 +88,15 @@ class Store:
         self.saves = {}         # username -> {data, revision, updatedAt, device}
         self.snapshots = {}     # username -> {data, updatedAt}
         self.friendships = {}   # id (str) -> {a, b, status, created, responded}
+        # Worlds: every world is a separate save. A world id is "<owner>:<slot>";
+        # "<owner>:main" is the original save in `saves`, other personal worlds
+        # live in `world_saves`. Players who joined a world keep a separate
+        # character there (`characters["<world>|<user>"]`), and `members` says
+        # who may load/save a character in which world.
+        self.worlds = {}        # world id -> {owner, slot, name, created, settings}
+        self.world_saves = {}   # world id -> {data, revision, updatedAt, device}  (non-main slots)
+        self.members = {}       # world id -> [usernames]
+        self.characters = {}    # "world|user" -> {data, revision, updatedAt, device}
         self.next_id = 1
         self.dirty = False
         if path.exists():
@@ -94,6 +105,10 @@ class Store:
             self.saves = data.get("saves", {})
             self.snapshots = data.get("snapshots", {})
             self.friendships = data.get("friendships", {})
+            self.worlds = data.get("worlds", {})
+            self.world_saves = data.get("worldSaves", {})
+            self.members = data.get("members", {})
+            self.characters = data.get("characters", {})
             self.next_id = data.get("nextId", 1)
         self.codes = {a["code"]: u for u, a in self.accounts.items()}
 
@@ -108,6 +123,7 @@ class Store:
         tmp.write_text(json.dumps({
             "accounts": self.accounts, "saves": self.saves, "snapshots": self.snapshots,
             "friendships": self.friendships, "nextId": self.next_id,
+            "worlds": self.worlds, "worldSaves": self.world_saves, "members": self.members, "characters": self.characters,
         }, ensure_ascii=False, separators=(",", ":")), "utf-8")
         os.replace(tmp, self.path)
         self.dirty = False
@@ -377,34 +393,157 @@ class Server:
         return {"account": self.account_view(c.user)}
 
     # ------------------------------------------------------------ saves
+    def slot_of(self, m):
+        slot = str(m.get("world") or "main")
+        if not SLOT_RE.match(slot):
+            raise ApiError("That world doesn't exist.", "not_found")
+        return slot
+
+    def save_table(self, user, slot):
+        """(table, key) holding the save for one of `user`'s own worlds."""
+        if slot == "main":
+            return self.store.saves, user
+        return self.store.world_saves, f"{user}:{slot}"
+
     def on_save_get(self, c, m):
         self.require(c)
-        return {"save": self.store.saves.get(c.user)}
+        table, key = self.save_table(c.user, self.slot_of(m))
+        return {"save": table.get(key)}
 
-    def on_save_put(self, c, m):
-        a = self.require(c)
+    def checked_put(self, table, key, m):
+        """Store a save only if it's based on the latest revision (no silent overwrites)."""
         data = m.get("data")
         base = int(m.get("base", -1))
         if not isinstance(data, dict) or not isinstance(data.get("player"), dict):
             raise ApiError("That save doesn't look right.", "bad")
         if json_size(data) > MAX_SAVE:
             raise ApiError("That save is too large.", "too_large")
-        cur = self.store.saves.get(c.user)
+        cur = table.get(key)
         cur_rev = cur["revision"] if cur else 0
         # Only accept a save based on the latest cloud revision: another device
         # that saved in between makes this one stop and ask the player.
         if base != cur_rev:
             raise ApiError("Your cloud save changed on another device.", "conflict")
         rev = cur_rev + 1
-        self.store.saves[c.user] = {"data": data, "revision": rev, "updatedAt": int(time.time() * 1000),
-                                    "device": clean_text(m.get("device"), 60)}
-        # Keep the public card's level / look in step with the save.
-        p = data["player"]
-        if isinstance(p.get("level"), int):
-            a["level"] = max(1, min(999, p["level"]))
-        a["look"] = clean_look(p.get("look"))
+        table[key] = {"data": data, "revision": rev, "updatedAt": int(time.time() * 1000), "device": clean_text(m.get("device"), 60)}
         self.store.mark()
-        return {"revision": rev, "updatedAt": self.store.saves[c.user]["updatedAt"]}
+        return {"revision": rev, "updatedAt": table[key]["updatedAt"]}
+
+    def on_save_put(self, c, m):
+        """Only the owner can save one of their worlds."""
+        a = self.require(c)
+        slot = self.slot_of(m)
+        if slot != "main":
+            w = self.store.worlds.get(f"{c.user}:{slot}")
+            if not w:
+                # first upload of a world made on this device: register it
+                self.register_world(c.user, slot, clean_text((m.get("data") or {}).get("worldName"), 30) or "New World")
+        table, key = self.save_table(c.user, slot)
+        res = self.checked_put(table, key, m)
+        if slot == "main":
+            # Keep the public card's level / look in step with the save.
+            p = m["data"]["player"]
+            if isinstance(p.get("level"), int):
+                a["level"] = max(1, min(999, p["level"]))
+            a["look"] = clean_look(p.get("look"))
+        return res
+
+    # ------------------------------------------------------------ worlds
+    def register_world(self, owner, slot, name):
+        wid = f"{owner}:{slot}"
+        if wid not in self.store.worlds:
+            mine = [w for w in self.store.worlds.values() if w["owner"] == owner]
+            if len(mine) + 1 >= MAX_WORLDS + 1:
+                raise ApiError(f"You can have up to {MAX_WORLDS} worlds.", "limit")
+            self.store.worlds[wid] = {"owner": owner, "slot": slot, "name": name or "New World", "created": int(time.time() * 1000),
+                                      "settings": {"membersBuild": True}}
+            self.store.mark()
+        return self.store.worlds[wid]
+
+    def world_name(self, wid):
+        w = self.store.worlds.get(wid)
+        if w:
+            return w["name"]
+        owner = wid.split(":", 1)[0]
+        a = self.store.accounts.get(owner)
+        return f"{a['name']}'s Island" if a else "Island"
+
+    def on_world_create(self, c, m):
+        self.require(c)
+        slot = self.slot_of(m)
+        if slot == "main":
+            raise ApiError("That world already exists.", "bad")
+        w = self.register_world(c.user, slot, clean_text(m.get("name"), 30))
+        return {"world": f"{c.user}:{slot}", "name": w["name"]}
+
+    def on_world_rename(self, c, m):
+        self.require(c)
+        slot = self.slot_of(m)
+        name = clean_text(m.get("name"), 30) or "My Island"
+        w = self.register_world(c.user, slot, name)
+        w["name"] = name
+        self.store.mark()
+        return {"name": name}
+
+    def on_world_delete(self, c, m):
+        self.require(c)
+        slot = self.slot_of(m)
+        if slot == "main":
+            raise ApiError("Your first island can't be deleted.", "bad")
+        wid = f"{c.user}:{slot}"
+        self.store.worlds.pop(wid, None)
+        self.store.world_saves.pop(wid, None)
+        for u in self.store.members.pop(wid, []):
+            self.store.characters.pop(f"{wid}|{u}", None)
+        self.store.mark()
+        return {}
+
+    def on_world_list(self, c, m):
+        """My worlds, plus the worlds I've joined (with my character there)."""
+        self.require(c)
+        mine = []
+        main = self.store.saves.get(c.user)
+        w = self.store.worlds.get(f"{c.user}:main")
+        mine.append({"slot": "main", "name": w["name"] if w else "My Island", "updatedAt": main["updatedAt"] if main else 0,
+                     "level": ((main or {}).get("data") or {}).get("player", {}).get("level"),
+                     "charName": ((main or {}).get("data") or {}).get("player", {}).get("name")})
+        for wid, w in self.store.worlds.items():
+            if w["owner"] != c.user or w["slot"] == "main":
+                continue
+            sv = self.store.world_saves.get(wid) or {}
+            p = (sv.get("data") or {}).get("player", {})
+            mine.append({"slot": w["slot"], "name": w["name"], "updatedAt": sv.get("updatedAt", 0), "level": p.get("level"), "charName": p.get("name")})
+        joined = []
+        for wid, users in self.store.members.items():
+            if c.user not in users:
+                continue
+            owner = wid.split(":", 1)[0]
+            ch = self.store.characters.get(f"{wid}|{c.user}") or {}
+            p = (ch.get("data") or {}).get("player", {})
+            sess = self.sessions.get(owner)
+            joined.append({"world": wid, "owner": owner, "ownerName": self.store.accounts.get(owner, {}).get("name", owner),
+                           "worldName": self.world_name(wid), "charName": p.get("name"), "level": p.get("level"),
+                           "updatedAt": ch.get("updatedAt", 0), "open": bool(sess and sess.get("world") == wid and owner in self.online_users())})
+        return {"personal": mine, "joined": joined}
+
+    # ------------------------------------------------------------ characters in others' worlds
+    def member_world(self, c, m):
+        wid = clean_text(m.get("world"), 48)
+        if c.user not in self.store.members.get(wid, []):
+            raise ApiError("Join this world first.", "forbidden")
+        return wid
+
+    def on_char_get(self, c, m):
+        """Your character in a world you joined (never anyone else's)."""
+        self.require(c)
+        wid = self.member_world(c, m)
+        return {"char": self.store.characters.get(f"{wid}|{c.user}")}
+
+    def on_char_put(self, c, m):
+        """Save your own character in a joined world. Players can only write their own record."""
+        self.require(c)
+        wid = self.member_world(c, m)
+        return self.checked_put(self.store.characters, f"{wid}|{c.user}", m)
 
     def on_snapshot_put(self, c, m):
         self.require(c)
@@ -516,7 +655,7 @@ class Server:
     def on_presence(self, c, m):
         self.require(c)
         status = m.get("status")
-        c.status = status if status in ("home", "visiting") else "home"
+        c.status = status if status in ("home", "playing") else "home"
         self.push_presence(c.user)
         return {}
 
@@ -526,16 +665,12 @@ class Server:
         return bool(sess and user in sess["members"])
 
     def on_visit_get(self, c, m):
+        """The open world's layout, for players who just joined (visiting is gone)."""
         self.require(c)
         host = clean_text(m.get("user"), 16).lower()
-        a = self.store.accounts.get(host)
-        member = self.is_member(c.user, host)
-        if not a or not (member or self.store.are_friends(c.user, host)):
-            raise ApiError("You can only visit your friends' islands.", "forbidden")
-        if not member and not a.get("allowVisits", True):
-            raise ApiError(f"{a['name']} has island visits turned off.", "forbidden")
-        snap = self.store.snapshots.get(host)
-        return {"snapshot": snap}
+        if host != c.user and not self.is_member(c.user, host):
+            raise ApiError("Join their game to see their world.", "forbidden")
+        return {"snapshot": self.store.snapshots.get(host)}
 
     def on_island_join(self, c, m):
         self.require(c)
@@ -543,8 +678,8 @@ class Server:
         island = str(m.get("island", ""))
         if island not in ISLANDS or host not in self.store.accounts:
             raise ApiError("That island doesn't exist.", "not_found")
-        if host != c.user and not (self.store.are_friends(c.user, host) or self.is_member(c.user, host)):
-            raise ApiError("You can only visit your friends' islands.", "forbidden")
+        if host != c.user and not self.is_member(c.user, host):
+            raise ApiError("Join their game to play in their world.", "forbidden")
         self.leave_room(c)
         key = (host, island)
         # When the host sails to another island, joined players follow.
@@ -604,6 +739,9 @@ class Server:
         hc = self.room_host(c)
         if not hc:
             raise ApiError(f"{a['name']} needs to be on this island for you to build here.", "host_away")
+        sess = self.sessions.get(host) or {}
+        if not sess.get("settings", {}).get("membersBuild", True):
+            raise ApiError(f"{a['name']} hasn't allowed building in this world.", "forbidden")
         op = m.get("op")
         if op not in ("place", "move"):
             raise ApiError("Unknown building action.", "bad")
@@ -693,7 +831,8 @@ class Server:
 
     def session_view(self, host):
         sess = self.sessions[host]
-        return {"code": sess["code"], "members": [{"user": u, "name": self.store.accounts[u]["name"]} for u in sorted(sess["members"]) if u in self.store.accounts]}
+        return {"code": sess["code"], "world": sess.get("world"), "worldName": sess.get("worldName"), "settings": sess.get("settings", {}),
+                "members": [{"user": u, "name": self.store.accounts[u]["name"]} for u in sorted(sess["members"]) if u in self.store.accounts]}
 
     def push_session(self, host, msg):
         online = self.online_users()
@@ -727,8 +866,39 @@ class Server:
                 online[u].ws.send({"t": "session_end", "host": host, "reason": reason})
 
     def on_host_start(self, c, m):
+        """Open one of your worlds to friends. Only your own worlds can be hosted."""
         self.require(c)
-        self.ensure_session(c.user)
+        slot = self.slot_of(m)
+        name = clean_text(m.get("name"), 30) or "My Island"
+        w = self.register_world(c.user, slot, name)
+        if w["name"] != name:
+            w["name"] = name
+            self.store.mark()
+        sess = self.ensure_session(c.user)
+        wid = f"{c.user}:{slot}"
+        if sess.get("world") and sess["world"] != wid:
+            # switching worlds: players in the old one are sent home
+            for u in list(sess["members"]):
+                t = self.online_users().get(u)
+                if t:
+                    t.ws.send({"t": "session_end", "host": c.user, "reason": "stopped"})
+            sess["members"] = set()
+        sess["world"], sess["worldName"] = wid, name
+        sess["settings"] = {"membersBuild": bool(m.get("membersBuild", w.get("settings", {}).get("membersBuild", True)))}
+        w["settings"] = dict(sess["settings"])
+        return self.session_view(c.user)
+
+    def on_host_settings(self, c, m):
+        """World owner decides what joined players may do."""
+        self.require(c)
+        sess = self.sessions.get(c.user)
+        if not sess:
+            raise ApiError("Host a game first.", "bad")
+        sess["settings"] = {"membersBuild": bool(m.get("membersBuild"))}
+        w = self.store.worlds.get(sess.get("world") or "")
+        if w:
+            w["settings"] = dict(sess["settings"])
+            self.store.mark()
         return self.session_view(c.user)
 
     def on_host_status(self, c, m):
@@ -758,11 +928,20 @@ class Server:
         if host not in self.online_users():
             raise ApiError("The host isn't online right now.", "host_away")
         sess = self.sessions[host]
+        wid = sess.get("world") or f"{host}:main"
         sess["members"].add(c.user)
+        # Membership is remembered: your character in this world is yours to
+        # load and save from now on.
+        users = self.store.members.setdefault(wid, [])
+        if c.user not in users:
+            users.append(c.user)
+            self.store.mark()
         hc = self.online_users()[host]
         hc.ws.send({"t": "session_joined", "user": c.user, "name": self.store.accounts[c.user]["name"]})
         self.push_members(host)
-        return {"host": host, "name": self.store.accounts[host]["name"], "island": self.host_island(host)}
+        return {"host": host, "name": self.store.accounts[host]["name"], "island": self.host_island(host),
+                "world": wid, "worldName": sess.get("worldName") or self.world_name(wid),
+                "hasCharacter": f"{wid}|{c.user}" in self.store.characters}
 
     def on_join_code(self, c, m):
         self.require(c)
@@ -795,6 +974,33 @@ class Server:
         if not sess or c.user not in sess.get("invited", set()):
             raise ApiError("That invite has expired.", "not_found")
         return self.join(c, host)
+
+    def on_join_friend(self, c, m):
+        """Friends can hop into a world their friend is hosting, no code needed."""
+        self.require(c)
+        host = clean_text(m.get("host"), 16).lower()
+        sess = self.sessions.get(host)
+        if not sess:
+            raise ApiError("They aren't hosting a game right now.", "not_found")
+        # Friends, and anyone who already has a character in that world, may hop in.
+        wid = sess.get("world") or f"{host}:main"
+        if not (self.store.are_friends(c.user, host) or c.user in self.store.members.get(wid, [])):
+            raise ApiError("Ask them for an invite code.", "forbidden")
+        return self.join(c, host)
+
+    def on_joinable(self, c, m):
+        """Friends who are online and hosting a world right now."""
+        self.require(c)
+        online = self.online_users()
+        out = []
+        for f in self.friends_of(c.user):
+            sess = self.sessions.get(f)
+            if not sess or f not in online:
+                continue
+            wid = sess.get("world") or f"{f}:main"
+            out.append({"host": f, "name": self.store.accounts[f]["name"], "world": wid, "worldName": sess.get("worldName") or self.world_name(wid),
+                        "players": len(sess["members"]) + 1, "joined": f"{wid}|{c.user}" in self.store.characters})
+        return {"list": out}
 
     def on_session_leave(self, c, m):
         self.require(c)

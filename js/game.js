@@ -33,11 +33,28 @@ import { addXp } from './progression.js';
 import { commit, uid } from './state.js';
 import { mineFloor } from '../data/mine-data.js';
 import { forgetMap } from './world-gen.js';
-import { swing, updateMonsters, faceToward as facePoint, frontTile } from './combat.js';
+import { swing, updateMonsters, faceToward as facePoint, frontTile, SWING_TOOLS } from './combat.js';
 import { sleepToMorning, setClock } from './weather.js';
 import { shiftSunnyLayout } from './save.js';
-import { FARM_ISLAND, seedYard, sproutWeeds, growFarms, hitDebris, harvest, farmBlocker } from './farm.js';
+import { FARM_ISLAND, seedYard, seedWild, sproutWeeds, growFarms, hitDebris, harvest, farmBlocker } from './farm.js';
 import { seasonOf } from '../data/farm-data.js';
+import { memberSlot, notePersonal, noteJoined, personalName, lastPersonal } from './worlds.js';
+import { clearUrlCache } from './art/sprites.js';
+import { FLOOR_CHESTS, SWORDS } from '../data/weapon-data.js';
+import { RESOURCES } from '../data/item-data.js';
+import { addCoins as addCoinsTo, addItem as addItemTo } from './economy.js';
+
+/** A fresh character for a friend's world (separate from all your own saves). */
+function createMemberState(profile, res) {
+  const st = createNewState(profile);
+  st.member = { world: res.world, owner: res.host, ownerName: res.name };
+  st.worldName = res.worldName;
+  st.player.island = res.island || 'sunny';
+  // The host's world has its own story; skip your home-yard intro quests.
+  st.flags = { ...st.flags, giftOpened: true, mineOpen: true };
+  st.quests.index = 3;
+  return st;
+}
 
 export class Game {
   constructor({ canvas, ui }) {
@@ -53,6 +70,8 @@ export class Game {
     this.footsteps = new FootstepSystem(this);
     this.visit = null;
     this.indoor = null;           // { id, outside: World, ret: {x, y}, mine? } while inside a building or the mine
+    this.activeWorld = { kind: 'personal', slot: 'main' };   // which world's save is playing
+    this.home = null;             // your own world to return to after a friend's
     this.sleeping = false;        // in bed, waiting for everyone else (multiplayer)
     this.sleepers = new Set();    // other players on this island who are in bed
     this.remotes = new Map();
@@ -111,19 +130,103 @@ export class Game {
     this.camera.snap(22 * TILE, 30 * TILE, this.world);
   }
 
-  /** Start a fresh game (overwrites the stored save only after confirmation in UI). */
-  newGame(profile) {
+  /** Start a fresh world in the current personal save slot. */
+  newGame(profile, { worldName = null } = {}) {
     const st = createNewState(profile);
     st.settings = { ...st.settings, ...pendingSettings };
+    if (worldName) st.worldName = worldName;
     setState(st);
     Save.save(st);
+    this.activeWorld = { kind: 'personal', slot: Save.currentSlot() };
+    notePersonal(Save.currentSlot(), { name: st.worldName || personalName(Save.currentSlot()), charName: st.player.name, level: 1, lastPlayed: Date.now() });
+    this.ui.online?.cloud?.claimNew?.();
     this.enterPlay();
     this.startInCottage();
     emit('newGame');
   }
 
+  // ---------------------------------------------------------------- worlds
+  /**
+   * Every world is its own save (js/worlds.js): your own worlds, and a
+   * separate character for each friend's world you join. activeWorld says
+   * which one is playing; saves and cloud uploads always go to that slot.
+   */
+  usePersonalSlot(slot) {
+    Save.setSlot(slot);
+    this.ui.online?.cloud?.setSlot?.({ id: slot });
+    this.activeWorld = { kind: 'personal', slot };
+  }
+
+  /**
+   * Join a friend's world (after the server accepted the code / invite).
+   * Loads your character for that world — or asks you to create one the
+   * first time — and never touches your own worlds' saves.
+   */
+  async joinWorld(res) {
+    // Host sailed to another island in the same world: just follow.
+    if (this.visit && this.visit.world === res.world) { this.joinGame(res); return; }
+    const online = this.ui.online;
+    if (this.mode === 'play') { this.persistNow(); await online?.cloud?.flush?.(); }
+    const prev = this.activeWorld;
+    if (this.visit) { this.leaveChannel(); this.visit = null; }
+    const slot = memberSlot(res.world);
+    Save.setSlot(slot);
+    online?.cloud?.setSlot?.({ id: slot, member: true, world: res.world });
+    let state = Save.load().state;
+    if (online?.auth.signedIn) {
+      try { const r = await online.cloud.reconcile(); state = r.state || state; } catch (err) { console.warn('character sync failed', err); }
+    }
+    let created = false;
+    if (!state) {
+      const profile = await this.ui.worldCharacter(res);
+      if (!profile) {
+        // cancelled: back to whatever was playing before
+        online?.social.leaveSession();
+        if (prev?.kind === 'personal') this.usePersonalSlot(prev.slot);
+        return;
+      }
+      state = createMemberState(profile, res);
+      created = true;
+    }
+    if (prev?.kind === 'personal') this.home = prev;
+    this.activeWorld = { kind: 'member', world: res.world, slot, host: res.host };
+    setState(state);
+    Save.save(state);
+    if (created) online?.cloud?.claimNew?.();
+    noteJoined(res.world, { owner: res.host, ownerName: res.name, worldName: res.worldName, charName: state.player.name, level: state.player.level, lastPlayed: Date.now() });
+    setPlayerSprites(state.player.look);
+    clearUrlCache('portrait_player');
+    if (this.mode !== 'play') {
+      initAudio(); setVolumes(state.settings); startMusic();
+      this.mode = 'play';
+      this.ui.enterPlay();
+    }
+    initQuests();
+    this.ui.refreshHud();
+    await this.joinGame(res);
+  }
+
+  /** Back to your own world after leaving someone else's. */
+  goHome() {
+    const home = this.home || { kind: 'personal', slot: lastPersonal() || 'main' };
+    this.home = null;
+    this.usePersonalSlot(home.slot);
+    const st = Save.load().state;
+    if (!st) { this.mode = 'play'; this.returnToTitle(); return; }
+    setState(st);
+    setPlayerSprites(st.player.look);
+    clearUrlCache('portrait_player');
+    this.loadIsland(st.player.island, true);
+    initQuests();
+    this.ui.refreshHud();
+  }
+
   continueGame(loaded) {
     setState(loaded);
+    if (!loaded.member) {
+      this.activeWorld = { kind: 'personal', slot: Save.currentSlot() };
+      notePersonal(Save.currentSlot(), { charName: loaded.player.name, level: loaded.player.level, lastPlayed: Date.now() });
+    }
     this.enterPlay();
   }
 
@@ -146,7 +249,12 @@ export class Game {
     this.indoor = null;
     this.world = new World(id, s.islands[id]);
     // First time home: the yard is covered in trees, stones and weeds.
-    if (id === FARM_ISLAND && seedYard(this.world, s.islands[id])) { this.world.syncDebris(); commit('seedYard', false); }
+    if (id === FARM_ISLAND) {
+      const a = seedYard(this.world, s.islands[id]);
+      if (a) this.world.syncDebris();
+      const b = seedWild(this.world, s.islands[id]);
+      if (a || b) { this.world.syncDebris(); commit('seedYard', false); }
+    }
     this.renderer.setWorld(this.world);
     this.revealedSpots = new Set();
     const pos = keepPos && s.player.pos ? s.player.pos : ISLANDS[id].spawn;
@@ -181,8 +289,11 @@ export class Game {
     if (this.fishing) this.stopFishing();
     if (this.build.active) this.ui.closeBuild();
     this.persistNow();
+    this.ui.online?.cloud?.flush?.();
+    if (this.visit) this.ui.online?.social.leaveSession();
     this.leaveChannel();
     this.visit = null;
+    this.home = null;
     this.ui.online?.social.setStatus({ status: 'home' });
     this.ui.closeAll();
     this.mode = 'title';
@@ -200,7 +311,8 @@ export class Game {
 
   syncPlayerToState() {
     const s = getState();
-    if (!s || !this.player || this.visit) return;   // a visit never moves your own save
+    // In a friend's world the host's map rules, so your character's position isn't kept.
+    if (!s || !this.player || this.visit) return;
     s.player.pos = this.indoor ? { ...this.indoor.ret } : { x: this.player.tileX, y: this.player.tileY };
     s.player.facing = this.player.facing;
   }
@@ -211,7 +323,7 @@ export class Game {
    * built from the snapshot; the visitor's own state (save, island, position,
    * inventory) is never modified and saving continues as normal.
    */
-  startVisit({ hostId, hostName, snapshot, islandId, member = false }) {
+  startVisit({ hostId, hostName, snapshot, islandId, member = true, world = null, worldName = null }) {
     if (this.fishing) this.stopFishing();
     if (this.build.active) this.ui.closeBuild();
     // Joined players may arrive before the host ever synced: start empty, the
@@ -231,7 +343,7 @@ export class Game {
       this.indoor = null;
       this.sleeping = false;
       this.sleepers = new Set();
-      this.visit = { hostId, hostName, islandId: isl.id, islandName: isl.name || ISLANDS[isl.id].name, hostHere: false, member };
+      this.visit = { hostId, hostName, islandId: isl.id, islandName: isl.name || ISLANDS[isl.id].name, hostHere: false, member: true, world, worldName };
       this.world = new World(isl.id, temp);
       this.renderer.setWorld(this.world);
       this.revealedSpots = new Set();
@@ -243,18 +355,22 @@ export class Game {
       this.onResize();
       this.camera.snap(this.player.x, this.player.y, this.world);
       this.joinChannel(hostId, isl.id);
-      this.ui.online?.social.setStatus({ status: 'visiting' });
+      this.ui.online?.social.setStatus({ status: 'playing' });
       this.ui.refreshVisit();
-    }, `${hostName}’s island`);
+    }, worldName || `${hostName}’s world`);
   }
 
+  /** Leave a friend's world: your character there is saved, then you go home. */
   leaveVisit() {
     if (!this.visit) return;
-    if (this.visit.member) this.ui.online?.social.leaveSession();
+    this.ui.online?.social.leaveSession();
+    this.persistNow();
+    this.ui.online?.cloud?.flush?.();
     this.ui.fade(() => {
       this.leaveChannel();
       this.visit = null;
-      this.loadIsland(getState().player.island, true);
+      this.sleeping = false;
+      this.goHome();
       this.ui.online?.social.setStatus({ status: 'home' });
       this.ui.refreshVisit();
     }, 'Home sweet home');
@@ -402,6 +518,8 @@ export class Game {
     const wpt = this.camera.toWorld(b.x, b.y);
     const tx = Math.floor(wpt.x / TILE), ty = Math.floor(wpt.y / TILE);
     if (this.build.active) { this.build.tapTile(tx, ty); return; }
+    // Phones: a tap on the right half of the screen uses what you're holding.
+    if (this.tapToUse(cssX, wpt)) return;
     if (!getState().settings.tapToMove) return;
     // Tapped something interactable? Walk next to it and use it.
     const target = this.interactableNear(wpt.x, wpt.y);
@@ -444,7 +562,7 @@ export class Game {
       test(s.x * TILE + 8, s.y * TILE + 8, s.x, s.y, it => it.spot === s, 12);
     }
     for (const o of w.objects) {
-      if (!(o.def.resource || o.def.interact) || w.objectHidden(o)) continue;
+      if (!(o.def.resource || o.def.interact) || w.objectHidden(o) || o.def.quiet || !w.inBounds(o.x, o.y)) continue;
       const fp = o.def.footprint || { w: 1, h: 1 };
       test(o.x * TILE + fp.w * 8, (o.y + fp.h) * TILE - 10, o.x + Math.floor(fp.w / 2), o.y + fp.h, it => it.obj === o, fp.w > 1 || o.type === 'boat' ? 30 : 18);
     }
@@ -482,6 +600,29 @@ export class Game {
     return false;
   }
 
+  /**
+   * Touch screens: tapping the right half of the screen swings the held tool
+   * (or plants the held seeds) toward where you tapped, any time. With the
+   * rod or nothing swingable, it uses whatever is nearby instead.
+   */
+  tapToUse(cssX, wpt) {
+    if (!matchMedia('(pointer: coarse)').matches || this.inputBlocked()) return false;
+    const rect = this.canvas.getBoundingClientRect();
+    if (cssX < rect.width / 2) return false;
+    const p = this.player;
+    const held = getState().inventory.held || '';
+    const swingable = SWING_TOOLS.has(held) || held.startsWith('seed:');
+    if (swingable) {
+      p.cancelPath();
+      // Face the tap if it's clearly off to one side; otherwise keep facing.
+      if (Math.hypot(wpt.x - p.x, wpt.y - (p.y - 8)) > 10) p.facing = facePoint(p, wpt.x, wpt.y + 4);
+      swing(this, held);
+      return true;
+    }
+    if (this.interactTarget) { this.interact(this.interactTarget); return true; }
+    return false;
+  }
+
   /** Number keys pick a hotbar slot. */
   onHotkey(n) {
     if (this.mode !== 'play' || this.ui.blocking()) return false;
@@ -510,10 +651,11 @@ export class Game {
    * save). Things that would change the host's island directly stay off.
    */
   /** Join a hosted game (from an invite code or a friend's invite). */
-  async joinGame({ host, name, island }) {
+  async joinGame({ host, name, island, world = null, worldName = null }) {
     let snap = null;
     try { snap = (await this.ui.online.social.snapshotOf(host))?.data || null; } catch { /* start empty */ }
-    this.startVisit({ hostId: host, hostName: name, snapshot: snap, islandId: island, member: true });
+    const v = this.visit;
+    this.startVisit({ hostId: host, hostName: name, snapshot: snap, islandId: island, world: world || v?.world, worldName: worldName || v?.worldName });
   }
 
   canUse(it) {
@@ -522,7 +664,7 @@ export class Game {
     // Joined players can fish, gather, shop, mine and sleep (their own progress);
     // a host's chests stay the host's.
     if (it.kind === 'use') return this.visit.member && it.placement?.def.use !== 'chest';
-    return this.visit.member && ['spot', 'gather', 'shop', 'board', 'bed', 'mine_enter', 'mine', 'attack', 'descend', 'ascend', 'swing'].includes(it.kind);
+    return this.visit.member && ['spot', 'gather', 'shop', 'hall', 'board', 'bed', 'mine_enter', 'mine', 'attack', 'descend', 'ascend', 'swing', 'floor_chest'].includes(it.kind);
   }
 
   // ---------------------------------------------------------------- co-op
@@ -636,7 +778,7 @@ export class Game {
     p.cancelPath();
     switch (it.kind) {
       case 'spot': {
-        if (!getState().inventory.rods.length) { toast('You need a fishing rod. Mira at the pier might have a spare!', 'rod'); return; }
+        if (!getState().inventory.rods.length) { toast('You need a fishing rod. Visit Nori’s shop in town — she has a starter one.', 'rod'); return; }
         this.startFishing(it.spot);
         break;
       }
@@ -646,14 +788,8 @@ export class Game {
         p.facing = faceToward(p, n);
         markTalked(n.id);
         this.ui.talk(n.id);
-        // Mira gives new islanders their first rod (like Willy at the beach).
-        const inv = getState().inventory;
-        if (n.id === 'mira' && !inv.rods.length && !this.visit) {
-          inv.rods.push('wooden_rod');
-          inv.equippedRod = 'wooden_rod';
-          setTimeout(() => { toast('Mira gave you a Wooden Rod! Find it on your hotbar.', 'rod', 'gold'); sfx('quest'); }, 400);
-          commit('rod');
-        }
+        // Nori sets new islanders up with a starter rod and sword.
+        if (n.id === 'nori' && !this.visit) this.starterGear();
         break;
       }
       case 'clear': {
@@ -671,10 +807,15 @@ export class Game {
         break;
       }
       case 'gift': this.openGift(); break;
+      case 'hall': this.ui.open('hall'); break;
+      case 'floor_chest': this.openFloorChest(it.obj); break;
       case 'tv': this.ui.tvModal(); break;
       case 'gather': gather(this, it.obj); break;
       case 'board': this.ui.open('quests'); break;
-      case 'shop': this.ui.open('shop'); break;
+      case 'shop':
+        this.ui.open('shop');
+        if (!this.visit && this.world.id === 'shop_interior') this.starterGear();   // the counter is Nori's too
+        break;
       case 'enter': this.enterInterior(it); break;
       case 'exit': this.exitInterior(); break;
       case 'bed': this.ui.sleepPrompt(); break;
@@ -749,6 +890,41 @@ export class Game {
     if (!(held === 'hoe' || held === 'watering_can' || held.startsWith('seed:'))) return null;
     if (farmBlocker(this)) return null;
     return frontTile(this.player);
+  }
+
+  /** Treasure chest on a milestone mine floor (once per character). */
+  openFloorChest(o) {
+    const s = getState();
+    const loot = FLOOR_CHESTS[o.level];
+    s.flags.floorChests = s.flags.floorChests || [];
+    if (!loot || s.flags.floorChests.includes(o.level)) return;
+    s.flags.floorChests.push(o.level);
+    const got = [];
+    if (loot.sword !== undefined && (s.inventory.tools.sword ?? -1) < loot.sword) {
+      s.inventory.tools.sword = loot.sword;
+      got.push(SWORDS[loot.sword].name);
+    }
+    if (loot.coins) { addCoinsTo(loot.coins); got.push(`${loot.coins} coins`); }
+    for (const [id, n] of Object.entries(loot.items || {})) { addItemTo(id, n); got.push(`${n} ${RESOURCES[id]?.name || id}`); }
+    if (loot.pearls) { s.player.pearls += loot.pearls; got.push(`${loot.pearls} pearls`); }
+    sfx('levelup');
+    this.renderer.emit('sparkle', o.x * TILE + 8, o.y * TILE, 18, { speed: 60, gravity: 30, color: '#f8dc7c' });
+    this.world.rebuild();
+    toast(`${loot.label}: ${got.join(', ')}!`, 'chest', 'gold');
+    this.ui.hotbar?.render();
+    commit('floorChest');
+  }
+
+  /** Talking to Nori the first time: a Wooden Rod and a Wooden Sword. */
+  starterGear() {
+    const inv = getState().inventory;
+    const got = [];
+    if (!inv.rods.length) { inv.rods.push('wooden_rod'); inv.equippedRod = 'wooden_rod'; got.push('a Wooden Rod'); }
+    if (inv.tools.sword === undefined) { inv.tools.sword = 0; got.push('a Wooden Sword'); }
+    if (!got.length) return;
+    setTimeout(() => { toast(`Nori gave you ${got.join(' and ')}! They’re in your bag.`, 'rod', 'gold'); sfx('quest'); }, 400);
+    commit('starterGear');
+    this.ui.hotbar?.render();
   }
 
   /** The welcome gift in the cottage: starter seeds. */
@@ -882,10 +1058,8 @@ export class Game {
       this.onResize();
       this.camera.snap(this.player.x, this.player.y, this.world);
       this.ui.closeAll();
-      if (s.inventory.tools.sword === undefined) {
-        s.inventory.tools.sword = 0;
-        setTimeout(() => toast('You found an old Wooden Sword by the ladder. Monsters lurk down here!', 'sword', 'gold'), 600);
-        commit('sword');
+      if (s.inventory.tools.sword === undefined && level === 1) {
+        setTimeout(() => toast('Monsters lurk down here and you have no sword! Nori in town has a starter one.', 'sword', 'error'), 600);
       }
       if (level > (s.stats.mineDeepest || 0)) {
         s.stats.mineDeepest = level;

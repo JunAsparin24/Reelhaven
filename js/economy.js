@@ -3,6 +3,7 @@
 import { getState } from './state.js';
 import { emit } from './events.js';
 import { RESOURCES } from '../data/item-data.js';
+import { noticeGain } from './bag.js';
 
 export function coins() { return getState().player.coins; }
 
@@ -25,6 +26,7 @@ export function addItem(id, n = 1) {
   if (n <= 0) return;
   const items = getState().inventory.items;
   items[id] = (items[id] || 0) + n;
+  noticeGain(id);
 }
 
 export function removeItem(id, n = 1) {

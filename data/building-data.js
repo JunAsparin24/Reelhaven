@@ -39,8 +39,8 @@ export const BUILDINGS = {
   },
   storage_shed: {
     id: 'storage_shed', name: 'Storage Shed', kind: 'building', price: 400, cost: { wood: 20, stone: 10 }, minLevel: 4, maxCount: 2,
-    footprint: { w: 2, h: 2 }, solid: true, capacity: 30,
-    desc: 'Holds 30 more fish in your bag. You can build two.',
+    footprint: { w: 2, h: 2 }, solid: true, use: 'chest',
+    desc: 'A walk-in store for everything that won’t fit in your bag. You can build two.',
   },
   lighthouse: {
     id: 'lighthouse', name: 'Lighthouse', kind: 'building', price: 1500, cost: { stone: 30, wood: 20, seaglass: 6 }, minLevel: 6, maxCount: 1,

@@ -10,9 +10,12 @@
   .nav-btn { flex: 1 1 0; max-width: 64px; width: auto; height: 48px; }
   .nav-sep { display: none; }
   #hud-top { max-width: calc(100% - 2 * var(--pad)); }
-  #hotbar { bottom: calc(var(--edge-b) + var(--menu-h) + 8px); right: var(--edge-r); align-items: stretch; }
-  #hotbar .slots { justify-content: space-between; }
-  #hotbar .slot { flex: 1 1 0; max-width: 46px; width: auto; height: 40px; }
+  #hotbar { bottom: calc(var(--edge-b) + var(--menu-h) + 8px); left: var(--edge-l); right: var(--edge-r); transform: none; max-width: none; align-items: stretch; }
+  #hotbar .slots { justify-content: space-between; gap: 2px; padding: 3px; }
+  #hotbar .slot { flex: 1 1 0; min-width: 0; max-width: 46px; width: auto; height: 34px; }
+  #hotbar .slot .px-icon { width: 20px; height: 20px; }
+  #hotbar .slot .key { display: none; }
+  .bag-grid { gap: 2px; padding: 4px; }
   #action-region { bottom: calc(var(--edge-b) + var(--menu-h) + var(--hotbar-h, 0px) + 16px); }
   #fishing-ui, #dialogue, #build-bar { bottom: calc(var(--edge-b) + var(--menu-h) + 8px); }
   #fishing-ui { grid-template-columns: 1fr 104px; }

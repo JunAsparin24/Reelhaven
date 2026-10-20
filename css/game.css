@@ -241,9 +241,11 @@
 @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 
 /* ---------- hotbar (bottom-left; above the menu in portrait) */
+/* centred along the bottom like Stardew's toolbar */
 #hotbar {
-  left: var(--edge-l); bottom: var(--edge-b);
-  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+  left: 50%; bottom: var(--edge-b); transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  max-width: calc(100% - 2 * var(--pad));
 }
 #hotbar .slots { display: flex; gap: 4px; padding: 4px; background: rgba(30, 44, 70, 0.72); box-shadow: 0 0 0 2px var(--ink); }
 #hotbar .slot {
@@ -304,3 +306,44 @@
 .tv-screen { background: #23384a; color: #dff4ff; padding: 10px 12px; box-shadow: 0 0 0 3px var(--ink), inset 0 0 18px rgba(120, 200, 230, 0.25); }
 .tv-screen p { margin: 4px 0; }
 .tv-screen b { color: #ffe3a3; }
+
+/* ---------- bag: a Stardew-style grid, 12 slots per row (row 1 = hotbar) */
+.bag-grid {
+  display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px;
+  padding: 6px; margin: 6px 0 8px; background: #d9b27a; box-shadow: 0 0 0 3px var(--wood-2), inset 0 0 0 2px #e8c690;
+}
+.bag-slot {
+  position: relative; aspect-ratio: 1; border: 0; padding: 0; display: grid; place-items: center; min-width: 0;
+  background: #f4dcae; box-shadow: inset 0 0 0 2px #c99a5e, inset 2px 2px 0 2px #fff0d0;
+  touch-action: manipulation;
+}
+.bag-slot .px-icon { width: 70%; height: 70%; max-width: 30px; max-height: 30px; }
+.bag-slot.hot { background: #fbe6bd; }
+.bag-slot.picked { background: var(--gold); box-shadow: inset 0 0 0 2px var(--ink), 0 0 0 2px var(--cream); }
+.bag-slot.empty { background: #e9cc98; }
+.bag-slot .cnt { position: absolute; right: 2px; bottom: 0; font-size: 0.66rem; color: var(--ink); text-shadow: 1px 1px 0 #fff8; }
+.bag-slot .key { position: absolute; left: 2px; top: 0; font-size: 0.56rem; color: var(--wood-2); }
+.slot-details { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: var(--cream); box-shadow: 0 0 0 2px var(--sand-2); }
+.slot-details .item-main { flex: 1; min-width: 0; }
+.slot-actions { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
+.bag-hint { margin: 4px 2px; }
+
+/* world selection */
+.worlds-menu { width: min(620px, 100%); max-height: min(86vh, 760px); overflow: auto; }
+.worlds-menu h3 .px-icon { display: inline-block; vertical-align: -4px; }
+.world-row .item-main { min-width: 0; }
+.world-row .item-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.creator-note { margin: -4px 0 8px; }
+
+/* the hotbar shows all 12 slots, including empty ones */
+#hotbar .slot.empty { background: rgba(253, 240, 210, 0.45); }
+#hotbar .slot .px-sprite.px-icon { width: 30px; height: auto; }
+@media (orientation: landscape) and (max-width: 1000px) {
+  #hotbar .slots { gap: 3px; padding: 3px; }
+  #hotbar .slot { width: 34px; height: 34px; }
+  #hotbar .slot .px-icon { width: 22px; height: 22px; }
+}
+/* the action buttons sit just above the centred hotbar (landscape) */
+@media (orientation: landscape) {
+  #action-region { bottom: calc(var(--edge-b) + var(--hotbar-h, 44px) + 10px); }
+}

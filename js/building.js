@@ -145,6 +145,11 @@ export class BuildMode {
     }
     const placement = { uid: uid('p'), type: this.type, x: g.x, y: g.y, rot: this.rot };
     isl.placements.push(placement);
+    // Building over tall grass flattens it.
+    if (isl.farm?.debris) {
+      isl.farm.debris = isl.farm.debris.filter(d => !(d.type === 'grass' && d.x >= g.x && d.y >= g.y && d.x < g.x + g.fw && d.y < g.y + g.fh));
+      this.world.syncDebris(false);
+    }
     if (def.produce) isl.gardens[placement.uid] = Date.now();
     if (def.kind === 'building') { s.stats.buildingsBuilt += 1; addXp(40); }
     else { s.stats.decorPlaced += 1; addXp(3); }
