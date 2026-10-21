@@ -340,3 +340,12 @@
 .recipe .need.ok { color: #3f8a4a; }
 .recipe .buy-col { display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
 .build-info .up-note { display: inline-flex; gap: 6px; align-items: center; }
+
+.pick-grid .museum-item { border: 0; cursor: pointer; background: #efe1c4; box-shadow: 0 0 0 2px var(--ink); font: inherit; }
+.pick-grid .museum-item.on { background: var(--turq); }
+.pick-total { display: block; margin: 6px 0; }
+.derby-note { font-weight: 700; }
+
+.museum-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; margin: 6px 0 10px; }
+.museum-item { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 4px; background: #f6ead0; box-shadow: 0 0 0 2px var(--ink); font-size: 0.72rem; font-weight: 700; text-align: center; line-height: 1.1; }
+.museum-item .px-icon { width: 28px; height: 28px; }

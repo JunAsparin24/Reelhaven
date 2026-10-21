@@ -173,6 +173,7 @@ export const HATS = {
   pirate: { id: 'pirate', name: 'Pirate Hat', pearls: 12 },
   wizard: { id: 'wizard', name: 'Wizard Hat', pearls: 15 },
   crown: { id: 'crown', name: 'Coral Crown', pearls: 20 },
+  flower_crown: { id: 'flower_crown', name: 'Flower Crown', pearls: 0, reward: true },
 };
 
 /** Hats anyone can pick when making a character (the rest are bought with pearls). */

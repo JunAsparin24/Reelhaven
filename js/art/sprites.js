@@ -111,10 +111,15 @@ export function buildAllSprites() {
   put('coop', LIFE.coopBuilding()); put('barn', LIFE.barnBuilding());
   for (const k of ['chicken', 'duck', 'cow', 'goat']) for (let f = 0; f < 2; f++) put(`critter_${k}_${f}`, LIFE.critter(k, f));
   put('silo', LIFE.silo()); put('shed', LIFE.shedBuilding()); put('stable', LIFE.stableBuilding());
-  put('big_coop', LIFE.bigVersion(store.get('coop'))); put('big_barn', LIFE.bigVersion(store.get('barn')));
+  put('big_coop', LIFE.bigCoopBuilding()); put('big_barn', LIFE.bigBarnBuilding());
+  put('cottage_big', LIFE.cottageBig(false)); put('cottage_big_lit', LIFE.cottageBig(true));
+  for (let v = 0; v < 3; v++) put('fest_bunting_' + v, LIFE.bunting(v));
+  put('fest_stall_a', LIFE.festStall('#e07f7d')); put('fest_stall_b', LIFE.festStall('#6fa8dc')); put('fest_lantern', LIFE.festLantern()); put('sky_lantern', LIFE.skyLantern());
+  put('tapper_bucket', LIFE.tapperBucket(false)); put('tapper_bucket_full', LIFE.tapperBucket(true)); put('hay_pile', LIFE.hayPile());
   put('kitchen', LIFE.kitchenStove()); put('torch', LIFE.torch()); put('wood_path', LIFE.woodPath());
   put('keg', LIFE.keg()); put('charcoal_kiln', LIFE.charcoalKiln());
-  for (let f = 0; f < 2; f++) { const hs = LIFE.horse(f); put('horse_l_' + f, hs); put('horse_r_' + f, flipH(hs)); }
+  for (let f = 0; f < 2; f++) { const hs = LIFE.horse(f); put('horse_l_' + f, hs); put('horse_r_' + f, flipH(hs)); put('horse_d_' + f, LIFE.horseFront(f)); put('horse_u_' + f, LIFE.horseBack(f)); }
+  put('horse_head_d', LIFE.horseHeadFront());
   // utilities + extra decorations
   put('furnace', OBJ.furnace(false)); put('furnace_lit', OBJ.furnace(true));
   put('campfire', OBJ.campfire());

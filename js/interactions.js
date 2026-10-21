@@ -12,7 +12,7 @@ import { MONSTERS } from '../data/mine-data.js';
 import { CROPS } from '../data/farm-data.js';
 import { hasRoomFor, freeSlots } from './bag.js';
 import { giftable, giftName, underConstruction } from './life.js';
-import { ANIMALS } from '../data/life-data.js';
+import { ANIMALS, TAP_DAYS } from '../data/life-data.js';
 
 export const BRIDGE_COST = { coins: 100, wood: 15, stone: 6 };
 
@@ -50,6 +50,16 @@ function collectInteractables(game, rangeBoost = 1, only = null) {
     consider({ kind: 'friend_wave', remote: r, verb: 'Wave', label: r.name || 'Friend', mx: r.x, my: r.y - 30 }, r.x, r.y - 4, 26);
     const held = getState().inventory.held;
     if (held && giftable(held) && !held.startsWith('fish:')) consider({ kind: 'friend_give', remote: r, verb: 'Give ' + giftName(held), label: r.name || 'Friend', mx: r.x, my: r.y - 30 }, r.x, r.y - 4, 26);
+  }
+  // Tapped trees: collect syrup; holding a tapper: tap a tree.
+  const taps = w.islandState.farm?.taps;
+  const heldNow = getState().inventory.held;
+  if (!game.visit) for (const o of w.objects) {
+    if (o.type !== 'debris_tree') continue;
+    const cx = o.x * TILE + 8, cy = (o.y + 1) * TILE - 4;
+    const tap = taps?.[o.id];
+    if (tap && getState().world.day - tap.day >= TAP_DAYS) consider({ kind: 'tap_collect', obj: o, verb: 'Collect', label: 'Tapper', mx: cx, my: cy - 34 }, cx, cy, 20);
+    else if (!tap && heldNow === 'tapper') consider({ kind: 'tap_place', obj: o, verb: 'Tap', label: 'Tree', mx: cx, my: cy - 34 }, cx, cy, 20);
   }
   // Animals in a coop or barn: collect what they made, or give them a pet.
   for (const c of w.critters || []) {

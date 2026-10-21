@@ -58,6 +58,7 @@ export const CRAFT_RECIPES = [
   { id: 'well', name: 'Stone Well', in: { stone: 10, wood: 3 }, place: 'well', learn: { hearts: ['rowan', 3] }, desc: 'Rowan shows you how to build a well.' },
   { id: 'fish_statue', name: 'Fish Statue', in: { stone: 8, copper_bar: 1 }, place: 'fish_statue', learn: { hearts: ['pip', 3] }, desc: 'Pip’s proud fish sculpture.' },
   { id: 'deluxe_bait', name: 'Glow Bait ×3', in: { seaglass: 1, fiber: 3 }, item: { glow_bait: 3 }, learn: { hearts: ['mira', 3] }, desc: 'Mira’s night-fishing secret.' },
+  { id: 'tapper', name: 'Tapper', in: { wood: 40, copper_bar: 2 }, item: { tapper: 1 }, learn: { foraging: 3 }, desc: 'Hold it and click a tree: it fills with syrup or resin every few days.' },
   // story rewards
   { id: 'bench', name: 'Bench', in: { wood: 3 }, place: 'bench', learn: { quest: 'q_gather' }, desc: 'A place to watch the waves.' },
 ];
@@ -91,15 +92,45 @@ export const HEART_REWARDS = {
 
 // ---------------------------------------------------------------- schedules
 /**
- * Where islanders spend the day: [fromHour, x, y] on their island (Sunny
- * Shores uses the big map). Nori and Bram stay inside their buildings and
- * their doors are locked outside opening hours.
+ * Where islanders spend the day: [fromHour, place, what they're doing].
+ * place = [x, y] | 'spot:<fishing spot id>' | 'obj:<landmark type>' (they stand
+ * in front of it). `rain` is the plan for wet days; festival days override
+ * both (everyone heads to the town square). Nori and Bram stay inside their
+ * buildings, which are locked outside opening hours.
  */
 export const SCHEDULES = {
-  mira: [[5, 53, 48], [10, 62, 41], [15, 44, 33], [19, 53, 46]],
-  rowan: [[6, 58, 22], [12, 48, 31], [17, 61, 21], [21, 58, 23]],
-  pip: [[7, 47, 34], [11, 66, 37], [15, 40, 26], [20, 47, 33]],
+  mira: {
+    island: 'sunny',
+    day: [[5, 'spot:dock_end', 'fishing'], [9, 'obj:boat', 'fixing her boat'], [12, 'spot:pond', 'fishing'], [15, 'spot:east_beach', 'beachcombing'], [18, 'spot:dock_west', 'watching the sunset'], [21, 'obj:boat', 'heading home']],
+    rain: [[5, 'obj:boat', 'bailing out her boat'], [10, 'obj:shop', 'chatting at Nori’s'], [14, 'obj:museum', 'looking at fish'], [18, 'obj:boat', 'heading home']],
+  },
+  rowan: {
+    island: 'sunny',
+    day: [[6, [58, 22], 'having coffee'], [8, 'obj:restore_board', 'planning repairs'], [11, 'obj:hall', 'talking with Bram'], [14, 'obj:mine_entrance', 'checking the mine supports'], [17, 'obj:board', 'reading the board'], [20, [58, 23], 'relaxing at home']],
+    rain: [[6, [58, 22], 'having coffee'], [9, 'obj:hall', 'sharpening tools'], [13, 'obj:shop', 'buying nails'], [18, [58, 23], 'relaxing at home']],
+  },
+  pip: {
+    island: 'sunny',
+    day: [[7, 'obj:board', 'looking for adventures'], [9, 'spot:east_beach', 'hunting for shells'], [12, 'obj:museum', 'dusting the exhibits'], [15, 'obj:flowerbush', 'picking flowers'], [18, 'spot:pond', 'skipping stones'], [21, 'obj:board', 'stargazing']],
+    rain: [[7, 'obj:museum', 'cataloguing finds'], [13, 'obj:shop', 'sheltering from the rain'], [17, 'obj:museum', 'reading old maps'], [21, 'obj:board', 'going home']],
+  },
+  marlo: {
+    island: 'coral',
+    day: [[6, 'spot:reef_pier', 'fishing'], [10, 'spot:north_beach', 'diving for pearls'], [14, 'spot:reef_east', 'checking the coral'], [18, 'spot:reef_west', 'watching the tide']],
+    rain: [[6, 'spot:reef_pier', 'fixing nets'], [14, 'obj:boat', 'waiting out the storm']],
+  },
+  wren: {
+    island: 'mangrove',
+    day: [[6, 'spot:boardwalk', 'birdwatching'], [10, 'spot:east_bank', 'sketching'], [15, 'spot:root_pool', 'collecting mushrooms'], [19, 'spot:boardwalk', 'listening to frogs']],
+    rain: [[6, 'spot:boardwalk', 'enjoying the rain'], [13, 'spot:root_pool', 'watching ripples']],
+  },
+  luna: {
+    island: 'moon',
+    day: [[0, 'spot:moon_pool', 'reading the stars'], [6, 'spot:star_point', 'humming to the sea'], [12, 'spot:north_tide', 'gathering moonlight'], [18, 'spot:moon_pool', 'reading the stars']],
+  },
 };
+/** Festival day: everyone gathers around the town square (around the board). */
+export const FESTIVAL_SPOTS = { mira: [45, 32], rowan: [51, 32], pip: [48, 33] };
 export const OPENING_HOURS = {
   shop_interior: { from: 9, to: 18, name: 'Nori’s Shop' },
   hall_interior: { from: 10, to: 22, name: 'the Wayfarers’ Hall' },
@@ -109,12 +140,12 @@ export const OPENING_HOURS = {
 // ---------------------------------------------------------------- festivals
 /** One festival per season, 9 AM – 3 PM in town. */
 export const FESTIVALS = {
-  spring: { day: 13, id: 'flower_fair', name: 'Flower Fair', desc: 'Stalls of rare seeds and flowers, and a dance with the islanders.' },
-  summer: { day: 11, id: 'fishing_derby', name: 'Fishing Derby', desc: 'Catch as many fish as you can in 3 minutes. Big prizes for big hauls!' },
-  fall: { day: 16, id: 'harvest_fair', name: 'Harvest Fair', desc: 'Show off your best produce and goods. The judges award star tokens.' },
-  winter: { day: 25, id: 'lantern_night', name: 'Lantern Night', desc: 'Release a lantern over the sea with everyone on the island.' },
+  spring: { day: 13, id: 'flower_fair', name: 'Flower Fair', from: 9, to: 15, desc: 'Stalls of rare seeds and flowers, and the Flower Dance — ask an islander to be your partner.' },
+  summer: { day: 11, id: 'fishing_derby', name: 'Fishing Derby', from: 9, to: 15, desc: 'Catch as many fish as you can in 3 minutes. Big prizes for big hauls!' },
+  fall: { day: 16, id: 'harvest_fair', name: 'Harvest Fair', from: 9, to: 15, desc: 'Pick up to 9 of your best things for a display. The judges compare it with the islanders’ entries.' },
+  winter: { day: 25, id: 'lantern_night', name: 'Lantern Night', from: 18, to: 23, desc: 'At nightfall everyone sends a glowing lantern out over the sea.' },
 };
-export const FESTIVAL_HOURS = { from: 9, to: 15 };
+export const FESTIVAL_HOURS = { from: 9, to: 15 };   // default; each festival can set its own
 
 // ---------------------------------------------------------------- mail
 /** Letters that arrive on certain days (day = total days played). */
@@ -168,8 +199,17 @@ export const LIFE_ITEMS = {
   coal: { id: 'coal', name: 'Coal', icon: 'coal', desc: 'Fuel for the furnace. Found in mine rocks, or made in a kiln.' },
   sap: { id: 'sap', name: 'Sap', icon: 'sap', desc: 'Sticky stuff from chopped trees.' },
   juice: { id: 'juice', name: 'Juice', icon: 'juice', desc: 'Pressed in a keg from your crops.' },
+  tapper: { id: 'tapper', name: 'Tapper', icon: 'tapper', desc: 'Hold it and click a tree in your yard to tap it.' },
+  tree_syrup: { id: 'tree_syrup', name: 'Tree Syrup', icon: 'syrup', desc: 'Sweet syrup from a tapped tree.' },
+  resin: { id: 'resin', name: 'Tree Resin', icon: 'sap', desc: 'Thick, golden resin from a tapped tree.' },
+  ribbon: { id: 'ribbon', name: 'Fair Ribbon', icon: 'trophy', desc: 'Proof you placed at the Harvest Fair.' },
 };
-export const LIFE_SELL = { egg: 50, duck_egg: 95, milk: 125, goat_milk: 225, mayonnaise: 190, cheese: 230, jam: 120, hay: 5, hardwood: 15, coal: 15, sap: 2, juice: 160 };
+export const LIFE_SELL = { egg: 50, duck_egg: 95, milk: 125, goat_milk: 225, mayonnaise: 190, cheese: 230, jam: 120, hay: 5, hardwood: 15, coal: 15, sap: 2, juice: 160, tapper: 40, tree_syrup: 200, resin: 150, ribbon: 10 };
+/** Tappers fill up every this many days. */
+export const TAP_DAYS = 3;
+/** Crows: each morning, unprotected crops may get eaten. Scarecrows guard this many tiles around them. */
+export const SCARECROW_RADIUS = 8;
+export const CROW_EVERY = 12;   // one crow chance for every this many unguarded crops
 
 /**
  * Processing machines: put an input in, wait `time` game minutes, collect.

@@ -100,6 +100,66 @@ export const INTERIORS = {
     },
     npcs: [],
   },
+  big_coop_interior: {
+    id: 'big_coop_interior', name: 'Big Coop', interior: true, theme: THEME,
+    size: { w: 14, h: 9 },
+    spawn: { x: 6, y: 7 },
+    exit: { x: 6, y: 8, w: 2 },
+    build(m) {
+      const { I, L } = m.T;
+      m.fill(L);
+      m.rect(1, 2, 12, 6, I);
+      m.rect(6, 8, 2, 1, I);
+      m.obj('feed_trough', 1, 2); m.obj('feed_trough', 3, 2);
+      m.obj('animal_board', 12, 2);
+      m.obj('hay_pile', 9, 2);
+      m.obj('crate', 12, 7);
+      m.obj('doormat', 6, 8);
+    },
+    npcs: [],
+  },
+  big_barn_interior: {
+    id: 'big_barn_interior', name: 'Big Barn', interior: true, theme: THEME,
+    size: { w: 16, h: 10 },
+    spawn: { x: 8, y: 8 },
+    exit: { x: 7, y: 9, w: 2 },
+    build(m) {
+      const { I, L } = m.T;
+      m.fill(L);
+      m.rect(1, 2, 14, 7, I);
+      m.rect(7, 9, 2, 1, I);
+      m.obj('feed_trough', 1, 2); m.obj('feed_trough', 3, 2); m.obj('feed_trough', 5, 2);
+      m.obj('animal_board', 14, 2);
+      m.obj('hay_pile', 11, 2);
+      m.obj('barrel', 14, 8);
+      m.obj('doormat', 7, 9);
+    },
+    npcs: [],
+  },
+  // After the kitchen upgrade: a bigger cottage with a kitchen and a second room.
+  cottage_big_interior: {
+    id: 'cottage_big_interior', name: 'Cozy Cottage', interior: true, theme: THEME,
+    size: { w: 16, h: 10 },
+    spawn: { x: 7, y: 8 },
+    exit: { x: 6, y: 9, w: 2 },
+    solid: [{ x: 10, y: 2, w: 1, h: 4 }],
+    build(m) {
+      const { I, L } = m.T;
+      m.fill(L);
+      m.rect(1, 2, 14, 7, I);
+      m.rect(6, 9, 2, 1, I);
+      // bedroom on the right, behind a little wall
+      m.rect(10, 2, 1, 4, L);
+      m.obj('bed', 12, 2); m.obj('nightstand', 14, 2); m.obj('bookshelf', 11, 6);
+      // living room
+      m.obj('fireplace', 5, 2); m.obj('rug', 4, 5); m.obj('tv', 1, 5); m.obj('plant', 1, 8);
+      // kitchen corner
+      m.obj('kitchen', 1, 2); m.obj('table', 7, 6);
+      m.obj('gift_box', 9, 7);
+      m.obj('doormat', 6, 9);
+    },
+    npcs: [],
+  },
   barn_interior: {
     id: 'barn_interior', name: 'Barn', interior: true, theme: THEME,
     size: { w: 12, h: 9 },

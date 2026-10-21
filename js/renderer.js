@@ -399,6 +399,15 @@ export class Renderer {
       if (!spr) continue;
       const fp = o.def.footprint || { w: 1, h: 1 };
       const baseX = o.x * TILE + (fp.w * TILE) / 2, baseY = (o.y + fp.h) * TILE;
+      if (o.type === 'debris_tree') {
+        const tap = w.islandState.farm?.taps?.[o.id];
+        if (tap) {
+          const full = (scene.state?.world.day || 0) - tap.day >= 3;
+          const b = sprite(full ? 'tapper_bucket_full' : 'tapper_bucket');
+          drawList.push({ y: baseY + 0.5, spr: b, x: baseX + 4, by: baseY - 1 });
+          if (full) this.twinkle(ctx, baseX + 4 - cam.x, baseY - 12 - cam.y, o.x);
+        }
+      }
       if (FLOOR_OBJECTS.has(o.type)) {
         ctx.drawImage(spr, Math.round(o.x * TILE - cam.x), Math.round(baseY - spr.height - cam.y));
       } else if (FLAT_OBJECTS.has(o.type)) {
@@ -473,6 +482,15 @@ export class Renderer {
         this.emit('sparkle', lx, f.y - 2, 6, { speed: 40, gravity: 80, life: 0.5, color: '#d8c8a0' });
       }
     }
+    if (scene.festival && w.id === 'sunny' && !indoor) {
+      // the town square dressed up (around the quest board at 48,30)
+      const T0 = TILE;
+      for (let x = 42; x <= 54; x++) drawList.push({ y: 27 * T0, spr: sprite('fest_bunting_' + (x % 3)), x: x * T0 + 8, by: 27 * T0 - 14 });
+      for (const [x, y, id] of [[42, 27, 'fest_lantern'], [55, 27, 'fest_lantern'], [42, 34, 'fest_lantern'], [55, 34, 'fest_lantern'], [43, 30, 'fest_stall_a'], [53, 30, 'fest_stall_b']]) {
+        const spr = sprite(id); if (spr) drawList.push({ y: y * T0, spr, x: x * T0 + 8, by: y * T0 });
+      }
+      if (scene.festival === 'flower_fair' && !this.reducedMotion && Math.random() < 0.08) this.emit('leaf', (42 + Math.random() * 13) * T0, 27 * T0, 1, { speed: 12, gravity: 8, life: 3, color: ['#f7c6d4', '#f2d27e', '#fff5df'][Math.floor(Math.random() * 3)] });
+    }
     drawList.sort((a, b) => a.y - b.y);
     for (const d of drawList) {
       let bob = 0;
@@ -533,12 +551,16 @@ export class Renderer {
       let lift = 0;
       if (d.player && scene.riding) {
         // on horseback: the horse first, you sitting on top
-        const pl = scene.player, side = pl.facing === 'right' ? 'r' : 'l';
+        const pl = scene.player, side = { right: 'r', left: 'l', up: 'u', down: 'd' }[pl.facing] || 'd';
         const hs = sprite(`horse_${side}_${pl.moving ? Math.floor(pl.anim * 1.5) % 2 : 0}`);
         if (hs) ctx.drawImage(hs, Math.round(d.x - hs.width / 2 - cam.x), Math.round(d.by - hs.height + 2 - cam.y));
-        lift = -9;
+        lift = side === 'u' || side === 'd' ? -7 : -9;
       }
       ctx.drawImage(d.spr, Math.round(d.x - d.spr.width / 2 - cam.x), Math.round(d.by - d.spr.height - cam.y + bob + lift + (d.player || d.npc || d.remote ? 2 : 0)));
+      if (d.player && scene.riding && scene.player.facing === 'down') {
+        const hd = sprite('horse_head_d');
+        if (hd) ctx.drawImage(hd, Math.round(d.x - hd.width / 2 - cam.x), Math.round(d.by - hd.height - 4 - cam.y));
+      }
       if (d.npc && scene.questGiver === d.npc.id) {
         const m = sprite('marker');
         const hop = this.reducedMotion ? 0 : Math.round(Math.abs(Math.sin(t * 3)) * 3);
@@ -576,6 +598,22 @@ export class Renderer {
       this.drawLighting(ctx, scene, cam, t);
     }
     if (w.def.fog) this.drawFog(ctx, t, cam);
+    // Lantern Night: lanterns drift up over the sea, glowing on top of the night
+    if (scene.lanterns && !indoor) {
+      const age = (performance.now() - scene.lanterns.start) / 1000;
+      const spr = sprite('sky_lantern');
+      for (let i = 0; i < 26; i++) {
+        const k = ((age * 0.04 + i * 0.137) % 1);
+        const x = ((i * 97) % this.viewW) + Math.sin(age * 0.6 + i) * 10;
+        const y = this.viewH * (1 - k) - 10;
+        ctx.globalAlpha = Math.min(1, k * 4) * (1 - k * 0.6);
+        const gl = ctx.createRadialGradient(x + 4, y + 5, 1, x + 4, y + 5, 14);
+        gl.addColorStop(0, 'rgba(255,200,110,0.45)'); gl.addColorStop(1, 'rgba(255,170,80,0)');
+        ctx.fillStyle = gl; ctx.fillRect(Math.round(x) - 10, Math.round(y) - 9, 28, 28);
+        if (spr) ctx.drawImage(spr, Math.round(x), Math.round(y));
+      }
+      ctx.globalAlpha = 1;
+    }
     if (this.flash > 0) { ctx.fillStyle = `rgba(255,255,255,${this.flash})`; ctx.fillRect(0, 0, this.viewW, this.viewH); this.flash = Math.max(0, this.flash - dt * 2.5); }
     // interaction marker
     if (scene.interactTarget && !scene.title && !scene.fishing?.active) {
@@ -670,6 +708,7 @@ export class Renderer {
       return this.scaffolds.get(p.type);
     }
     let id = p.type;
+    if (p.type === 'cottage' && state?.flags.kitchen && !state.member) id = 'cottage_big';
     if (p.rot === 1 && p.def.rotations) id += '_r1';
     if (p.type === 'crop_garden') {
       const isl = state?.islands[state.player.island];

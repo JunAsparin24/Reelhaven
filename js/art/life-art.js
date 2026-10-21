@@ -290,3 +290,121 @@ export function scaffold(base) {
     p.rect(Math.round(w / 2) - 4, hgt - 8, 8, 7, '#e8c66a'); p.hline(Math.round(w / 2) - 4, hgt - 5, 8, dark);
   });
 }
+
+
+// ---------------------------------------------------------------- festivals, horse views, big buildings, tappers
+/** A string of little flags (one tile wide, tiles side by side). */
+export function bunting(v = 0) {
+  return paint(16, 10, p => {
+    p.hline(0, 1, 16, '#6a4a3a');
+    const cols = [['#e07f7d', '#f2d27e'], ['#6fa8dc', '#e98fb4'], ['#7bc47f', '#f6b66c']][v % 3];
+    for (let i = 0; i < 2; i++) { const x = 2 + i * 8, c = cols[i]; for (let y = 0; y < 6; y++) p.hline(x + Math.floor(y / 2), 2 + y, 5 - Math.floor(y / 1.2), c); }
+  });
+}
+
+export function festStall(color = '#e07f7d') {
+  return O(paint(34, 30, p => {
+    p.rect(2, 10, 2, 19, C.wood2); p.rect(30, 10, 2, 19, C.wood2);
+    for (let x = 0; x < 34; x += 6) { p.rect(x, 4, 3, 7, color); p.rect(x + 3, 4, 3, 7, C.white); }
+    p.hline(0, 4, 34, shade(color, -0.2)); p.rect(0, 11, 34, 1, shade(color, -0.3));
+    p.rect(3, 19, 28, 8, C.wood); p.hline(3, 19, 28, C.woodLight);
+    for (const [x, c] of [[6, C.pink], [11, C.yellow], [16, '#7bc47f'], [21, C.orange], [26, C.lilac]]) { p.ellipse(x, 17, 2, 2, c); }
+  }));
+}
+
+export function festLantern() {
+  return O(paint(10, 26, p => {
+    p.rect(4, 8, 2, 17, C.wood2); p.rect(1, 6, 8, 2, C.wood);
+    p.rect(2, 1, 6, 5, C.orange); p.rect(3, 2, 4, 3, C.yellow); p.px(4, 0, C.red2);
+  }));
+}
+
+/** A paper lantern floating over the sea (screen-space glow is added by the renderer). */
+export function skyLantern() {
+  return O(paint(8, 10, p => { p.rect(1, 1, 6, 7, '#ffb85a'); p.rect(2, 2, 4, 5, '#ffe08a'); p.rect(2, 8, 4, 1, C.red2); }));
+}
+
+/** Horse from the front (coming toward you) and from behind. */
+export function horseFront(f = 0) {
+  return O(paint(18, 24, p => {
+    const body = '#8a5a36', dark = '#6a4226';
+    p.rect(4, 9, 10, 8, body);
+    p.rect(6, 2, 6, 9, body); p.rect(7, 0, 4, 3, dark); p.px(7, 5, C.ink); p.px(10, 5, C.ink); p.rect(7, 9, 4, 2, '#a87a56');
+    const l = f ? 1 : 0;
+    for (const [x, o] of [[5, l], [11, -l]]) p.rect(x, 17 + Math.max(0, o), 2, 7 - Math.max(0, o), dark);
+    p.rect(4, 11, 10, 2, '#c2554f');
+  }));
+}
+export function horseBack(f = 0) {
+  return O(paint(18, 24, p => {
+    const body = '#8a5a36', dark = '#6a4226';
+    p.rect(3, 8, 12, 10, body); p.rect(7, 2, 4, 7, dark);
+    p.rect(8, 14, 2, 8, dark);   // tail
+    const l = f ? 1 : 0;
+    for (const [x, o] of [[4, l], [12, -l]]) p.rect(x, 18 + Math.max(0, o), 2, 6 - Math.max(0, o), dark);
+    p.rect(3, 9, 12, 2, '#c2554f');
+  }));
+}
+
+export function bigCoopBuilding() {
+  return O(paint(50, 46, p => {
+    const top = 18;
+    p.rect(2, top, 46, 26, '#f0e0b8'); p.rect(2, 42, 46, 2, C.stone2);
+    for (let y = top + 3; y < 42; y += 4) p.hline(3, y, 44, '#dcc898');
+    for (let i = 0; i < top; i++) { const inset = Math.round((top - i) * 0.8); p.hline(inset, i, 50 - inset * 2, i % 4 === 0 ? '#3f6f9a' : '#4f7fb0'); }
+    p.rect(0, top, 50, 2, '#2f5f8a');
+    p.rect(21, 30, 9, 12, C.wood2); p.rect(22, 31, 7, 11, C.wood); p.line(22, 31, 28, 41, C.wood2);
+    p.rect(7, 26, 7, 6, '#9fd6e8'); p.rect(36, 26, 7, 6, '#9fd6e8'); p.hline(7, 29, 7, C.white); p.hline(36, 29, 7, C.white);
+    p.rect(22, 8, 6, 6, '#9fd6e8'); p.vline(25, 8, 6, C.white);
+    p.ellipse(44, 41, 2.5, 2, C.white); p.px(46, 40, C.orange); p.ellipse(6, 41, 2.5, 2, '#f4f0e0'); p.px(4, 40, C.orange);
+  }));
+}
+
+export function bigBarnBuilding() {
+  return O(paint(66, 58, p => {
+    const top = 22;
+    p.rect(2, top, 62, 34, '#a8403a'); p.rect(2, 54, 62, 2, C.stone2);
+    for (let y = top + 3; y < 54; y += 4) p.hline(3, y, 60, '#94363a');
+    for (let i = 0; i < top; i++) { const inset = Math.round((top - i) * 0.65); p.hline(inset, i, 66 - inset * 2, i % 4 === 0 ? '#4a3a32' : '#5a4a3a'); }
+    p.rect(0, top, 66, 2, '#3a2a22');
+    for (const x of [10, 37]) { p.rect(x, 34, 19, 20, C.cream); p.rect(x + 2, 36, 15, 18, '#8a3030'); p.line(x + 2, 36, x + 16, 53, C.cream); p.line(x + 16, 36, x + 2, 53, C.cream); }
+    p.rect(28, 10, 10, 9, C.cream); p.rect(29, 11, 8, 7, '#e8c66a');
+    p.rect(30, 1, 6, 5, C.stone2); p.px(33, 0, C.gold);
+  }));
+}
+
+export function cottageBig(glow = false) {
+  return O(paint(68, 64, p => {
+    // the cottage, with a new kitchen wing and chimney
+    p.rect(4, 30, 60, 30, C.cream); for (let y = 34; y < 58; y += 6) p.hline(5, y, 58, '#e8dcc0');
+    p.rect(4, 58, 60, 4, C.stone2);
+    for (let i = 0; i < 26; i++) { const inset = Math.round((26 - i) * 0.9); p.hline(1 + Math.max(0, inset - 8), 6 + i, 66 - Math.max(0, inset - 8) * 2, i % 4 === 0 ? shade(C.roof, -0.15) : C.roof); }
+    p.rect(44, 0, 8, 12, C.stone2); p.rect(43, 0, 10, 2, C.stone3);
+    p.rect(10, 1, 6, 9, C.stone2); p.rect(9, 0, 8, 2, C.stone3);
+    p.rect(29, 46, 10, 12, C.wood2); p.rect(30, 47, 8, 11, C.wood); p.px(36, 52, C.gold);
+    const win = glow ? C.glow : '#9fd6e8';
+    for (const x of [9, 19, 47]) { p.rect(x, 40, 9, 7, C.wood3); p.rect(x + 1, 41, 7, 5, win); p.vline(x + 4, 41, 5, C.wood3); }
+    p.rect(10, 48, 7, 2, '#7bc47f'); p.px(11, 47, C.pink); p.px(14, 47, C.yellow);
+  }));
+}
+
+export function tapperBucket(full = false) {
+  return O(paint(8, 8, p => { p.rect(1, 2, 6, 5, '#8a8a96'); p.hline(1, 2, 6, '#b0b0ba'); if (full) p.rect(2, 3, 4, 2, '#c98a3a'); p.rect(3, 0, 2, 2, C.wood2); }));
+}
+
+export function hayPile() {
+  return O(paint(32, 16, p => {
+    p.ellipse(16, 11, 15, 5, '#d0a94a'); p.ellipse(16, 9, 13, 5, '#e8c66a');
+    for (let x = 5; x < 28; x += 3) p.line(x, 6, x + 2, 12, '#c09a3a');
+  }));
+}
+
+/** The horse's head, drawn in front of you when riding toward the camera. */
+export function horseHeadFront() {
+  return O(paint(10, 14, p => {
+    const body = '#8a5a36', dark = '#6a4226';
+    p.rect(2, 2, 6, 11, body); p.rect(3, 0, 4, 3, dark); p.px(3, 5, C.ink); p.px(6, 5, C.ink);
+    p.rect(3, 10, 4, 3, '#a87a56'); p.px(4, 11, C.ink); p.px(5, 11, C.ink);
+    p.px(1, 1, body); p.px(8, 1, body);
+  }));
+}

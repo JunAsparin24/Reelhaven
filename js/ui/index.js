@@ -26,8 +26,8 @@ import { Hotbar } from './hotbar.js';
 import { chestItems, transfer, smelt, missingFor, recipesFor } from '../crafting.js';
 import { RESOURCES, FOOD, BAIT, TOOLS } from '../../data/item-data.js';
 import { toolTier } from '../combat.js';
-import { seasonOf, SEASON_NAMES, TV_TIPS } from '../../data/farm-data.js';
-import { unreadMail, ship, itemValue, animalsIn, buyAnimal, friendOf, siloCapacity, capacityOf, absMinutes, minutesText, readyAt, machineReady } from '../life.js';
+import { seasonOf, SEASON_NAMES, TV_TIPS, CROPS } from '../../data/farm-data.js';
+import { addFriendship, hearts, unreadMail, ship, itemValue, animalsIn, buyAnimal, friendOf, siloCapacity, capacityOf, absMinutes, minutesText, readyAt, machineReady } from '../life.js';
 import { ANIMALS, ANIMAL_CAPACITY, SMELT_TIME } from '../../data/life-data.js';
 import { PLACEABLES } from '../../data/building-data.js';
 import { ownedKeys, slotInfo } from '../bag.js';
@@ -73,6 +73,8 @@ function actionIcon(it) {
     case 'pet': return it.critter?.a.ready ? 'egg' : 'heart';
     case 'friend_wave': return 'friends';
     case 'construction': return 'build';
+    case 'tap_place': case 'tap_collect': return 'tapper';
+    case 'silo_hay': return 'hay';
     case 'cook': return 'fire';
     case 'ride': return 'home';
     case 'friend_give': return 'gift';
@@ -161,7 +163,8 @@ export class UI {
     this.el.visit = h('div.visit-banner.hud-glass', { hidden: true });
     this.el.sleep = h('div.visit-banner.sleep-banner.hud-glass', { hidden: true, role: 'status' });
     this.el.where = h('div.hud-note.where-note.hud-glass', { hidden: true });
-    this.el.info.append(this.el.visit, this.el.sleep, this.el.where, this.el.questChip, this.el.sync, this.el.rotate);
+    this.el.derby = h('div.hud-note.derby-note.hud-glass', { hidden: true, role: 'timer' });
+    this.el.info.append(this.el.visit, this.el.sleep, this.el.derby, this.el.where, this.el.questChip, this.el.sync, this.el.rotate);
     this.el.hurt = h('div.hurt-flash', { 'aria-hidden': 'true' });
     document.getElementById('stage').append(this.el.hurt);
     this.el.actions = document.getElementById('action-region');
@@ -265,7 +268,15 @@ export class UI {
       }
     }
     this.clockAcc = (this.clockAcc || 0) + dt;
-    if (this.clockAcc > 0.5) { this.clockAcc = 0; this.updateClock(); }
+    if (this.clockAcc > 0.5) {
+      this.clockAcc = 0; this.updateClock();
+      const d = this.game.derby;
+      this.el.derby.hidden = !d;
+      if (d) {
+        const left = Math.max(0, Math.ceil((d.end - performance.now()) / 1000));
+        this.el.derby.replaceChildren(icon('rod'), h('span', `Fishing Derby · ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} · ${getState().stats.fishCaught - d.start} fish`));
+      }
+    }
     this.app.classList.toggle('talking', this.dialogueUI.open);
     this.renderActions();
     this.fishingUI.frame(dt);
@@ -630,40 +641,83 @@ export class UI {
   /** The season's festival in town. */
   festivalModal(f) {
     if (!f) { toast('The festival is over for today.', 'star'); return; }
-    const s = getState();
+    const s = getState(), g = this.game;
     const done = s.festivals[f.key] || (s.festivals[f.key] = {});
     let close;
     const finish = () => { commit('festival'); close(); };
     const content = [];
-    const everyone = pts => { for (const id of Object.keys(NPCS)) { const fr = friendOf(id); fr.pts = Math.min(2500, fr.pts + pts); } };
+    const everyone = pts => { for (const id of Object.keys(NPCS)) addFriendship(id, pts); };
+    const party = ['mira', 'rowan', 'pip', 'nori'];
     if (f.id === 'flower_fair') {
       const stall = [['tidemelon_seeds', 60], ['emberpumpkin_seeds', 70], ['frostleek_seeds', 40], ['flower', 15]];
-      content.push(h('p', 'Stalls overflow with rare seeds — today only, no level needed.'),
+      content.push(h('h4.section', 'Seed stall'), h('p.muted', 'Rare seeds — today only, no level needed.'),
         h('div.list', stall.map(([id, price]) => h('div.item-row.compact', icon(RESOURCES[id]?.icon || 'flower', 'item-icon'), h('div.item-main', h('div.item-name', RESOURCES[id]?.name || id)),
-          button(`${price * 5} for 5`, () => { if (!spend({ coins: price * 5 })) { toast('Not enough coins.', 'coin', 'error'); return; } addItem(id, 5); sfx('buy'); toast(`Bought 5 ${RESOURCES[id]?.name}.`, 'flower', 'good'); }, { cls: 'small', iconName: 'coin', sound: null })))),
-        done.dance ? h('p.muted', 'You danced the Flower Dance. What a day!') : button('Join the Flower Dance', () => { done.dance = true; everyone(60); sfx('levelup'); toast('You danced with everyone! Friendship grew with all the islanders.', 'heart', 'gold'); finish(); }, { cls: 'primary', iconName: 'heart' }));
+          button(`${price * 5} for 5`, () => { if (!spend({ coins: price * 5 })) { toast('Not enough coins.', 'coin', 'error'); return; } addItem(id, 5); sfx('buy'); toast(`Bought 5 ${RESOURCES[id]?.name}.`, 'flower', 'good'); }, { cls: 'small', iconName: 'coin', sound: null })))));
+      content.push(h('h4.section', 'The Flower Dance'));
+      if (done.dance) content.push(h('p.muted', `You danced with ${NPCS[done.dance]?.name || 'everyone'}. What a day!`));
+      else {
+        content.push(h('p.muted', 'Ask someone to be your partner. Good friends (2♥ or more) will say yes.'));
+        content.push(h('div.rest-grid', party.map(id => button(`${NPCS[id].name} ${'♥'.repeat(Math.min(5, hearts(id)))}`, () => {
+          if (hearts(id) < 2) { toast(`${NPCS[id].name}: “Oh! Maybe next year, when we know each other better.”`, 'heart'); return; }
+          done.dance = id;
+          addFriendship(id, 150); everyone(30);
+          let crown = '';
+          if (!s.inventory.hats.includes('flower_crown')) { s.inventory.hats.push('flower_crown'); crown = ' You got a Flower Crown!'; }
+          g.player.cheer(3);
+          for (let i = 0; i < 8; i++) setTimeout(() => g.renderer.emit('leaf', g.player.x + (Math.random() * 80 - 40), g.player.y - 30, 10, { speed: 30, gravity: 25, life: 2, color: ['#f7c6d4', '#f2d27e', '#fff5df'][i % 3] }), i * 250);
+          sfx('levelup');
+          toast(`You danced the Flower Dance with ${NPCS[id].name}!${crown}`, 'heart', 'gold');
+          finish();
+        }, { iconName: 'heart' }))));
+      }
     } else if (f.id === 'fishing_derby') {
-      content.push(h('p', 'Catch as many fish as you can in 3 minutes. Bronze at 2, Silver at 5, Gold at 8!'),
-        this.game.derby ? h('p.muted', 'The derby is on — go fish!') : done.derby ? h('p.muted', 'You already fished in this year’s derby.') :
-          button('Start the Derby!', () => { done.derby = true; this.game.derby = { start: s.stats.fishCaught, end: performance.now() + 180000 }; toast('The Fishing Derby has begun! 3 minutes — go!', 'rod', 'gold'); finish(); }, { cls: 'primary', iconName: 'rod' }));
+      content.push(h('p', 'Catch as many fish as you can in 3 minutes. Bronze at 2, Silver at 5, Gold at 8 — Gold wins a Fish Statue!'),
+        g.derby ? h('p.muted', 'The derby is on — go fish!') : done.derby ? h('p.muted', `You caught ${done.derbyFish ?? '?'} fish in this year’s derby.`) :
+          button('Start the Derby!', () => { done.derby = true; g.derby = { start: s.stats.fishCaught, end: performance.now() + 180000, key: f.key }; toast('The Fishing Derby has begun! 3 minutes — go!', 'rod', 'gold'); finish(); }, { cls: 'primary', iconName: 'rod' }));
     } else if (f.id === 'harvest_fair') {
-      const keys = ownedKeys(s).filter(k => !k.startsWith('tool:') && k !== 'rod' && itemValue(k) > 0).sort((a, b) => itemValue(b) - itemValue(a)).slice(0, 9);
-      const score = keys.reduce((n, k) => n + itemValue(k), 0) + keys.length * 15;
-      content.push(h('p', 'The judges look over the 9 most valuable different things in your bag (you keep them).'),
-        h('div.museum-grid', keys.map(k => { const i = slotInfo(k, s); return h('div.museum-item', i.sprite ? h('img.px-icon', { src: spriteUrl(i.sprite, 1), alt: '' }) : icon(i.icon), h('span', i.name)); })),
-        done.judged ? h('p.muted', `Your display scored ${done.judged} points.`) : button(`Enter my display (${score} points)`, () => {
-          done.judged = score;
-          const prize = score >= 1500 ? { coins: 1500, pearls: 3, place: '1st' } : score >= 700 ? { coins: 700, pearls: 1, place: '2nd' } : { coins: 250, place: '3rd' };
-          addCoins(prize.coins, 'reward'); if (prize.pearls) addPearls(prize.pearls);
-          sfx('levelup'); toast(`${prize.place} place! You won ${prize.coins} coins${prize.pearls ? ' and ' + prize.pearls + ' pearls' : ''}.`, 'trophy', 'gold'); finish();
-        }, { cls: 'primary', iconName: 'trophy' }));
+      if (done.judged) content.push(h('p', `Your display scored ${done.judged} points and placed ${done.place}.`));
+      else {
+        // pick up to 9 things for your display (you keep them)
+        const keys = ownedKeys(s).filter(k => !k.startsWith('tool:') && k !== 'rod' && itemValue(k) > 0).sort((x, y) => itemValue(y) - itemValue(x));
+        const picked = new Set();
+        const kindOf = k => k.startsWith('fish:') ? 'fish'
+          : ['egg', 'duck_egg', 'milk', 'goat_milk'].includes(k) ? 'animal'
+          : ['mayonnaise', 'cheese', 'jam', 'juice', 'tree_syrup', 'resin'].includes(k) ? 'artisan'
+          : Object.values(CROPS).some(c => c.produce === k) ? 'crop'
+          : ['quartz', 'amethyst', 'seaglass', 'gold_bar', 'iron_bar', 'copper_bar', 'gold_ore', 'iron_ore'].includes(k) ? 'mineral' : 'other';
+        const scoreOf = () => { const ks = [...picked]; return ks.reduce((n, k) => n + itemValue(k), 0) + new Set(ks.map(kindOf)).size * 60 + ks.length * 15; };
+        const grid = h('div.museum-grid.pick-grid');
+        const total = h('b.pick-total');
+        const draw = () => {
+          grid.replaceChildren(...keys.slice(0, 30).map(k => {
+            const i = slotInfo(k, s);
+            return h('button.museum-item' + (picked.has(k) ? '.on' : ''), { type: 'button', on: { click: () => { if (picked.has(k)) picked.delete(k); else if (picked.size < 9) picked.add(k); draw(); } } },
+              i.sprite ? h('img.px-icon', { src: spriteUrl(i.sprite, 1), alt: '' }) : icon(i.icon), h('span', i.name));
+          }));
+          total.textContent = `${picked.size}/9 picked · ${scoreOf()} points (variety counts!)`;
+        };
+        draw();
+        // the islanders' entries this year
+        const seed = sn => (s.world.day * sn + 13) % 400;
+        const rivals = [['Rowan', 450 + seed(37)], ['Pip', 750 + seed(53)], ['Nori', 1050 + seed(71)]];
+        content.push(h('p', 'Pick up to 9 things for your display — you keep them. The judges like value and variety: crops, animal goods, artisan goods, fish and minerals.'),
+          h('p.muted', 'Other entries: ' + rivals.map(([n, v]) => `${n} ${v} pts`).join(' · ')), total, grid,
+          button('Enter my display', () => {
+            if (!picked.size) { toast('Pick at least one thing for your display.', 'star', 'error'); return; }
+            const score = scoreOf();
+            const place = 1 + rivals.filter(([, v]) => v > score).length;
+            const prize = [null, { coins: 1500, pearls: 3, ribbon: 1 }, { coins: 700, pearls: 1, ribbon: 1 }, { coins: 300 }, { coins: 100 }][place];
+            done.judged = score; done.place = ['', '1st', '2nd', '3rd', '4th'][place];
+            addCoins(prize.coins, 'reward'); if (prize.pearls) addPearls(prize.pearls); if (prize.ribbon) addItem('ribbon', 1);
+            sfx('levelup'); toast(`${done.place} place with ${score} points! You won ${prize.coins} coins${prize.pearls ? ' and ' + prize.pearls + ' pearls' : ''}.`, 'trophy', 'gold'); finish();
+          }, { cls: 'primary', iconName: 'trophy' }));
+      }
     } else {
-      content.push(h('p', 'Everyone gathers on the shore to send lanterns out over the winter sea.'),
+      content.push(h('p', 'As night falls, everyone gathers by the sea to send glowing lanterns out over the water.'),
         done.lantern ? h('p.muted', 'Your lantern drifts out with the others…') : button('Release a lantern', () => {
           done.lantern = true; everyone(40); addPearls(1);
-          const pl = this.game.player;
-          for (let i = 0; i < 6; i++) setTimeout(() => this.game.renderer.emit('sparkle', pl.x + (Math.random() * 60 - 30), pl.y - 30, 10, { speed: 20, gravity: -30, life: 2.5, color: '#ffc46a' }), i * 300);
-          sfx('levelup'); toast('Your lantern floats away. The islanders feel closer to you. (+1 pearl)', 'lantern', 'gold'); finish();
+          g.lanternShow = { start: performance.now() };
+          sfx('levelup'); toast('Your lantern floats out over the sea with everyone else’s. The islanders feel closer to you. (+1 pearl)', 'lantern', 'gold'); finish();
         }, { cls: 'primary', iconName: 'lantern' }));
     }
     close = modal(h('div.confirm.festival-modal', h('h3', icon('star'), ` ${f.name}`), h('p.muted', f.desc), ...content, h('div.row.end', button('Close', () => close(), { cls: 'ghost' }))), { cls: 'celebrate' });

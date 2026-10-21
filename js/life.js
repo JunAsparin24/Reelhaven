@@ -6,7 +6,7 @@ import { emit, toast } from './events.js';
 import { addCoins, addItem, removeItem, itemCount, addPearls } from './economy.js';
 import { RESOURCES, RESOURCE_SELL, FOOD, BAIT, STARTING_HATS } from '../data/item-data.js';
 import { FISH_BY_ID } from '../data/fish-data.js';
-import { CROPS } from '../data/farm-data.js';
+import { CROPS, seasonOf } from '../data/farm-data.js';
 import { NPCS } from '../data/npc-data.js';
 import { fishValue, removeFishByUid } from './inventory.js';
 import {
@@ -507,8 +507,10 @@ export function onNewDay(day) {
   for (const isl of Object.values(s.islands)) {
     for (const a of isl.animals || []) {
       const def = ANIMALS[a.kind];
-      // each animal eats one hay from its building's trough (big coops / barns use the silo)
-      if ((isl.feed[a.home] || 0) > 0) { isl.feed[a.home] -= 1; a.fedDay = day; }
+      // a fair day outside means they grazed; otherwise they eat hay from the trough (big buildings use the silo)
+      const grazed = s.world.yesterday && !['rain', 'storm', 'snow'].includes(s.world.yesterday) && seasonOf(Math.max(1, day - 1)).season !== 'winter';
+      if (grazed) a.fedDay = day;
+      else if ((isl.feed[a.home] || 0) > 0) { isl.feed[a.home] -= 1; a.fedDay = day; }
       else if (PLACEABLES[isl.placements.find(p => p.uid === a.home)?.type]?.autoFeed && (isl.silo || 0) > 0) { isl.silo -= 1; a.fedDay = day; }
       if (a.fedDay === day && !a.ready && day - a.lastProduced >= def.every) { a.ready = def.product; a.lastProduced = day; out.products = (out.products || 0) + 1; }
       if (a.pettedDay < day - 1) a.hearts = Math.max(0, a.hearts - 0.1);

@@ -11,6 +11,7 @@ import { ISLANDS } from '../data/island-data.js';
 import { T, WATERY } from './world-gen.js';
 import { sfx, vibrate } from './audio.js';
 import { addXp } from './progression.js';
+import { SCARECROW_RADIUS, CROW_EVERY } from '../data/life-data.js';
 import { addSkillXp, skillLevel, storeHay } from './life.js';
 
 export const FARM_ISLAND = 'sunny';
@@ -172,6 +173,12 @@ export function hitDebris(game, o, power) {
   const w = game.world;
   farm.debris = farm.debris.filter(d => d.id !== o.id);
   w.objects = w.objects.filter(x => x !== o);
+  if (o.kind === 'tree' && farm.taps?.[o.id]) {
+    // the tapper comes back when the tree comes down
+    delete farm.taps[o.id];
+    addItem('tapper', 1);
+    toast('You got your tapper back.', 'tapper');
+  }
   if (o.kind === 'tree') {
     // Timber! The tree topples away from you and leaves a stump behind.
     sfx('treefall');
@@ -337,6 +344,32 @@ export function cropStage(plot) {
  * Overnight: watered crops grow a day, rain waters everything, crops out of
  * season wither, and the soil dries out. Runs once per new day.
  */
+/**
+ * Crows: each morning, crops with no scarecrow nearby may get eaten (one
+ * chance for every CROW_EVERY unguarded crops). Returns the names eaten.
+ */
+export function crowsVisit(day) {
+  const s = getState(), isl = s.islands[FARM_ISLAND];
+  const soil = isl?.farm?.soil;
+  if (!soil || (s.world.crowDay || 0) >= day) return [];
+  s.world.crowDay = day;
+  const crows = isl.placements.filter(p => p.type === 'scarecrow');
+  const open = Object.entries(soil).filter(([k, p]) => {
+    if (!p.crop || p.dead) return false;
+    const [x, y] = k.split(',').map(Number);
+    return !crows.some(c => Math.hypot(c.x - x, c.y - y) <= SCARECROW_RADIUS);
+  });
+  const eaten = [];
+  for (let i = 0; i < Math.floor(open.length / CROW_EVERY); i++) {
+    if (Math.random() > 0.5 || !open.length) continue;
+    const [k, plot] = open.splice(Math.floor(Math.random() * open.length), 1)[0];
+    eaten.push(CROPS[plot.crop]?.name || 'crop');
+    Object.assign(plot, { crop: null, age: 0, ready: false });
+    void k;
+  }
+  return eaten;
+}
+
 export function growFarms(day, weather) {
   const s = getState();
   if ((s.world.grownDay || 0) >= day) return;

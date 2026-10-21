@@ -268,6 +268,10 @@ function drawHat(p, hat, dir) {
     case 'frog':
       p.rrect(4, 0, 10, 4, '#6dbb72'); p.rect(4, 0, 3, 2, C.white); p.rect(11, 0, 3, 2, C.white); p.px(5, 1, C.ink); p.px(12, 1, C.ink);
       break;
+    case 'flower_crown':
+      for (const [x, c] of [[4, C.pink], [6, C.yellow], [8, '#e98fb4'], [10, C.white], [12, C.pink]]) { p.rect(x, 2, 2, 2, c); p.px(x, 2, shade(c, 0.2)); }
+      p.hline(4, 3, 10, '#5f8a4a');
+      break;
     case 'cat':
       p.rrect(4, 0, 10, 3, '#3a3440'); p.px(4, 0, '#3a3440'); p.px(13, 0, '#3a3440'); p.px(5, 1, '#e98fb4'); p.px(12, 1, '#e98fb4');
       break;

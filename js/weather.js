@@ -62,6 +62,7 @@ export function pickWeather(day, prev = 'sunny') {
 function startDay() {
   const w = getState().world;
   const today = w.forecast || pickWeather(w.day, w.weather);
+  w.yesterday = w.weather;   // animals graze outside on fair days
   w.forecast = pickWeather(w.day + 1, today);
   w.luck = Math.round((Math.random() * 0.2 - 0.1) * 100) / 100;   // the TV's daily fortune
   w.weatherUntil = Infinity;

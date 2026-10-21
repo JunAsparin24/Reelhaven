@@ -184,6 +184,8 @@ export const ICONS = {
   coal: () => icon(p => { p.ellipse(9, 10, 6, 5, '#2e2a36'); p.ellipse(7, 8, 3, 2, '#4a4456'); p.px(6, 7, '#8a8496'); p.px(12, 12, '#1e1a26'); }),
   sap: () => icon(p => { p.ellipse(9, 11, 5, 5, '#c98a3a'); p.rect(8, 3, 3, 5, '#c98a3a'); p.px(7, 9, '#f2c27a'); p.px(8, 8, '#f2c27a'); }),
   juice: () => icon(p => { p.rect(5, 4, 8, 12, '#9fd6e8'); p.rect(6, 7, 6, 8, '#e98f4a'); p.rect(6, 2, 6, 2, C.wood); p.vline(7, 8, 6, '#f6b66c'); }),
+  tapper: () => icon(p => { p.rect(4, 6, 10, 9, '#8a8a96'); p.hline(4, 6, 10, '#b0b0ba'); p.rect(5, 8, 8, 3, '#c98a3a'); p.rect(8, 2, 2, 4, C.wood2); }),
+  syrup: () => icon(p => { p.rect(6, 5, 6, 11, '#a8602a'); p.rect(7, 2, 4, 3, C.cream); p.vline(7, 7, 7, '#d8904a'); p.rect(6, 9, 6, 3, C.cream); }),
   sparkle: () => icon(p => { p.rect(8, 2, 2, 14, C.yellow); p.rect(2, 8, 14, 2, C.yellow); p.rect(7, 7, 4, 4, C.white); }),
 };
 

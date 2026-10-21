@@ -54,7 +54,8 @@ import { memberSlot, notePersonal, noteJoined, personalName, lastPersonal } from
 import { clearUrlCache } from './art/sprites.js';
 import { FLOOR_CHESTS, SWORDS } from '../data/weapon-data.js';
 import { finishConstruction, underConstruction, siloCapacity, checkRecipes, ensureLife, onNewDay, talkedTo, giveGift, giftable, giftName, animalsIn, petAnimal, fillTrough, useMachine, sendMail, spendEnergy, energyCost } from './life.js';
-import { SCHEDULES, OPENING_HOURS, FESTIVALS, FESTIVAL_HOURS, BOSSES, ANIMALS } from '../data/life-data.js';
+import { SCHEDULES, OPENING_HOURS, FESTIVALS, FESTIVAL_HOURS, FESTIVAL_SPOTS, BOSSES, ANIMALS, TAP_DAYS } from '../data/life-data.js';
+import { crowsVisit } from './farm.js';
 import { PLACEABLES as ALL_PLACEABLES } from '../data/building-data.js';
 import { RESOURCES } from '../data/item-data.js';
 import { addCoins as addCoinsTo, addItem as addItemTo } from './economy.js';
@@ -594,6 +595,8 @@ export class Game {
       const s = getState();
       growFarms(day, s.world.weather);
       this.waterSprinklers();
+      const eaten = crowsVisit(day);
+      if (eaten.length) setTimeout(() => toast(`Crows ate ${eaten.length === 1 ? 'your ' + eaten[0] : eaten.length + ' of your crops'}! A scarecrow keeps them away.`, 'flower', 'error'), 3000);
       const summary = onNewDay(day);
       finishConstruction(day).forEach((msg, i) => setTimeout(() => toast(msg, 'build', 'gold'), 600 + i * 900));
       checkRecipes();
@@ -935,6 +938,16 @@ export class Game {
         break;
       }
       case 'cook': this.ui.furnaceModal({ def: { use: 'kitchen' }, uid: 'kitchen' }); break;
+      case 'silo_hay': {
+        const isl = getState().islands[this.outdoor.id];
+        const n = Math.min(isl.silo || 0, 20);
+        if (!n) { toast('Your silo is empty. Cut tall grass to fill it.', 'hay'); break; }
+        isl.silo -= n; addItemTo('hay', n); commit('hay');
+        toast(`Took ${n} hay from the silo (${isl.silo} left).`, 'hay', 'good');
+        break;
+      }
+      case 'tap_place': this.placeTapper(it.obj); break;
+      case 'tap_collect': this.collectTap(it.obj); break;
       case 'ride': this.setRiding(!this.riding); break;
       case 'friend_wave': this.waveAt(it.remote); break;
       case 'friend_give': this.giveTo(it.remote); break;
@@ -1012,7 +1025,7 @@ export class Game {
   /** Walk into a building: the shop object or a cottage placement. */
   enterInterior(it, { instant = false, spawn = null } = {}) {
     if (this.indoor || (this.ui.fading && !instant)) return;
-    const id = it.obj ? it.obj.def.interior : it.placement?.def?.interior || (it.placement?.type === 'guest_cabin' ? 'cabin_interior' : 'cottage_interior');
+    const id = it.obj ? it.obj.def.interior : it.placement?.def?.interior || (it.placement?.type === 'guest_cabin' ? 'cabin_interior' : getState().flags.kitchen && !this.visit ? 'cottage_big_interior' : 'cottage_interior');
     const def = INTERIORS[id];
     if (!def) return;
     if (it.placement && underConstruction(it.placement)) { toast(`Rowan is still building this. It’ll be ready on Day ${it.placement.buildDay}.`, 'build'); return; }
@@ -1042,7 +1055,7 @@ export class Game {
       }
       this.world = new World(id, roomState);
       // animals live inside their coop / barn
-      if (it.placement?.uid && (id === 'coop_interior' || id === 'barn_interior')) this.spawnCritters(it.placement.uid);
+      if (it.placement?.uid && it.placement.def.animals) this.spawnCritters(it.placement.uid);
       this.renderer.setWorld(this.world);
       const sp = spawn || def.spawn;
       this.player.placeAtTile(sp.x, sp.y);
@@ -1433,9 +1446,12 @@ export class Game {
     const d = this.derby;
     if (!d || performance.now() < d.end || this.ui.fading) return;
     this.derby = null;
-    const n = getState().stats.fishCaught - d.start;
+    const s = getState();
+    const n = s.stats.fishCaught - d.start;
+    if (s.festivals[d.key]) s.festivals[d.key].derbyFish = n;
     const prize = n >= 8 ? { coins: 1500, pearls: 3, medal: 'Gold' } : n >= 5 ? { coins: 700, pearls: 1, medal: 'Silver' } : n >= 2 ? { coins: 250, medal: 'Bronze' } : null;
-    if (prize) { addCoinsTo(prize.coins); if (prize.pearls) getState().player.pearls += prize.pearls; sfx('levelup'); }
+    if (prize) { addCoinsTo(prize.coins); if (prize.pearls) s.player.pearls += prize.pearls; sfx('levelup'); }
+    if (prize?.medal === 'Gold') { s.inventory.storedDecor.fish_statue = (s.inventory.storedDecor.fish_statue || 0) + 1; setTimeout(() => toast('Gold medal prize: a Fish Statue (in Build → Stored)!', 'trophy', 'gold'), 1500); }
     toast(prize ? `Fishing Derby over! ${n} fish — ${prize.medal} medal: ${prize.coins} coins${prize.pearls ? ' and ' + prize.pearls + ' pearls' : ''}!` : `Fishing Derby over! You caught ${n}. Better luck next year!`, 'rod', prize ? 'gold' : 'info');
     commit('derby');
     this.ui.refreshWhere?.();
@@ -1550,6 +1566,33 @@ export class Game {
     return this.insetCache;
   }
 
+  /** Put a tapper on a tree in your yard. */
+  placeTapper(o) {
+    const s = getState(), farm = getState().islands[this.world.id]?.farm;
+    if (!farm || !o) return;
+    farm.taps = farm.taps || {};
+    if (farm.taps[o.id]) { toast('That tree already has a tapper.', 'tapper'); return; }
+    if (!(s.inventory.items.tapper > 0)) { toast('You need a tapper.', 'tapper'); return; }
+    s.inventory.items.tapper -= 1; if (s.inventory.items.tapper <= 0) delete s.inventory.items.tapper;
+    farm.taps[o.id] = { day: s.world.day };
+    sfx('build');
+    toast(`Tapper attached! Check back in ${TAP_DAYS} days.`, 'tapper', 'good');
+    commit('tap');
+    this.ui.hotbar?.render();
+  }
+
+  collectTap(o) {
+    const s = getState(), farm = s.islands[this.world.id]?.farm, tap = farm?.taps?.[o.id];
+    if (!tap) return;
+    if (s.world.day - tap.day < TAP_DAYS) { toast(`Still filling — ready in ${TAP_DAYS - (s.world.day - tap.day)} day(s).`, 'tapper'); return; }
+    const got = Math.random() < 0.65 ? 'tree_syrup' : 'resin';
+    addItemTo(got, 1);
+    tap.day = s.world.day;
+    sfx('coin');
+    toast(`Collected ${RESOURCES[got].name}!`, RESOURCES[got].icon, 'good');
+    commit('tap');
+  }
+
   /** Hop on (or off) your horse. Only outdoors, once you've built a stable. */
   setRiding(on, quiet = false) {
     if (on && (!getState().flags.horse || this.indoor || this.visit)) {
@@ -1584,21 +1627,46 @@ export class Game {
   /** Islanders move between places through the day (data/life-data.js). */
   scheduleNpcs() {
     const w = this.world;
-    if (w.id !== FARM_ISLAND) return;
-    const hour = Math.floor(getState().world.minutes / 60);
+    if (w.def.interior) return;
+    const hour = getState().world.minutes / 60;
+    const wet = ['rain', 'storm', 'snow'].includes(currentWeather());
+    const fest = this.festivalToday();
     for (const n of w.npcs) {
       const sch = SCHEDULES[n.id];
-      if (!sch) continue;
-      let e = sch[sch.length - 1];
-      for (const x of sch) if (hour >= x[0]) e = x;
-      if (n.schedKey === e[0]) continue;
-      n.schedKey = e[0];
-      const tx = e[1] * TILE + 8, ty = e[2] * TILE + 12;
+      if (!sch || sch.island !== w.id) continue;
+      let key, place;
+      if (fest && FESTIVAL_SPOTS[n.id]) { key = 'fest'; place = FESTIVAL_SPOTS[n.id]; n.doing = `at the ${fest.name}`; }
+      else {
+        const list = (wet && sch.rain) || sch.day;
+        let e = list[list.length - 1];
+        for (const x of list) if (hour >= x[0]) e = x;
+        key = (wet ? 'r' : 'd') + e[0]; place = e[1]; n.doing = e[2];
+      }
+      if (n.schedKey === key) continue;
+      n.schedKey = key;
+      const at = this.resolvePlace(w, place);
+      if (!at) continue;
+      const tx = at.x * TILE + 8, ty = at.y * TILE + 12;
       n.homeX = tx; n.homeY = ty;
-      const here = w.areaAt(Math.floor(n.x / TILE), Math.floor(n.y / TILE)), there = w.areaAt(e[1], e[2]);
+      const here = w.areaAt?.(Math.floor(n.x / TILE), Math.floor(n.y / TILE)), there = w.areaAt?.(at.x, at.y);
       if (here !== there || !w.inBoundsPx(n.x, n.y)) { n.x = tx; n.y = ty; n.tx = null; }
       else { n.tx = tx; n.ty = ty; n.walkHome = true; }
     }
+  }
+
+  /** A schedule place → a walkable tile: [x, y], 'spot:<id>' or 'obj:<type>'. */
+  resolvePlace(w, place) {
+    let x, y;
+    if (Array.isArray(place)) [x, y] = place;
+    else if (place.startsWith('spot:')) { const sp = w.allSpots.find(s => s.id === place.slice(5)); if (!sp) return null; x = sp.x; y = sp.y; }
+    else if (place.startsWith('obj:')) {
+      const o = w.objects.find(o => o.type === place.slice(4));
+      if (!o) return null;
+      const fp = o.def.footprint || { w: 1, h: 1 };
+      x = o.x + Math.floor(fp.w / 2); y = o.y + fp.h;
+    } else return null;
+    if (!w.walkableTile(x, y)) { const nw = w.nearestWalkable(x, y, x, y); if (nw) ({ x, y } = nw); }
+    return { x, y };
   }
 
   /** Animals in the coop / barn you're standing in. */
@@ -1606,19 +1674,52 @@ export class Game {
     const isl = getState().islands[this.outdoor.id];
     const def = this.world.def;
     this.renderer.troughFull = (isl.feed?.[homeUid] || 0) > 0;
+    if (this.grazingNow()) {
+      this.world.critters = [];
+      if (animalsIn(isl, homeUid).length) setTimeout(() => toast('Your animals are outside grazing on this nice day.', 'heart'), 700);
+      return;
+    }
     this.world.critters = animalsIn(isl, homeUid).map((a, i) => ({
       a, x: (2 + (i * 2) % (def.size.w - 4)) * TILE + 8, y: (4 + (i % 2)) * TILE + 12, dir: 'down', anim: Math.random() * 4, t: 1 + Math.random() * 2, tx: null, ty: null,
     }));
   }
 
+  /** On fair days (not winter) from 9 to 5, animals step outside to graze near their building. */
+  grazingNow() {
+    const s = getState();
+    const h = s.world.minutes / 60;
+    return h >= 9 && h < 17 && !['rain', 'storm', 'snow'].includes(currentWeather()) && seasonOf(s.world.day).season !== 'winter';
+  }
+
+  updateGrazing() {
+    if (this.visit || this.indoor || this.world?.id !== FARM_ISLAND) return;
+    const on = this.grazingNow();
+    const key = on + ':' + (getState().islands[FARM_ISLAND].animals || []).length;
+    if (key === this.world.grazeKey) return;
+    this.world.grazeKey = key;
+    const isl = getState().islands[FARM_ISLAND];
+    const out = [];
+    if (on) for (const p of this.world.placed) {
+      if (!p.def.animals || underConstruction(p)) continue;
+      const door = { x: (p.x + p.fw / 2) * TILE, y: (p.y + p.fh + 1.5) * TILE };
+      animalsIn(isl, p.uid).forEach((a, i) => out.push({ a, x: door.x + ((i % 4) - 1.5) * 14, y: door.y + Math.floor(i / 4) * 12, hx: door.x, hy: door.y + 10, dir: 'down', anim: Math.random() * 4, t: Math.random() * 2, tx: null, ty: null, outside: true }));
+    }
+    this.world.critters = out;
+  }
+
   updateCritters(dt) {
+    if (!this.indoor) this.updateGrazing();
     for (const c of this.world.critters || []) {
       c.t -= dt;
       if (c.tx != null) {
         const dx = c.tx - c.x, dy = c.ty - c.y, d = Math.hypot(dx, dy);
         if (d < 1.5) { c.tx = null; c.moving = false; c.t = 1.5 + Math.random() * 3; }
         else { const sp = 14 * dt, nx = c.x + dx / d * sp, ny = c.y + dy / d * sp; if (this.world.boxFree(nx, ny - 3, 5, 3)) { c.x = nx; c.y = ny; c.moving = true; c.anim += dt * 5; c.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up'; } else { c.tx = null; c.moving = false; } }
-      } else if (c.t <= 0) { c.tx = c.x + (Math.random() * 2 - 1) * 28; c.ty = c.y + (Math.random() * 2 - 1) * 20; }
+      } else if (c.t <= 0) {
+        c.tx = c.x + (Math.random() * 2 - 1) * 28; c.ty = c.y + (Math.random() * 2 - 1) * 20;
+        // outside, they stay near their building
+        if (c.outside) { c.tx = Math.max(c.hx - 70, Math.min(c.hx + 70, c.tx)); c.ty = Math.max(c.hy - 20, Math.min(c.hy + 60, c.ty)); }
+      }
     }
   }
 
@@ -1641,7 +1742,7 @@ export class Game {
     if (!s || this.world?.id !== FARM_ISLAND || this.indoor) return null;
     const sn = seasonOf(s.world.day), f = FESTIVALS[sn.season];
     const h = s.world.minutes / 60;
-    if (!f || sn.day !== f.day || h < FESTIVAL_HOURS.from || h >= FESTIVAL_HOURS.to) return null;
+    if (!f || sn.day !== f.day || h < (f.from ?? FESTIVAL_HOURS.from) || h >= (f.to ?? FESTIVAL_HOURS.to)) return null;
     return { ...f, season: sn.season, year: sn.year, key: `${sn.year}-${f.id}` };
   }
 
@@ -1723,6 +1824,8 @@ export class Game {
       questGiver: play && !this.visit ? questGiverHere() : null,
       remotes: play && this.remotes ? this.remotesHere() : null,
       riding: play && !!this.riding,
+      festival: play ? this.festivalToday()?.id || null : null,
+      lanterns: play ? (this.lanternShow || (this.festivalToday()?.id === 'lantern_night' && getState().world.minutes >= 19.5 * 60 ? (this.lanternStart = this.lanternStart || { start: performance.now() }) : null)) : null,
       phase: play ? currentPhase() : 'morning',
       target: play ? this.farmTarget() : null,
     };

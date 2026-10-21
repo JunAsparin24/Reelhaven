@@ -55,7 +55,7 @@ export const BUILDINGS = {
   },
   big_coop: {
     id: 'big_coop', name: 'Big Coop', kind: 'building', price: 0, buildable: false, maxCount: 2,
-    footprint: { w: 3, h: 2 }, solid: true, interior: 'coop_interior', capacity: 8, animals: 'coop', autoFeed: true,
+    footprint: { w: 3, h: 2 }, solid: true, interior: 'big_coop_interior', capacity: 8, animals: 'coop', autoFeed: true,
     lights: [{ x: 0, y: -12, r: 14 }],
     desc: 'A roomy coop for 8 birds. They feed themselves from the silo.',
   },
@@ -68,7 +68,7 @@ export const BUILDINGS = {
   },
   big_barn: {
     id: 'big_barn', name: 'Big Barn', kind: 'building', price: 0, buildable: false, maxCount: 2,
-    footprint: { w: 4, h: 3 }, solid: true, interior: 'barn_interior', capacity: 8, animals: 'barn', autoFeed: true,
+    footprint: { w: 4, h: 3 }, solid: true, interior: 'big_barn_interior', capacity: 8, animals: 'barn', autoFeed: true,
     lights: [{ x: 0, y: -16, r: 16 }],
     desc: 'A big barn for 8 animals. They feed themselves from the silo.',
   },
@@ -115,7 +115,7 @@ export const DECOR = {
   picket_fence: { id: 'picket_fence', name: 'Picket Fence', kind: 'decor', price: 14, cost: { wood: 1 }, footprint: { w: 1, h: 1 }, rotations: 2, solid: true, desc: 'A crisp white fence for tidy yards.' },
   planter_box: { id: 'planter_box', name: 'Planter Box', kind: 'decor', price: 45, cost: { wood: 3, flower: 2 }, footprint: { w: 2, h: 1 }, solid: true, desc: 'A long box of bright flowers.' },
   hay_bale: { id: 'hay_bale', name: 'Hay Bale', kind: 'decor', price: 25, footprint: { w: 1, h: 1 }, solid: true, desc: 'Farm-fresh and very sit-on-able.' },
-  scarecrow: { id: 'scarecrow', name: 'Scarecrow', kind: 'decor', price: 55, cost: { wood: 3 }, footprint: { w: 1, h: 1 }, solid: true, desc: 'Keeps the gulls off your garden.' },
+  scarecrow: { id: 'scarecrow', name: 'Scarecrow', kind: 'decor', price: 55, cost: { wood: 3 }, footprint: { w: 1, h: 1 }, solid: true, desc: 'Keeps crows off the crops within 8 tiles.' },
   mailbox: { id: 'mailbox', name: 'Mailbox', kind: 'decor', price: 40, cost: { wood: 2 }, footprint: { w: 1, h: 1 }, solid: true, desc: 'For letters from far-off islands.' },
   birdbath: { id: 'birdbath', name: 'Birdbath', kind: 'decor', price: 60, cost: { stone: 4 }, footprint: { w: 1, h: 1 }, solid: true, desc: 'A splash spot for passing birds.' },
   stone_lantern: { id: 'stone_lantern', name: 'Stone Lantern', kind: 'decor', price: 70, cost: { stone: 5 }, footprint: { w: 1, h: 1 }, solid: true, lights: [{ x: 0, y: -14, r: 22 }], desc: 'A calm glow carved from stone.' },
