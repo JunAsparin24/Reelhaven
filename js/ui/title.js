@@ -3,7 +3,7 @@
 import { h, button, confirmModal, modal } from './dom.js';
 import * as Save from '../save.js';
 import { initAudio, sfx, startMusic, setMood, tryAutoStart } from '../audio.js';
-import { buildPortrait, SKIN_TONES, HAIR_COLORS, SHIRT_COLORS, HAIR_STYLES } from '../art/characters.js';
+import { buildFullPreview, SKIN_TONES, HAIR_COLORS, SHIRT_COLORS, HAIR_STYLES, PANTS_COLORS, SHOE_COLORS, OUTFITS, BOTTOMS, ACCESSORIES } from '../art/characters.js';
 import { scaleUp } from '../art/pixel.js';
 import { STARTING_HATS, HATS } from '../../data/item-data.js';
 import { GAME_VERSION, GAME_NAME } from '../state.js';
@@ -220,45 +220,63 @@ export class TitleUI {
   }
 
   /**
-   * Character creation: name, skin, hair, outfit, hat. Used for new worlds
-   * and for your character in a friend's world.
+   * Character creation: name first, then body, top, bottoms and extras.
+   * Used for new worlds, your character in a friend's world, and the
+   * wardrobe (edit = { name, look } to change an existing character).
    */
-  creator({ title = 'Create your islander', note = null, cta = 'Start adventure', onDone = null, onCancel = null } = {}) {
-    const look = { skin: SKIN_TONES[1], hair: HAIR_COLORS[0], hairStyle: 'short', shirt: SHIRT_COLORS[0], pants: '#4f5f86', hat: 'straw' };
+  creator({ title = 'Create your islander', note = null, cta = 'Start adventure', onDone = null, onCancel = null, edit = null, hats = STARTING_HATS } = {}) {
+    const look = { skin: SKIN_TONES[2], hair: HAIR_COLORS[0], hairStyle: 'short', shirt: SHIRT_COLORS[5], outfit: 'tee', pants: PANTS_COLORS[0], bottoms: 'pants', shoes: SHOE_COLORS[0], hat: 'straw', acc: 'none', ...(edit?.look || {}) };
     const preview = h('img.creator-preview', { alt: 'Your character' });
-    const refresh = () => { preview.src = scaleUp(buildPortrait(look), 6).toDataURL(); };
-    const nameInput = h('input.name-input', { type: 'text', maxlength: '16', placeholder: 'Your name', value: '', 'aria-label': 'Your name', autocomplete: 'off' });
+    const refresh = () => { preview.src = scaleUp(buildFullPreview(look), 5).toDataURL(); };
+    const nameInput = h('input.name-input', { type: 'text', maxlength: '16', placeholder: 'Type your name', value: edit?.name || '', 'aria-label': 'Your name', autocomplete: 'off' });
+    const nameMsg = h('small.name-msg');
+    const mark = (b, sel) => { b.parentNode.querySelectorAll(sel).forEach(x => x.classList.remove('on')); b.classList.add('on'); };
     const swatches = (label, list, key) => h('div.swatch-row', h('span.sw-label', label),
       h('div.swatches', list.map(c => {
-        const b = h('button.swatch' + (look[key] === c ? '.on' : ''), { type: 'button', style: { background: c }, 'aria-label': label + ' ' + c, on: { click: () => { look[key] = c; sfx('click'); b.parentNode.querySelectorAll('.swatch').forEach(x => x.classList.remove('on')); b.classList.add('on'); refresh(); } } });
+        const b = h('button.swatch' + (look[key] === c ? '.on' : ''), { type: 'button', style: { background: c }, 'aria-label': label + ' ' + c, on: { click: () => { look[key] = c; sfx('click'); mark(b, '.swatch'); refresh(); } } });
         return b;
       })));
     const options = (label, list, key, names = null) => h('div.swatch-row', h('span.sw-label', label),
       h('div.opts', list.map(v => {
-        const b = h('button.opt' + (look[key] === v ? '.on' : ''), { type: 'button', on: { click: () => { look[key] = v; sfx('click'); b.parentNode.querySelectorAll('.opt').forEach(x => x.classList.remove('on')); b.classList.add('on'); refresh(); } } }, names ? names(v) : v);
+        const b = h('button.opt' + (look[key] === v ? '.on' : ''), { type: 'button', on: { click: () => { look[key] = v; sfx('click'); mark(b, '.opt'); refresh(); } } }, names ? names(v) : v);
         return b;
       })));
+    const cap = v => v[0].toUpperCase() + v.slice(1);
+    const pages = {
+      body: () => [swatches('Skin', SKIN_TONES, 'skin'), swatches('Hair', HAIR_COLORS, 'hair'), options('Style', HAIR_STYLES, 'hairStyle', cap)],
+      top: () => [options('Top', Object.keys(OUTFITS), 'outfit', v => OUTFITS[v]), swatches('Colour', SHIRT_COLORS, 'shirt')],
+      bottoms: () => [options('Bottoms', Object.keys(BOTTOMS), 'bottoms', v => BOTTOMS[v]), swatches('Colour', PANTS_COLORS, 'pants'), swatches('Shoes', SHOE_COLORS, 'shoes')],
+      extras: () => [options('Hat', hats.filter(id => HATS[id]), 'hat', v => HATS[v].name), options('Face', Object.keys(ACCESSORIES), 'acc', v => ACCESSORIES[v])],
+    };
+    const optsEl = h('div.creator-opts');
+    let page = 'body';
+    const tabRow = h('div.tabs.creator-tabs');
+    const showPage = id => {
+      page = id;
+      tabRow.replaceChildren(...[['body', 'Body'], ['top', 'Top'], ['bottoms', 'Bottoms'], ['extras', 'Hat & face']].map(([k, label]) =>
+        h('button.tab' + (k === page ? '.active' : ''), { type: 'button', on: { click: () => { sfx('click'); showPage(k); } } }, label)));
+      optsEl.replaceChildren(...pages[id]());
+    };
     let close;
     const start = () => {
-      const name = nameInput.value.trim() || 'Islander';
+      const name = nameInput.value.trim();
+      if (name.length < 2) { nameMsg.textContent = 'Give your islander a name first (2–16 letters).'; nameInput.focus(); sfx('error'); return; }
       close();
-      enterLandscape();
+      if (!edit) enterLandscape();
       if (onDone) onDone({ name, look: { ...look } });
       else this.ui.game.newGame({ name, look: { ...look } });
     };
     nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') start(); });
+    nameInput.addEventListener('input', () => { nameMsg.textContent = ''; });
+    showPage('body');
     close = modal(h('div.creator',
       h('h3', title),
       note ? h('p.muted.creator-note', note) : null,
+      h('div.creator-name.big', h('label', 'Name'), nameInput, nameMsg),
       h('div.creator-cols',
-        h('div.creator-top', h('div.preview-frame', preview), h('div.creator-name', h('label', 'Name'), nameInput)),
-        h('div.creator-opts',
-          swatches('Skin', SKIN_TONES, 'skin'),
-          swatches('Hair', HAIR_COLORS, 'hair'),
-          options('Style', HAIR_STYLES, 'hairStyle', v => v[0].toUpperCase() + v.slice(1)),
-          swatches('Outfit', SHIRT_COLORS, 'shirt'),
-          options('Hat', STARTING_HATS, 'hat', v => HATS[v].name))),
-      h('div.row.end', button('Back', () => { close(); onCancel?.(); }, { cls: 'ghost' }), button(cta, start, { cls: 'primary', sound: null }))), { dismissable: false, cls: 'creator-modal' });
+        h('div.creator-top', h('div.preview-frame', preview)),
+        h('div.creator-side', tabRow, optsEl)),
+      h('div.row.end', button(edit ? 'Cancel' : 'Back', () => { close(); onCancel?.(); }, { cls: 'ghost' }), button(cta, start, { cls: 'primary', sound: null }))), { dismissable: false, cls: 'creator-modal' });
     refresh();
     setTimeout(() => nameInput.focus(), 60);
   }

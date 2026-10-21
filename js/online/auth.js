@@ -97,8 +97,10 @@ export class AuthService {
     else this.emit('reconnected', this.user);
   }
 
-  async signUp(username, password, name) {
-    const res = await this.net.request('signup', { username: username.trim().toLowerCase(), password, name: name.trim() });
+  /** Accounts are just a username and password; friends see the username. */
+  async signUp(username, password) {
+    const user = username.trim().toLowerCase();
+    const res = await this.net.request('signup', { username: user, password, name: user });
     this.applySignIn(res, true);
   }
 

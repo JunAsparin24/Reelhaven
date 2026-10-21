@@ -67,6 +67,59 @@ function activateQuest() {
   q.baseline = def ? measure(def.objective) : null;
 }
 
+/**
+ * Story quests belong to the world: in a friend's world the host's story
+ * is the one everyone follows. Jump to a story step (from the host).
+ */
+export function setStoryIndex(i) {
+  const q = getState().quests;
+  i = Math.max(0, Math.min(MAIN_QUESTS.length, i | 0));
+  if (q.index === i) return false;
+  q.index = i;
+  q.done = MAIN_QUESTS.slice(0, i).map(d => d.id);
+  activateQuest();
+  checkQuests();
+  commit('story');
+  return true;
+}
+
+// ------------------------------------------------------------- favors
+/**
+ * Islander favors: personal requests that are yours alone (not shared with
+ * the world). Each morning a couple of islanders ask for something.
+ */
+const FAVOR_ASKS = {
+  mira: [['shell', 5], ['worm_bait', 5], ['seaweed_snack', 2], ['radish', 3]],
+  nori: [['wood', 20], ['stone', 15], ['quartz', 1], ['egg', 3]],
+  rowan: [['wood', 30], ['stone', 25], ['copper_ore', 5], ['fiber', 15]],
+  pip: [['seaglass', 2], ['flower', 5], ['shell', 6], ['amethyst', 1]],
+  bram: [['slime', 5], ['bat_wing', 3], ['iron_ore', 5], ['grilled_fish', 2]],
+};
+export function ensureFavors() {
+  const s = getState();
+  const day = s.world.day;
+  s.favors = s.favors || { day: 0, list: [] };
+  if (s.favors.day === day) return s.favors.list;
+  const rng = seededRng('favor' + day + s.createdAt);
+  const who = Object.keys(FAVOR_ASKS).sort(() => rng() - 0.5).slice(0, 2);
+  s.favors = { day, list: who.map(npc => { const opts = FAVOR_ASKS[npc]; const [item, n] = opts[Math.floor(rng() * opts.length)]; return { npc, item, n, done: false, coins: 40 + n * 12 }; }) };
+  commit('favors', false);
+  return s.favors.list;
+}
+export function completeFavor(i) {
+  const s = getState(), f = s.favors?.list[i];
+  if (!f || f.done) return { ok: false };
+  if ((s.inventory.items[f.item] || 0) < f.n) return { ok: false, message: `You need ${f.n} of those.` };
+  s.inventory.items[f.item] -= f.n;
+  if (s.inventory.items[f.item] <= 0) delete s.inventory.items[f.item];
+  f.done = true;
+  addCoins(f.coins, 'reward');
+  emit('favorDone', f);
+  sfx('quest');
+  commit('favor');
+  return { ok: true };
+}
+
 export function claimQuest() {
   const s = getState(), q = s.quests, def = currentQuest();
   if (!def || !q.ready) return false;
@@ -75,7 +128,7 @@ export function claimQuest() {
   q.index += 1;
   activateQuest();
   sfx('quest');
-  emit('questClaimed', def);
+  emit('questClaimed', { ...def, index: q.index });
   checkQuests();
   commit('quest');
   return true;

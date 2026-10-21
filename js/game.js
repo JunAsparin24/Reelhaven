@@ -24,7 +24,7 @@ export function needToolText(tool, better = false) {
 /** Interactions that are really "use your tool" (left click / tap, never E). */
 const TOOL_KINDS = new Set(['clear', 'mine', 'attack', 'swing']);
 import { tick as tickWeather, lighting, currentWeather, currentPhase } from './weather.js';
-import { initQuests, ensureOrders, ensureDaily, currentQuest } from './quests.js';
+import { initQuests, ensureOrders, ensureDaily, currentQuest, setStoryIndex } from './quests.js';
 import { travelTo } from './islands.js';
 import { checkAchievements } from './progression.js';
 import { initAudio, sfx, setVolumes, startMusic, setMood, pauseAudio, resumeAudio, setMusicScene } from './audio.js';
@@ -53,7 +53,7 @@ import { seasonOf } from '../data/farm-data.js';
 import { memberSlot, notePersonal, noteJoined, personalName, lastPersonal } from './worlds.js';
 import { clearUrlCache } from './art/sprites.js';
 import { FLOOR_CHESTS, SWORDS } from '../data/weapon-data.js';
-import { ensureLife, onNewDay, talkedTo, giveGift, giftable, giftName, animalsIn, petAnimal, fillTrough, useMachine, sendMail, spendEnergy, energyCost } from './life.js';
+import { finishConstruction, underConstruction, siloCapacity, checkRecipes, ensureLife, onNewDay, talkedTo, giveGift, giftable, giftName, animalsIn, petAnimal, fillTrough, useMachine, sendMail, spendEnergy, energyCost } from './life.js';
 import { SCHEDULES, OPENING_HOURS, FESTIVALS, FESTIVAL_HOURS, BOSSES, ANIMALS } from '../data/life-data.js';
 import { PLACEABLES as ALL_PLACEABLES } from '../data/building-data.js';
 import { RESOURCES } from '../data/item-data.js';
@@ -65,9 +65,10 @@ function createMemberState(profile, res) {
   st.member = { world: res.world, owner: res.host, ownerName: res.name };
   st.worldName = res.worldName;
   st.player.island = res.island || 'sunny';
-  // The host's world has its own story; skip your home-yard intro quests.
+  // The world's story is shared: the host tells us where it's at when we arrive.
   st.flags = { ...st.flags, giftOpened: true, mineOpen: true };
-  st.quests.index = 3;
+  st.quests.index = 0;
+  st.quests.waitHost = true;
   return st;
 }
 
@@ -105,6 +106,7 @@ export class Game {
       onInteractKey: e => this.onInteractKey(e),
       onEscape: () => this.onEscape(),
       onRotateKey: () => { if (this.build.active && this.build.type) this.build.rotate(); },
+      onHorseKey: () => { if (this.mode === 'play' && !this.inputBlocked()) this.setRiding(!this.riding); },
       onHotkey: n => this.onHotkey(n),
       onKeyNudge: dir => this.build.active && this.build.type && this.build.nudge(...{ up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[dir]),
       onDrag: (dx, dy) => this.onBuildDrag(dx, dy),
@@ -202,6 +204,8 @@ export class Game {
     // Host sailed to another island in the same world: just follow.
     if (this.visit && this.visit.world === res.world) { this.joinGame(res); return; }
     const online = this.ui.online;
+    // going to a friend's world closes yours (and sends its players home)
+    if (online?.social.hosting) await online.social.hostStop().catch(() => {});
     if (this.mode === 'play') { this.persistNow(); await online?.cloud?.flush?.(); }
     const prev = this.activeWorld;
     if (this.visit) { this.leaveChannel(); this.visit = null; }
@@ -330,6 +334,8 @@ export class Game {
     this.persistNow();
     this.ui.online?.cloud?.flush?.();
     if (this.visit) this.ui.online?.social.leaveSession();
+    // the host leaving closes their world: everyone in it is sent home
+    if (this.ui.online?.social.hosting) this.ui.online.social.hostStop().catch(() => {});
     this.leaveChannel();
     this.visit = null;
     this.home = null;
@@ -426,15 +432,18 @@ export class Game {
     this.remotes = new Map();
     this.channelKey = key;
     this.channel = online.social.joinIsland(hostId, islandId, {
-      name: online.auth.profile?.name || s.player.name, look: s.player.look,
+      name: s.player.name, look: s.player.look, r: this.roomKey(),
       host: hostId === online.auth.user.id, x: this.player.x, y: this.player.y, f: this.player.facing,
     }, {
       onPeers: list => {
         const ids = new Set(list.map(p => p.id));
         for (const id of [...this.remotes.keys()]) if (!ids.has(id)) this.remotes.delete(id);
         for (const p of list) {
-          const r = this.remotes.get(p.id) || { x: p.x, y: p.y, tx: p.x, ty: p.y, f: p.f || 'down', anim: 0 };
-          Object.assign(r, { name: p.name, look: p.look, host: p.host, member: p.member });
+          const known = this.remotes.get(p.id);
+          const r = known || { x: p.x, y: p.y, tx: p.x, ty: p.y, f: p.f || 'down', anim: 0, room: p.r || '' };
+          Object.assign(r, { id: p.id, host: p.host, member: p.member });
+          if (!r.ownLook) { r.look = p.look; }
+          if (!r.ownName) r.name = p.n || p.name;
           this.remotes.set(p.id, r);
         }
         for (const id of [...this.sleepers]) if (!ids.has(id)) this.sleepers.delete(id);
@@ -443,8 +452,11 @@ export class Game {
           this.ensureGuestCabins(list);
           this.shareLayout();      // newcomers get the host's live layout
           this.shareClock(true);
+          this.shareStory();
         }
         if (this.sleeping) this.ui.online?.social.relay('sleep', { on: true });
+        this.shareMe();
+        this.lastSent = null;   // everyone gets our room right away
         this.ui.refreshSleep?.();
         this.checkSleep();
       },
@@ -454,7 +466,10 @@ export class Game {
       onMove: (id, pos) => {
         const r = this.remotes.get(id);
         if (!r) return;
-        r.tx = pos.x; r.ty = pos.y; r.f = pos.f || r.f;
+        const room = pos.r || '';
+        if (room !== (r.room || '')) { r.x = pos.x; r.y = pos.y; }   // walked through a door: no sliding across the map
+        r.tx = pos.x; r.ty = pos.y; r.f = pos.f || r.f; r.room = room;
+        if (pos.n) r.name = pos.n;
       },
     });
   }
@@ -464,6 +479,46 @@ export class Game {
     this.channel = null; this.channelKey = null; this.remotes = new Map(); this.sleepers = new Set();
   }
 
+  /** Which room you're in: '' outdoors, else the interior (and whose building / which mine floor). */
+  roomKey() {
+    if (!this.indoor) return '';
+    if (this.world?.def.mine) return 'mine:' + this.world.def.level;
+    return this.world.id + (this.indoor.home ? ':' + this.indoor.home : '');
+  }
+
+  /** Other players standing in the same place as you. */
+  remotesHere() {
+    if (!this.remotes) return [];
+    const k = this.roomKey();
+    return [...this.remotes.values()].filter(r => (r.room || '') === k);
+  }
+
+  /** Tell everyone in this world who you are here (name + look). */
+  shareMe() {
+    const s = getState();
+    this.ui.online?.social.relay('me', { name: s.player.name, look: s.player.look });
+  }
+
+  /** Wave at a friend, or hand them what you're holding. */
+  waveAt(r) {
+    this.ui.online?.social.relay('wave', { to: r.id });
+    this.player.cheer?.(0.8);
+    this.renderer.floatText('Hi!', this.player.x, this.player.y - 28, '#fff5df');
+    sfx('click');
+  }
+
+  giveTo(r) {
+    const s = getState(), key = s.inventory.held;
+    if (!key || key.startsWith('fish:') || !giftable(key) || !(s.inventory.items[key] > 0)) { toast('Hold an item from your bag to give it.', 'gift'); return; }
+    s.inventory.items[key] -= 1;
+    if (s.inventory.items[key] <= 0) delete s.inventory.items[key];
+    this.ui.online?.social.relay('give', { to: r.id, item: key, n: 1 });
+    toast(`You gave ${r.name} 1 ${giftName(key)}.`, 'gift', 'good');
+    sfx('coin');
+    commit('give');
+    this.ui.hotbar?.render();
+  }
+
   /** Throttled position broadcast + smooth movement of other players. */
   updateRemotes(dt) {
     const online = this.ui.online;
@@ -471,12 +526,12 @@ export class Game {
     if (!this.visit && online?.auth.signedIn && this.mode === 'play') this.joinChannel(online.auth.user.id, this.outdoor.id);
     if (!this.channel) return;
     this.netT = (this.netT || 0) - dt;
-    // Indoors, everyone else on the island sees you waiting at the door.
-    const p = this.indoor ? { x: this.indoor.ret.x * TILE + 8, y: this.indoor.ret.y * TILE + 12, facing: 'up' } : this.player;
-    const moved = !this.lastSent || Math.hypot(p.x - this.lastSent.x, p.y - this.lastSent.y) > 0.5 || p.facing !== this.lastSent.f;
+    // Indoors you're in that room for everyone else too (same shop, same mine floor...).
+    const p = this.player, room = this.roomKey(), myName = getState().player.name;
+    const moved = !this.lastSent || Math.hypot(p.x - this.lastSent.x, p.y - this.lastSent.y) > 0.5 || p.facing !== this.lastSent.f || room !== this.lastSent.r;
     if ((moved && this.netT <= 0) || this.netT < -2) {
       this.netT = 0.12;
-      this.lastSent = { x: Math.round(p.x), y: Math.round(p.y), f: p.facing };
+      this.lastSent = { x: Math.round(p.x), y: Math.round(p.y), f: p.facing, r: room, n: myName };
       try { this.channel.send(this.lastSent); } catch { /* reconnecting */ }
     }
     this.clockT = (this.clockT || 0) - dt;
@@ -521,6 +576,12 @@ export class Game {
     });
     on('phase', ({ phase }) => setMood(phase === 'night' || phase === 'evening' ? 'night' : 'day'));
     // A new morning: crops grow, weeds sprout, the mine opens on Day 5.
+    on('questClaimed', () => checkRecipes());
+    on('questClaimed', def => {
+      if (!this.channel) return;
+      if (this.visit) this.ui.online?.social.relay('story_claim', { index: def.index });
+      else this.shareStory();
+    });
     on('restored', () => {
       // a restoration project can change the map (the long pier)
       const w = this.indoor ? this.outdoor : this.world;
@@ -534,6 +595,8 @@ export class Game {
       growFarms(day, s.world.weather);
       this.waterSprinklers();
       const summary = onNewDay(day);
+      finishConstruction(day).forEach((msg, i) => setTimeout(() => toast(msg, 'build', 'gold'), 600 + i * 900));
+      checkRecipes();
       if (summary.shipped) setTimeout(() => toast(`Your shipping bin earned ${summary.shipped} coins overnight!`, 'coin', 'gold'), 1200);
       if (summary.products) setTimeout(() => toast(`Your animals have ${summary.products} thing${summary.products === 1 ? '' : 's'} for you.`, 'egg', 'good'), 1800);
       const fest = FESTIVALS[seasonOf(day).season];
@@ -707,7 +770,7 @@ export class Game {
     if (it.kind === 'use') return this.visit.member && it.placement?.def.use !== 'chest';
     if (it.kind === 'use') return this.visit.member && it.placement?.def.use === 'chest';   // chests are shared with everyone in the world
     return this.visit.member && ['spot', 'gather', 'shop', 'hall', 'board', 'bed', 'mine_enter', 'mine', 'attack', 'descend', 'ascend', 'swing', 'floor_chest',
-      'ship', 'mail', 'museum', 'gift_npc', 'festival', 'elevator', 'boss_chest', 'pet'].includes(it.kind);
+      'ship', 'mail', 'museum', 'gift_npc', 'festival', 'elevator', 'boss_chest', 'pet', 'friend_wave', 'friend_give', 'construction'].includes(it.kind);
   }
 
   // ---------------------------------------------------------------- co-op
@@ -758,6 +821,7 @@ export class Game {
       const res = world.canPlace(m.type, m.x, m.y, m.rot, null, tile);
       if (!res.ok) return reply(false, reasonText(res.reasons));
       const pl = { uid: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), type: m.type, x: m.x, y: m.y, rot: m.rot, by: m.name };
+      if (def.days) pl.buildDay = s.world.day + def.days;
       isl.placements.push(pl);
       if (def.produce) isl.gardens[pl.uid] = Date.now();
       emit('built', { id: m.type, kind: def.kind, x: m.x, y: m.y, fw: res.fw, fh: res.fh });
@@ -865,6 +929,15 @@ export class Game {
         break;
       }
       case 'gift': this.openGift(); break;
+      case 'construction': {
+        const p = it.placement;
+        toast(p.upgrade ? `Rowan is upgrading this — ready on Day ${p.upgrade.day}.` : `Rowan is building your ${p.def.name}. Ready on Day ${p.buildDay}.`, 'build');
+        break;
+      }
+      case 'cook': this.ui.furnaceModal({ def: { use: 'kitchen' }, uid: 'kitchen' }); break;
+      case 'ride': this.setRiding(!this.riding); break;
+      case 'friend_wave': this.waveAt(it.remote); break;
+      case 'friend_give': this.giveTo(it.remote); break;
       case 'gift_npc': {
         const r = giveGift(it.npc.id, getState().inventory.held);
         toast(r.message, r.ok ? (r.taste === 'dislike' ? 'friends' : 'heart') : 'friends', r.ok && r.taste === 'love' ? 'gold' : r.ok ? 'good' : 'info');
@@ -942,6 +1015,7 @@ export class Game {
     const id = it.obj ? it.obj.def.interior : it.placement?.def?.interior || (it.placement?.type === 'guest_cabin' ? 'cabin_interior' : 'cottage_interior');
     const def = INTERIORS[id];
     if (!def) return;
+    if (it.placement && underConstruction(it.placement)) { toast(`Rowan is still building this. It’ll be ready on Day ${it.placement.buildDay}.`, 'build'); return; }
     // shops keep opening hours (festival days too)
     const hours = OPENING_HOURS[id];
     const hour = getState().world.minutes / 60;
@@ -958,7 +1032,15 @@ export class Game {
     if (!outside.walkableTile(ret.x, ret.y)) ret = outside.nearestWalkable(ret.x, ret.y, this.player.tileX, this.player.tileY) || { x: this.player.tileX, y: this.player.tileY };
     const go = () => {
       this.indoor = { id, outside, ret, home: it.placement?.uid, homeType: it.placement?.type };
-      this.world = new World(id, { unlocked: true, visited: true, nodes: {}, gardens: {}, flags: {}, placements: [] });
+      this.setRiding(false, true);
+      let roomState = { unlocked: true, visited: true, nodes: {}, gardens: {}, flags: {}, placements: [] };
+      if (def.buildInside && it.placement?.uid && !this.visit) {
+        // a shed keeps whatever you put inside it
+        const isl = getState().islands[outside.id];
+        isl.interiors = isl.interiors || {};
+        roomState = isl.interiors[it.placement.uid] = isl.interiors[it.placement.uid] || { unlocked: true, visited: true, nodes: {}, gardens: {}, flags: {}, placements: [] };
+      }
+      this.world = new World(id, roomState);
       // animals live inside their coop / barn
       if (it.placement?.uid && (id === 'coop_interior' || id === 'barn_interior')) this.spawnCritters(it.placement.uid);
       this.renderer.setWorld(this.world);
@@ -1255,6 +1337,40 @@ export class Game {
 
   onRelay(m) {
     const fromHost = this.visit && m.user === this.visit.hostId;
+    if (m.kind === 'story' && fromHost && this.visit?.member) {
+      const s = getState();
+      s.quests.waitHost = false;
+      if (setStoryIndex(m.data.index)) toast(`The story in this world: “${currentQuest()?.title || 'all done!'}”`, 'quest');
+      return;
+    }
+    if (m.kind === 'story_claim' && !this.visit) {
+      // a friend finished the world's current story quest: it moves on for everyone
+      if (m.data.index > getState().quests.index) { setStoryIndex(m.data.index); const r = this.remotes.get(m.user); toast(`${r?.name || 'A friend'} finished a story quest for the world!`, 'quest', 'good'); }
+      this.shareStory();
+      return;
+    }
+    if (m.kind === 'me') {
+      const r = this.remotes.get(m.user);
+      if (r) { if (m.data.name) { r.name = m.data.name; r.ownName = true; } if (m.data.look?.skin) { r.look = m.data.look; r.ownLook = true; } }
+      return;
+    }
+    if (m.kind === 'wave') {
+      const r = this.remotes.get(m.user);
+      if (m.data.to !== this.ui.online?.auth.user?.id || !r) return;
+      this.renderer.floatText('Hi!', r.x, r.y - 28, '#fff5df');
+      toast(`${r.name} waves at you!`, 'friends');
+      return;
+    }
+    if (m.kind === 'give') {
+      const r = this.remotes.get(m.user);
+      if (m.data.to !== this.ui.online?.auth.user?.id) return;
+      addItemTo(m.data.item, m.data.n);
+      toast(`${r?.name || 'A friend'} gave you ${m.data.n} ${giftName(m.data.item)}!`, 'gift', 'good');
+      sfx('coin');
+      commit('gift');
+      this.ui.hotbar?.render();
+      return;
+    }
     if (m.kind === 'boss') {
       // someone in this world beat a boss: everyone shares the treasure
       const r = BOSSES[m.data.floor]?.reward;
@@ -1275,6 +1391,12 @@ export class Game {
   }
 
   /** Host: keep joined players on the same day and time. */
+  /** Host: tell everyone where the world's story is at. */
+  shareStory() {
+    if (this.visit || !this.channel) return;
+    this.ui.online?.social.relay('story', { index: getState().quests.index });
+  }
+
   shareClock(now = false) {
     if (this.visit || !this.channel || !this.bedPeers().length) return;
     if (!now && this.ui.fading) return;
@@ -1364,6 +1486,7 @@ export class Game {
     const padVec = this.pad.poll();
     let input = blocked ? { x: 0, y: 0 } : this.controls.read();
     if (!blocked && !input.x && !input.y && (padVec.x || padVec.y)) input = { x: padVec.x, y: padVec.y };
+    this.updateRest(dt, input);
     if (!this.build.active) this.player.update(dt, input, this.world);
     else this.player.moving = false;
     this.footsteps.update(dt);
@@ -1425,6 +1548,37 @@ export class Game {
       this.insetCache = { top: css.top * k, right: css.right * k, bottom: css.bottom * k, left: css.left * k };
     }
     return this.insetCache;
+  }
+
+  /** Hop on (or off) your horse. Only outdoors, once you've built a stable. */
+  setRiding(on, quiet = false) {
+    if (on && (!getState().flags.horse || this.indoor || this.visit)) {
+      if (!quiet) toast(this.indoor ? 'Your horse waits outside.' : 'Build a Stable to get a horse.', 'home');
+      return;
+    }
+    if (!!this.riding === !!on) return;
+    this.riding = !!on;
+    if (this.player) this.player.speedMul = this.riding ? 1.8 : 1;
+    if (!quiet) { sfx('click'); toast(this.riding ? 'Giddy-up! (H to hop off)' : 'You hop off your horse.', 'home'); }
+  }
+
+  /** Lie down in bed without skipping the day: energy (and health) slowly come back. */
+  restInBed() {
+    this.resting = true;
+    this.player.cancelPath?.();
+    toast('You lie down for a rest. Walk away to get up.', 'sleep');
+    this.ui.refreshSleep?.();
+  }
+
+  /** In bed (resting, or waiting for others to sleep): recover a little every second. */
+  updateRest(dt, input) {
+    if (this.resting && (input.x || input.y || !this.indoor)) { this.resting = false; this.ui.refreshSleep?.(); }
+    if (!this.resting && !this.sleeping) return;
+    const p = getState().player;
+    const before = Math.floor(p.energy);
+    p.energy = Math.min(p.maxEnergy || 100, p.energy + dt * 1.5);
+    p.hp = Math.min(p.maxHp, p.hp + dt * 0.75);
+    if (Math.floor(p.energy) !== before) { this.ui.hotbar?.renderHp(); this.ui.refreshSleep?.(); }
   }
 
   /** Islanders move between places through the day (data/life-data.js). */
@@ -1567,7 +1721,8 @@ export class Game {
       stick: play ? this.controls.stickVisual() : null,
       hiddenSpotsVisible: this.revealedSpots,
       questGiver: play && !this.visit ? questGiverHere() : null,
-      remotes: play && this.remotes && !this.indoor ? [...this.remotes.values()] : null,
+      remotes: play && this.remotes ? this.remotesHere() : null,
+      riding: play && !!this.riding,
       phase: play ? currentPhase() : 'morning',
       target: play ? this.farmTarget() : null,
     };

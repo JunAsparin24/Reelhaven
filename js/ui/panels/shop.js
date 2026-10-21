@@ -8,6 +8,7 @@ import { CROPS, seasonOf } from '../../../data/farm-data.js';
 import { BACKPACKS } from '../../bag.js';
 import { DECOR, BUILDINGS } from '../../../data/building-data.js';
 import { rodStatsView } from './inventory.js';
+import { CRAFT_RECIPES } from '../../../data/life-data.js';
 
 let tab = 'rods';
 
@@ -15,7 +16,7 @@ export const shopPanel = {
   title: 'Nori’s Shop', icon: 'shop',
   render(body, ctx) {
     if (ctx.opts.tab) { tab = ctx.opts.tab; ctx.opts.tab = null; }
-    body.append(tabs([['rods', 'Rods', 'rod'], ['bait', 'Bait', 'worm'], ['seeds', 'Seeds', 'seeds_radish'], ['tools', 'Tools', 'pickaxe'], ['food', 'Food', 'salad'], ['materials', 'Supplies', 'wood'], ['decor', 'Decor', 'flower'], ['blueprints', 'Plans', 'build'], ['hats', 'Hats', 'hat']], tab, t => { tab = t; refreshSheet(); }));
+    body.append(tabs([['rods', 'Rods', 'rod'], ['bait', 'Bait', 'worm'], ['seeds', 'Seeds', 'seeds_radish'], ['tools', 'Tools', 'pickaxe'], ['food', 'Food', 'salad'], ['materials', 'Supplies', 'wood'], ['decor', 'Decor', 'flower'], ['blueprints', 'Plans', 'build'], ['recipes', 'Recipes', 'craft'], ['hats', 'Hats', 'hat']], tab, t => { tab = t; refreshSheet(); }));
     const list = h('div.list.shop-list');
     const s = getState();
     const have = id => id === 'coins' ? s.player.coins : id === 'pearls' ? s.player.pearls : (s.inventory.items[id] || 0);
@@ -71,6 +72,10 @@ export const shopPanel = {
     if (tab === 'blueprints') {
       list.append(h('p.muted', 'Some bigger buildings need plans before Rowan can build them.'));
       for (const id of Object.keys(BLUEPRINTS)) row('blueprint', id, spriteImg(id, 1, 'decor-thumb'), BUILDINGS[id].name + ' Blueprint', BUILDINGS[id].desc);
+    }
+    if (tab === 'recipes') {
+      list.append(h('p.muted', 'Crafting recipes. Once you know one, make it any time from the Craft menu.'));
+      for (const r of CRAFT_RECIPES.filter(r => r.learn?.shop)) row('recipe', r.id, icon('craft', 'item-icon'), r.name + ' Recipe', r.desc);
     }
     if (tab === 'hats') {
       list.append(h('p.muted', 'Hats are paid with pearls, earned from achievements, milestones and rare encounters.'));

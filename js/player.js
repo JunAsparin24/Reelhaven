@@ -56,7 +56,7 @@ export class Player {
     if (len > 1) { dx /= len; dy /= len; }
     if (this.pose === 'hold') this.pose = 'walk';
     const slow = world.slow[this.tileY * world.w + this.tileX] ? 0.65 : 1;
-    const sp = SPEED * slow * dt;
+    const sp = SPEED * slow * (this.speedMul || 1) * dt;
     // Axis-separated movement lets the player slide along walls.
     const ox = this.x, oy = this.y;
     const nx = this.x + dx * sp;

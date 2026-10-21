@@ -260,7 +260,7 @@ function savePostcard(game) {
 
 export const profilePanel = {
   title: 'Profile', icon: 'home',
-  render(body) {
+  render(body, ctx) {
     const s = getState();
     const p = s.player;
     body.append(h('article.profile-card',
@@ -272,6 +272,10 @@ export const profilePanel = {
         ['Perfect casts', st.perfectCasts], ['Treasures', st.treasures], ['Buildings', st.buildingsBuilt], ['Decorations', st.decorPlaced]]
         .map(([k, v]) => h('div.stat', h('small', k), h('b', String(v))))));
     body.append(h('h4.section', 'Wardrobe'));
+    body.append(button('Change outfit & look', () => ctx.ui.title.creator({
+      title: 'Change your look', cta: 'Save look', edit: { name: p.name, look: p.look }, hats: s.inventory.hats,
+      onDone: prof => { p.look = prof.look; p.name = prof.name; setPlayerSprites(p.look); clearUrlCache('portrait_player'); commit('look'); ctx.ui.refreshHud(); ctx.game.shareMe?.(); },
+    }), { cls: 'primary', iconName: 'hat' }));
     const grid = h('div.hat-grid');
     for (const id of s.inventory.hats) {
       const on = p.look.hat === id;
@@ -280,6 +284,7 @@ export const profilePanel = {
         setPlayerSprites(p.look);
         clearUrlCache('portrait_player');
         commit('look');
+        ctx.game.shareMe?.();
         refreshSheet();
       }, { cls: on ? 'primary small' : 'small', iconName: 'hat' }));
     }

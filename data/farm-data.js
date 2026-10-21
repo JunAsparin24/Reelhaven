@@ -57,14 +57,14 @@ export const FARM_SELL = {
 
 /** Clutter covering the home yard at the start. tool = what clears it. */
 export const DEBRIS = {
-  tree: { label: 'Tree', tool: 'axe', verb: 'Chop', hp: 6, drops: [['wood', 5, 8, 1]] },
+  tree: { label: 'Tree', tool: 'axe', verb: 'Chop', hp: 6, drops: [['wood', 5, 8, 1], ['sap', 2, 4, 1]] },
   twig: { label: 'Twig', tool: 'axe', verb: 'Chop', hp: 1, drops: [['wood', 1, 2, 1]] },
   stone: { label: 'Stone', tool: 'pickaxe', verb: 'Break', hp: 2, drops: [['stone', 1, 2, 1]] },
   weed: { label: 'Weeds', tool: 'scythe', verb: 'Cut', hp: 1, drops: [['fiber', 1, 1, 0.6]] },
   // tall grass you can walk through; cut it with the scythe for fiber
   grass: { label: 'Tall Grass', tool: 'scythe', verb: 'Cut', hp: 1, drops: [['fiber', 1, 1, 0.3], ['hay', 1, 1, 0.5]] },
   // what's left after a tree falls
-  stump: { label: 'Stump', tool: 'axe', verb: 'Chop', hp: 3, drops: [['wood', 2, 3, 1]] },
+  stump: { label: 'Stump', tool: 'axe', verb: 'Chop', hp: 3, drops: [['wood', 2, 3, 1], ['sap', 1, 2, 0.6]] },
   // need upgraded tools (1 = copper, 2 = iron)
   big_stump: { label: 'Large Stump', tool: 'axe', verb: 'Chop', hp: 10, minTier: 1, drops: [['hardwood', 2, 3, 1], ['wood', 4, 6, 1]] },
   boulder: { label: 'Boulder', tool: 'pickaxe', verb: 'Break', hp: 10, minTier: 2, drops: [['stone', 10, 15, 1], ['iron_ore', 1, 3, 0.5], ['gold_ore', 1, 2, 0.2]] },

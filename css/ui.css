@@ -257,9 +257,15 @@
 /* ---------- character creator */
 .creator-modal { width: min(480px, 100%); }
 .creator-top { display: flex; gap: 14px; align-items: center; margin-bottom: 8px; }
-.preview-frame { width: 108px; height: 90px; background: var(--ocean); box-shadow: 0 0 0 3px var(--ink), inset 0 -8px 0 rgba(0,0,0,.15); display: grid; place-items: end center; overflow: hidden; flex: none; }
+.preview-frame { width: 108px; height: 140px; background: var(--ocean); box-shadow: 0 0 0 3px var(--ink), inset 0 -8px 0 rgba(0,0,0,.15); display: grid; place-items: end center; overflow: hidden; flex: none; }
 .creator-preview { width: 108px; height: auto; }
 .creator-name { flex: 1; display: flex; flex-direction: column; gap: 4px; font-weight: 700; }
+.creator-name.big { margin: 4px 0 10px; }
+.creator-name.big .name-input { font-size: 1.1rem; }
+.creator-name .name-msg { color: #c2554f; min-height: 1em; font-weight: 700; }
+.creator-tabs { margin-bottom: 6px; flex-wrap: wrap; }
+.creator-side { min-width: 0; }
+.creator-opts { max-height: 46vh; overflow-y: auto; }
 .name-input { width: 100%; min-height: 46px; padding: 8px 12px; border: 0; background: #fff; box-shadow: 0 0 0 3px var(--ink); font-size: 1.1rem; }
 .swatch-row { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
 .sw-label { width: 52px; font-weight: 700; font-size: 0.9rem; flex: none; }
@@ -325,3 +331,12 @@
 .mp-code > div { flex: 1; }
 .mp-code small { display: block; font-size: 0.7rem; color: var(--muted); }
 .mp-code b { font-size: 1.3rem; letter-spacing: 0.18em; color: var(--deep); }
+
+/* crafting: ingredients you have / still need */
+.recipe .needs { display: flex; flex-wrap: wrap; gap: 4px 8px; margin-top: 4px; font-size: 0.78rem; font-weight: 700; }
+.recipe .need { display: inline-flex; align-items: center; gap: 3px; }
+.recipe .need .px-icon { width: 16px; height: 16px; }
+.recipe .need.short { color: #c2554f; }
+.recipe .need.ok { color: #3f8a4a; }
+.recipe .buy-col { display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
+.build-info .up-note { display: inline-flex; gap: 6px; align-items: center; }

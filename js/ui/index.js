@@ -27,8 +27,9 @@ import { chestItems, transfer, smelt, missingFor, recipesFor } from '../crafting
 import { RESOURCES, FOOD, BAIT, TOOLS } from '../../data/item-data.js';
 import { toolTier } from '../combat.js';
 import { seasonOf, SEASON_NAMES, TV_TIPS } from '../../data/farm-data.js';
-import { unreadMail, ship, itemValue, animalsIn, buyAnimal, friendOf } from '../life.js';
-import { ANIMALS, ANIMAL_CAPACITY } from '../../data/life-data.js';
+import { unreadMail, ship, itemValue, animalsIn, buyAnimal, friendOf, siloCapacity, capacityOf, absMinutes, minutesText, readyAt, machineReady } from '../life.js';
+import { ANIMALS, ANIMAL_CAPACITY, SMELT_TIME } from '../../data/life-data.js';
+import { PLACEABLES } from '../../data/building-data.js';
 import { ownedKeys, slotInfo } from '../bag.js';
 import { addCoins, addPearls, spend, addItem } from '../economy.js';
 import { commit } from '../state.js';
@@ -70,6 +71,11 @@ function actionIcon(it) {
     case 'feed': return 'hay';
     case 'animals': return 'chicken';
     case 'pet': return it.critter?.a.ready ? 'egg' : 'heart';
+    case 'friend_wave': return 'friends';
+    case 'construction': return 'build';
+    case 'cook': return 'fire';
+    case 'ride': return 'home';
+    case 'friend_give': return 'gift';
     case 'swing': return it.icon || (getState().inventory.held === 'sword' ? 'sword' : 'pickaxe');
     case 'mine_enter': case 'mine': return 'pickaxe';
     case 'attack': return 'sword';
@@ -311,7 +317,7 @@ export class UI {
   openBuild() {
     const v = this.game.visit;
     if (v && !v.hostHere) { toast(`${v.hostName} needs to be on this island for you to build.`, 'build'); return; }
-    if (this.game.indoor) { toast('Step outside to build.', 'build'); return; }
+    if (this.game.indoor && !(this.game.world.def.buildInside && !v)) { toast('Step outside to build.', 'build'); return; }
     if (this.game.fishing) this.game.stopFishing();
     this.open('build');
   }
@@ -439,6 +445,8 @@ export class UI {
       case 'crop_garden': { const r = harvestGarden(g, pl); toast(r.message, r.ok ? 'flower' : null, r.ok ? 'good' : 'info'); return; }
       case 'storage_shed': toast(`Your bag holds ${capacity()} fish (${countBuilt('storage_shed')} shed${countBuilt('storage_shed') === 1 ? '' : 's'} built).`, 'bag'); return;
       case 'lighthouse': toast(getState().islands.moon.unlocked ? 'The beam points the way to Moonlit Bay.' : 'The lighthouse beam reveals a route to Moonlit Bay — check the Map!', 'map', 'good'); return;
+      case 'silo': { const isl = getState().islands[g.outdoor.id]; toast(`Silo: ${isl.silo || 0}/${siloCapacity(isl)} hay. Cut tall grass with your scythe to fill it.`, 'hay'); return; }
+      case 'stable': g.setRiding(!g.riding); return;
       default: return;
     }
   }
@@ -505,8 +513,10 @@ export class UI {
       h('h3', 'Go to sleep?'),
       h('p', `It is ${clockText()} on Day ${s.world.day}. You’ll wake up at 6:00 AM on Day ${s.world.minutes >= 360 ? s.world.day + 1 : s.world.day}, fully rested.`),
       together ? h('p.muted', 'Playing together: the new day starts once everyone is in bed.') : null,
+      h('p.muted', 'Or just lie down for a while — your energy comes back slowly without ending the day.'),
       h('div.row.end',
         button('Not yet', () => close(), { cls: 'ghost' }),
+        button('Lie down', () => { close(); g.restInBed(); }, { iconName: 'bolt' }),
         button('Sleep', () => { close(); g.goToSleep(); }, { cls: 'primary', iconName: 'sleep' }))));
   }
 
@@ -514,6 +524,12 @@ export class UI {
   refreshSleep() {
     const g = this.game, el = this.el.sleep;
     if (!el) return;
+    if (g.resting && !g.sleeping) {
+      const p = getState().player;
+      el.hidden = false;
+      el.replaceChildren(icon('sleep'), h('span', `Resting — energy ${Math.floor(p.energy)}/${p.maxEnergy || 100}`), button('Get up', () => { g.resting = false; this.refreshSleep(); }, { cls: 'small' }));
+      return;
+    }
     if (!g.sleeping) { el.hidden = true; return; }
     const need = g.bedPeers();
     const ready = need.filter(id => g.sleepers.has(id)).length + 1;
@@ -585,14 +601,15 @@ export class UI {
   animalShop(homeUid, homeType) {
     const s = getState();
     const isl = s.islands[this.game.outdoor.id];
-    const kind = homeType === 'barn' ? 'barn' : 'coop';
+    const kind = PLACEABLES[homeType]?.animals || (homeType === 'barn' ? 'barn' : 'coop');
+    const cap = capacityOf(isl, homeUid);
     const list = h('div.list');
     let close;
     const render = () => {
       const here = animalsIn(isl, homeUid);
       list.replaceChildren(
-        h('p.muted', `${here.length}/${ANIMAL_CAPACITY[kind]} animals live here. Fill the trough with hay (cut tall grass with your scythe) so they make something every day.`),
-        h('p.muted', `Hay in the trough: ${isl.feed[homeUid] || 0}`),
+        h('p.muted', `${here.length}/${cap} animals live here. Fill the trough with hay (cut tall grass with your scythe) so they make something every day.${PLACEABLES[homeType]?.autoFeed ? ' This big building feeds them from your silo by itself.' : ''}`),
+        h('p.muted', `Hay in the trough: ${isl.feed[homeUid] || 0} · in your silos: ${isl.silo || 0}/${siloCapacity(isl)}`),
         ...Object.entries(ANIMALS).filter(([, a]) => a.home === kind).map(([id, a]) => h('div.item-row',
           icon(kind === 'barn' ? 'cow' : 'chicken', 'item-icon'),
           h('div.item-main', h('div.item-name', a.name), h('div.item-sub', `Makes ${RESOURCES[a.product]?.name || a.product}${a.every > 1 ? ' every ' + a.every + ' days' : ' every day'} when fed.`)),
@@ -601,7 +618,7 @@ export class UI {
             toast(r.message, 'heart', r.ok ? 'good' : 'error');
             if (r.ok) this.game.spawnCritters(homeUid);
             render();
-          }, { cls: 'small primary', iconName: 'coin', disabled: s.player.coins < a.price || here.length >= ANIMAL_CAPACITY[kind], sound: null }))),
+          }, { cls: 'small primary', iconName: 'coin', disabled: s.player.coins < a.price || here.length >= cap, sound: null }))),
         ...here.map(a => h('div.item-row.compact', icon(kind === 'barn' ? 'cow' : 'chicken', 'item-icon'),
           h('div.item-main', h('div.item-name', a.name, h('span.hearts', ' ' + '♥'.repeat(Math.floor(a.hearts)))),
             h('div.item-sub', a.ready ? 'Has something for you!' : a.fedDay === s.world.day ? 'Fed today' : 'Hungry')))));
@@ -727,11 +744,30 @@ export class UI {
       h('div.row.end', button('Done', () => close(), { cls: 'primary' }))));
   }
 
-  /** Smelt ore into bars, or grill fish. */
+  /** Smelt ore into bars (takes a while), grill fish, or cook in the kitchen. */
   furnaceModal(pl) {
     const station = pl.def.use;
     const list = h('div.list');
     let close;
+    const isl = getState().islands[this.game.outdoor.id];
+    if (station === 'furnace') {
+      const st = isl.machines?.[pl.uid];
+      const body = h('div');
+      const draw = () => {
+        const cur = isl.machines?.[pl.uid];
+        if (!cur) return false;
+        const left = readyAt(cur) - absMinutes();
+        body.replaceChildren(h('div.item-row', icon(RESOURCES[cur.output]?.icon || 'fire', 'item-icon'),
+          h('div.item-main', h('div.item-name', RESOURCES[cur.output]?.name || cur.output), h('div.item-sub', left > 0 ? `Smelting… ready in ${minutesText(left)}` : 'Done! Take it out.')),
+          button(left > 0 ? 'Wait' : 'Collect', () => {
+            if (!machineReady(cur)) return;
+            addItem(cur.output, cur.n || 1); delete isl.machines[pl.uid]; sfx('coin'); commit('smelt');
+            toast(`Collected ${RESOURCES[cur.output]?.name}!`, 'fire', 'good'); close(); this.furnaceModal(pl);
+          }, { cls: 'small' + (left > 0 ? ' ghost' : ' primary'), disabled: left > 0, sound: null })));
+        return true;
+      };
+      if (st) { draw(); close = modal(h('div.confirm.furnace-modal', h('h3', icon('fire'), ' Furnace'), body, h('div.row.end', button('Done', () => close(), { cls: 'primary' })))); return; }
+    }
     const nameOf = id => (id === 'fish' ? 'Any fish' : RESOURCES[id]?.name || FOOD[id]?.name || id);
     const render = () => {
       const s = getState();
@@ -744,14 +780,26 @@ export class UI {
           h('div.item-main',
             h('div.item-name', `${nameOf(outId)}${outN > 1 ? ' ×' + outN : ''}`),
             h('div.item-sub', Object.entries(r.in).map(([id, n]) => `${n} ${nameOf(id)} (${have(id)})`).join(' + '))),
-          button(station === 'campfire' ? 'Cook' : 'Smelt', () => { const res = smelt(r); toast(res.ok ? `Made ${nameOf(outId)}!` : res.message, res.ok ? 'fire' : null, res.ok ? 'good' : 'error'); render(); },
-            { cls: 'small primary', disabled: miss.length > 0, sound: null }));
+          button(station === 'furnace' ? 'Smelt' : 'Cook', () => {
+            if (station === 'furnace') {
+              // the furnace takes time: load it and come back
+              const res = smelt(r, { keep: true });
+              if (!res.ok) { toast(res.message, null, 'error'); return; }
+              isl.machines = isl.machines || {};
+              isl.machines[pl.uid] = { output: outId, n: outN, readyAt: absMinutes() + (SMELT_TIME[outId] || 60) };
+              commit('smelt');
+              toast(`Smelting ${nameOf(outId)}… ready in ${minutesText(SMELT_TIME[outId] || 60)}.`, 'fire', 'good');
+              close();
+              return;
+            }
+            const res = smelt(r); toast(res.ok ? `Made ${nameOf(outId)}!` : res.message, res.ok ? 'fire' : null, res.ok ? 'good' : 'error'); render();
+          }, { cls: 'small primary', disabled: miss.length > 0, sound: null }));
       }));
     };
     render();
     close = modal(h('div.confirm.furnace-modal',
-      h('h3', icon('fire'), station === 'campfire' ? ' Campfire' : ' Furnace'),
-      h('p.muted', station === 'campfire' ? 'Grill a fish from your bag to make a healing snack.' : 'Bring ore up from the Old Mine. Wood keeps the fire going.'),
+      h('h3', icon('fire'), station === 'campfire' ? ' Campfire' : station === 'kitchen' ? ' Kitchen' : ' Furnace'),
+      h('p.muted', station === 'campfire' ? 'Grill a fish from your bag to make a healing snack.' : station === 'kitchen' ? 'Cook hearty meals that restore lots of energy and health.' : 'Bring ore and coal up from the Old Mine. Each bar takes a little while to smelt.'),
       list,
       h('div.row.end', button('Done', () => close(), { cls: 'primary' }))));
   }

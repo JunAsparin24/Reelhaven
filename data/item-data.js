@@ -86,6 +86,11 @@ export const FOOD = {
   seaweed_snack: { id: 'seaweed_snack', name: 'Seaweed Snack', icon: 'snack', heal: 20, energy: 15, price: 15, desc: 'Salty and crunchy. +20 HP, +15 energy.' },
   island_salad: { id: 'island_salad', name: 'Island Salad', icon: 'salad', heal: 40, energy: 35, price: 40, desc: 'Fresh greens and fruit. +40 HP, +35 energy.' },
   grilled_fish: { id: 'grilled_fish', name: 'Grilled Fish', icon: 'grilled', heal: 60, energy: 45, sell: 25, desc: 'Cooked at a furnace or campfire. +60 HP, +45 energy.' },
+  fish_stew: { id: 'fish_stew', name: 'Fish Stew', icon: 'grilled', heal: 60, energy: 70, sell: 120, desc: 'Cooked in your kitchen. +60 HP, +70 energy.' },
+  omelet: { id: 'omelet', name: 'Omelet', icon: 'snack', heal: 40, energy: 60, sell: 125, desc: 'Fluffy and filling. +40 HP, +60 energy.' },
+  melon_smoothie: { id: 'melon_smoothie', name: 'Melon Smoothie', icon: 'salad', heal: 30, energy: 90, sell: 300, desc: 'Cold and sweet. +90 energy.' },
+  pumpkin_soup: { id: 'pumpkin_soup', name: 'Pumpkin Soup', icon: 'salad', heal: 90, energy: 110, sell: 350, desc: 'Warms you to your toes. +90 HP, +110 energy.' },
+  leek_soup: { id: 'leek_soup', name: 'Frost Leek Soup', icon: 'salad', heal: 70, energy: 80, sell: 200, desc: 'Perfect for snowy days. +70 HP, +80 energy.' },
   field_snack: { id: 'field_snack', name: 'Field Snack', icon: 'snack', heal: 10, energy: 30, sell: 20, desc: 'Crafted from a radish and fiber. +30 energy.' },
 };
 
@@ -123,10 +128,18 @@ export const TOOLS = {
 
 /** Furnace recipes. `fish: 1` means any one fish from the bag (the least valuable). */
 export const SMELT_RECIPES = [
-  { id: 'copper_bar', in: { copper_ore: 5, wood: 1 }, out: { copper_bar: 1 } },
-  { id: 'iron_bar', in: { iron_ore: 5, wood: 2 }, out: { iron_bar: 1 } },
-  { id: 'gold_bar', in: { gold_ore: 5, wood: 3 }, out: { gold_bar: 1 } },
-  { id: 'grilled_fish', in: { fish: 1, wood: 1 }, out: { grilled_fish: 1 } },
+  { id: 'copper_bar', in: { copper_ore: 5, coal: 1 }, out: { copper_bar: 1 }, station: 'furnace' },
+  { id: 'iron_bar', in: { iron_ore: 5, coal: 1 }, out: { iron_bar: 1 }, station: 'furnace' },
+  { id: 'gold_bar', in: { gold_ore: 5, coal: 1 }, out: { gold_bar: 1 }, station: 'furnace' },
+  { id: 'grilled_fish', in: { fish: 1, wood: 1 }, out: { grilled_fish: 1 }, station: 'campfire' },
+  // cottage kitchen (after Rowan's kitchen upgrade)
+  { id: 'k_grilled_fish', in: { fish: 1 }, out: { grilled_fish: 1 }, station: 'kitchen' },
+  { id: 'k_salad', in: { radish: 1, sunbean: 1 }, out: { island_salad: 1 }, station: 'kitchen' },
+  { id: 'fish_stew', in: { fish: 2, radish: 1 }, out: { fish_stew: 1 }, station: 'kitchen' },
+  { id: 'omelet', in: { egg: 2, milk: 1 }, out: { omelet: 1 }, station: 'kitchen' },
+  { id: 'melon_smoothie', in: { tidemelon: 1, milk: 1 }, out: { melon_smoothie: 1 }, station: 'kitchen' },
+  { id: 'pumpkin_soup', in: { emberpumpkin: 1, milk: 1 }, out: { pumpkin_soup: 1 }, station: 'kitchen' },
+  { id: 'leek_soup', in: { frostleek: 2, fish: 1 }, out: { leek_soup: 1 }, station: 'kitchen' },
 ];
 
 /** Sell prices for spare resources (players can always sell extras). */
@@ -147,9 +160,23 @@ export const HATS = {
   beanie: { id: 'beanie', name: 'Cozy Beanie', pearls: 5 },
   explorer: { id: 'explorer', name: 'Explorer Hat', pearls: 6 },
   captain: { id: 'captain', name: 'Captain’s Hat', pearls: 10 },
+  sunhat: { id: 'sunhat', name: 'Sun Hat', pearls: 0 },
+  bucket: { id: 'bucket', name: 'Bucket Hat', pearls: 0 },
+  beret: { id: 'beret', name: 'Beret', pearls: 0 },
+  cowboy: { id: 'cowboy', name: 'Cowboy Hat', pearls: 0 },
+  bow: { id: 'bow', name: 'Hair Bow', pearls: 0 },
+  headband: { id: 'headband', name: 'Headband', pearls: 0 },
+  tophat: { id: 'tophat', name: 'Top Hat', pearls: 0 },
+  hardhat: { id: 'hardhat', name: 'Hard Hat', pearls: 4 },
+  frog: { id: 'frog', name: 'Frog Hat', pearls: 8 },
+  cat: { id: 'cat', name: 'Cat Ears', pearls: 8 },
+  pirate: { id: 'pirate', name: 'Pirate Hat', pearls: 12 },
+  wizard: { id: 'wizard', name: 'Wizard Hat', pearls: 15 },
+  crown: { id: 'crown', name: 'Coral Crown', pearls: 20 },
 };
 
-export const STARTING_HATS = ['none', 'straw', 'bandana'];
+/** Hats anyone can pick when making a character (the rest are bought with pearls). */
+export const STARTING_HATS = ['none', 'straw', 'bandana', 'sunhat', 'bucket', 'beret', 'cowboy', 'bow', 'headband', 'tophat'];
 
 /** Base fish capacity; storage sheds add to it (see building-data). */
 export const BASE_FISH_CAPACITY = 30;

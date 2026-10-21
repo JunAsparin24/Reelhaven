@@ -14,7 +14,9 @@ export const buildPanel = {
     const s = getState();
     const have = id => id === 'coins' ? s.player.coins : id === 'pearls' ? s.player.pearls : (s.inventory.items[id] || 0);
     body.append(tabs([['buildings', 'Buildings', 'home'], ['decor', 'Decor', 'flower'], ['utility', 'Utility', 'chest'], ['stored', 'Stored', 'bag']], tab, t => { tab = t; refreshSheet(); }));
-    body.append(button('Move or store what you’ve built', () => ctx.ui.buildUI.edit(), { cls: 'ghost wide', iconName: 'move' }));
+    body.append(button('Move, upgrade or demolish what you’ve built', () => ctx.ui.buildUI.edit(), { cls: 'ghost wide', iconName: 'move' }));
+    if (ctx.game.indoor) body.append(h('p.muted', 'You’re in a shed: place machines, chests and decorations in here. Buildings go outside.'));
+    else body.append(h('p.muted', 'Rowan builds new buildings over a day or more — they’re ready on a later morning.'));
     const list = h('div.build-grid');
     if (tab === 'buildings' || tab === 'decor' || tab === 'utility') {
       const defs = Object.values(tab === 'buildings' ? BUILDINGS : DECOR).filter(d => d.buildable !== false)
@@ -33,7 +35,7 @@ export const buildPanel = {
         h('div.build-name', d.name),
         h('div.build-desc', d.desc),
         block ? h('span.req', icon('lock'), block) : costView(cost, have),
-        h('div.fp', `${d.footprint.w}×${d.footprint.h} tiles`)));
+        h('div.fp', `${d.footprint.w}×${d.footprint.h} tiles${d.days ? ` · ${d.days} day${d.days > 1 ? 's' : ''} to build` : ''}`)));
       }
     } else {
       const stored = Object.entries(s.inventory.storedDecor).filter(([, n]) => n > 0);

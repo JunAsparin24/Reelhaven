@@ -4,15 +4,16 @@
 import { getState, commit, uid } from './state.js';
 import { emit, toast } from './events.js';
 import { addCoins, addItem, removeItem, itemCount, addPearls } from './economy.js';
-import { RESOURCES, RESOURCE_SELL, FOOD, BAIT } from '../data/item-data.js';
+import { RESOURCES, RESOURCE_SELL, FOOD, BAIT, STARTING_HATS } from '../data/item-data.js';
 import { FISH_BY_ID } from '../data/fish-data.js';
 import { CROPS } from '../data/farm-data.js';
 import { NPCS } from '../data/npc-data.js';
 import { fishValue, removeFishByUid } from './inventory.js';
 import {
   MAX_ENERGY, ENERGY_COST, SKILLS, SKILL_XP, MAX_SKILL, HEART_POINTS, MAX_HEARTS, GIFT_POINTS, TALK_POINTS, TASTES,
-  HEART_REWARDS, MAIL_SCHEDULE, BUNDLES, MUSEUM_GEMS, MUSEUM_REWARDS, ANIMALS, MACHINES,
+  HEART_REWARDS, MAIL_SCHEDULE, BUNDLES, MUSEUM_GEMS, MUSEUM_REWARDS, ANIMALS, MACHINES, CRAFT_RECIPES,
 } from '../data/life-data.js';
+import { PLACEABLES } from '../data/building-data.js';
 import { sfx } from './audio.js';
 
 // ---------------------------------------------------------------- setup
@@ -31,7 +32,57 @@ export function ensureLife(s = getState()) {
   s.restoration = s.restoration || {};
   s.museum = s.museum || { donated: [], rewards: [] };
   s.festivals = s.festivals || {};
+  for (const id of STARTING_HATS) if (!s.inventory.hats.includes(id)) s.inventory.hats.push(id);
+  if (!Array.isArray(s.recipes)) {
+    // older saves already knew every recipe their skills allowed
+    s.recipes = CRAFT_RECIPES.filter(r => r.learn === 'start' || (r.learn && !r.learn.shop && !r.learn.hearts && !r.learn.quest && Object.entries(r.learn).every(([k, v]) => (s.skills[k]?.level || 0) >= v))).map(r => r.id);
+  }
+  for (const isl of Object.values(s.islands || {})) { isl.silo = isl.silo || 0; isl.interiors = isl.interiors || {}; }
   for (const isl of Object.values(s.islands || {})) { isl.animals = isl.animals || []; isl.feed = isl.feed || {}; isl.machines = isl.machines || {}; }
+}
+
+// ---------------------------------------------------------------- recipes
+/** How a recipe is learned, in words. */
+export function learnText(r) {
+  const l = r.learn;
+  if (!l || l === 'start') return 'Known';
+  if (l.shop) return `Buy at Nori’s (${l.shop} coins)`;
+  if (l.hearts) return `${NPCS[l.hearts[0]]?.name} at ${l.hearts[1]}♥`;
+  if (l.quest) return 'Story quest reward';
+  const [sk, lvl] = Object.entries(l)[0];
+  return `${SKILLS[sk]?.name} level ${lvl}`;
+}
+export const knowsRecipe = id => (getState().recipes || []).includes(id);
+export function learnRecipe(id, quiet = false) {
+  const s = getState();
+  if (knowsRecipe(id)) return false;
+  s.recipes.push(id);
+  if (!quiet) { const r = CRAFT_RECIPES.find(x => x.id === id); toast(`New crafting recipe: ${r?.name || id}!`, 'craft', 'gold'); }
+  return true;
+}
+/** Learn every recipe whose skill / friendship / quest condition is now met. */
+export function checkRecipes() {
+  const s = getState();
+  if (!s?.recipes) return;
+  for (const r of CRAFT_RECIPES) {
+    const l = r.learn;
+    if (!l || knowsRecipe(r.id) || l.shop) continue;
+    let ok = l === 'start';
+    if (l.hearts) ok = hearts(l.hearts[0]) >= l.hearts[1];
+    else if (l.quest) ok = (s.quests.done || []).includes(l.quest);
+    else if (typeof l === 'object') ok = Object.entries(l).every(([k, v]) => (s.skills[k]?.level || 0) >= v);
+    if (ok) learnRecipe(r.id);
+  }
+}
+
+// ---------------------------------------------------------------- time
+/** Game time as one number (minutes since day 0) for machine timers. */
+export const absMinutes = (s = getState()) => s.world.day * 1440 + Math.floor(s.world.minutes);
+export function minutesText(m) {
+  if (m <= 0) return 'ready';
+  if (m < 60) return `${m} min`;
+  if (m < 1440) return `${Math.round(m / 60)} h`;
+  return `${Math.round(m / 1440 * 10) / 10} days`;
 }
 
 // ---------------------------------------------------------------- energy
@@ -41,7 +92,8 @@ export function energyCost(tool) {
   if (!base) return 0;
   const skill = Object.entries(SKILLS).find(([, d]) => d.tools.includes(tool))?.[0];
   const lvl = skill ? s.skills?.[skill]?.level || 0 : 0;
-  return Math.max(1, Math.round(base * (1 - lvl * 0.05)));
+  // each skill level shaves a little off, down to half the base cost
+  return Math.max(base / 2, Math.round(base * (1 - lvl * 0.05) * 4) / 4);
 }
 
 /** Spend energy for a tool use. Returns false (with a hint) when too tired. */
@@ -74,6 +126,7 @@ export function addSkillXp(id, n) {
     toast(`${SKILLS[id].name} level ${sk.level}!${sk.level === 5 || sk.level === 10 ? ' New perk unlocked.' : ''}`, SKILLS[id].icon, 'gold');
     emit('skillUp', { id, level: sk.level });
   }
+  checkRecipes();
 }
 
 /** Multiplier for crop / artisan sell prices from the Farming perk. */
@@ -87,13 +140,14 @@ export function friendOf(id) {
 }
 export function hearts(id) { return Math.min(MAX_HEARTS, Math.floor((getState().friends[id]?.pts || 0) / HEART_POINTS)); }
 
-function addFriendship(id, pts) {
+export function addFriendship(id, pts) {
   const f = friendOf(id);
   const before = hearts(id);
   f.pts = Math.max(0, Math.min(HEART_POINTS * MAX_HEARTS, f.pts + pts));
   const after = hearts(id);
   if (after > before) {
     toast(`${NPCS[id]?.name || id} ♥ ${after}`, 'heart', 'good');
+    checkRecipes();
     for (let h = before + 1; h <= after; h++) if (HEART_REWARDS[id]?.[h] && !f.rewards.includes(h)) {
       f.rewards.push(h);
       const r = HEART_REWARDS[id][h];
@@ -305,11 +359,17 @@ export function donateToMuseum(key) {
 // ---------------------------------------------------------------- animals
 export function animalsIn(isl, homeUid) { return (isl.animals || []).filter(a => a.home === homeUid); }
 
+/** How many animals a coop / barn holds. */
+export function capacityOf(isl, homeUid) {
+  const pl = isl.placements.find(p => p.uid === homeUid);
+  return PLACEABLES[pl?.type]?.capacity || 4;
+}
+
 export function buyAnimal(isl, home, kind, name) {
   const def = ANIMALS[kind];
   const s = getState();
   if (s.player.coins < def.price) return { ok: false, message: 'Not enough coins.' };
-  if (animalsIn(isl, home.uid).length >= 4) return { ok: false, message: 'This building is full.' };
+  if (animalsIn(isl, home.uid).length >= capacityOf(isl, home.uid)) return { ok: false, message: 'This building is full.' };
   s.player.coins -= def.price;
   isl.animals.push({ id: uid('a'), kind, name: name || def.name, home: home.uid, hearts: 0, fedDay: 0, pettedDay: 0, lastProduced: s.world.day, ready: null });
   sfx('buy');
@@ -335,14 +395,56 @@ export function petAnimal(a) {
   return `You pet ${a.name}. ♥`;
 }
 
-/** Put all your hay into a building's trough. */
+/** Put all your hay (or, with none, enough from the silo for today) into a building's trough. */
 export function fillTrough(isl, homeUid) {
-  const n = itemCount('hay');
+  let n = itemCount('hay');
+  if (n) removeItem('hay', n);
+  else {
+    n = Math.min(isl.silo || 0, Math.max(0, animalsIn(isl, homeUid).length - (isl.feed[homeUid] || 0)));
+    isl.silo -= n;
+  }
   if (!n) return 0;
-  removeItem('hay', n);
   isl.feed[homeUid] = (isl.feed[homeUid] || 0) + n;
   commit('feed');
   return n;
+}
+
+// ---------------------------------------------------------------- silo
+/** Hay the silos on this island can hold (finished silos only). */
+export function siloCapacity(isl) {
+  return isl.placements.filter(p => p.type === 'silo' && !underConstruction(p)).length * (PLACEABLES.silo.hay || 240);
+}
+/** Cut grass: hay goes to the silo if there's room. Returns how many went in. */
+export function storeHay(isl, n) {
+  const room = Math.max(0, siloCapacity(isl) - (isl.silo || 0));
+  const put = Math.min(room, n);
+  isl.silo = (isl.silo || 0) + put;
+  return put;
+}
+
+// ---------------------------------------------------------------- construction
+/** Rowan is still building this (or the placement is being upgraded). */
+export const underConstruction = (p, s = getState()) => !!(p?.buildDay && p.buildDay > s.world.day);
+/**
+ * Each morning: finished buildings open, upgrades are applied. Returns
+ * a list of messages for the morning toasts.
+ */
+export function finishConstruction(day) {
+  const s = getState(), done = [];
+  for (const isl of Object.values(s.islands)) for (const p of isl.placements || []) {
+    if (p.buildDay && p.buildDay <= day) {
+      delete p.buildDay;
+      done.push(`Rowan finished your ${PLACEABLES[p.type]?.name || p.type}!`);
+      if (p.type === 'stable') s.flags.horse = true;
+    }
+    if (p.upgrade && p.upgrade.day <= day) {
+      const to = p.upgrade.to;
+      delete p.upgrade;
+      if (to === 'kitchen') { s.flags.kitchen = true; done.push('Your cottage kitchen is ready — cook something tasty!'); }
+      else { const old = PLACEABLES[p.type]?.name; p.type = to; done.push(`Your ${old} is now a ${PLACEABLES[to]?.name}!`); }
+    }
+  }
+  return done;
 }
 
 // ---------------------------------------------------------------- machines
@@ -354,30 +456,37 @@ export function machineAccepts(type, key) {
   return null;
 }
 
+/** When a machine's job is done (older saves used readyDay). */
+export const readyAt = st => st.readyAt ?? (st.readyDay * 1440 + 360);
+export const machineReady = st => !!st && absMinutes() >= readyAt(st);
+
 /** Load (held item) / collect from a machine placement. */
 export function useMachine(isl, pl, heldKey) {
   const s = getState();
   const st = isl.machines[pl.uid];
-  if (st && st.readyDay <= s.world.day) {
-    addItem(st.output, 1);
+  const m = MACHINES[pl.type];
+  if (st && machineReady(st)) {
+    addItem(st.output, st.n || 1);
     delete isl.machines[pl.uid];
-    addSkillXp('farming', 4);
+    addSkillXp(pl.type === 'charcoal_kiln' ? 'foraging' : 'farming', 4);
     sfx('coin');
     commit('machine');
     return { ok: true, message: `Collected ${RESOURCES[st.output]?.name || st.output}!` };
   }
-  if (st) return { ok: false, message: `Working on it… ready tomorrow morning.` };
+  if (st) return { ok: false, message: `Working on it… ready in ${minutesText(readyAt(st) - absMinutes())}.` };
   const keys = heldKey && itemCount(heldKey) ? [heldKey] : Object.keys(s.inventory.items).filter(k => s.inventory.items[k] > 0);
   for (const k of keys) {
     const out = machineAccepts(pl.type, k);
     if (!out) continue;
-    removeItem(k, 1);
-    isl.machines[pl.uid] = { input: k, output: out, readyDay: s.world.day + 1 };
+    const need = m.need?.[k] || 1;
+    if (itemCount(k) < need) continue;
+    removeItem(k, need);
+    isl.machines[pl.uid] = { input: k, n: 1, output: out, readyAt: absMinutes() + (m.time || 600) };
     sfx('smelt');
     commit('machine');
-    return { ok: true, message: `Loaded ${RESOURCES[k]?.name || k}. Ready tomorrow.` };
+    return { ok: true, message: `Loaded ${need > 1 ? need + ' ' : ''}${RESOURCES[k]?.name || k}. Ready in ${minutesText(m.time || 600)}.` };
   }
-  return { ok: false, message: `${MACHINES[pl.type].name} needs ${pl.type === 'preserves_jar' ? 'a crop' : pl.type === 'mayo_machine' ? 'an egg' : 'milk'}.` };
+  return { ok: false, message: `The ${m.name} needs ${m.ask}.` };
 }
 
 // ---------------------------------------------------------------- each morning
@@ -398,8 +507,9 @@ export function onNewDay(day) {
   for (const isl of Object.values(s.islands)) {
     for (const a of isl.animals || []) {
       const def = ANIMALS[a.kind];
-      // each animal eats one hay from its building's trough
+      // each animal eats one hay from its building's trough (big coops / barns use the silo)
       if ((isl.feed[a.home] || 0) > 0) { isl.feed[a.home] -= 1; a.fedDay = day; }
+      else if (PLACEABLES[isl.placements.find(p => p.uid === a.home)?.type]?.autoFeed && (isl.silo || 0) > 0) { isl.silo -= 1; a.fedDay = day; }
       if (a.fedDay === day && !a.ready && day - a.lastProduced >= def.every) { a.ready = def.product; a.lastProduced = day; out.products = (out.products || 0) + 1; }
       if (a.pettedDay < day - 1) a.hearts = Math.max(0, a.hearts - 0.1);
     }

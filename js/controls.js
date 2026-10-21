@@ -39,6 +39,8 @@ export class Controls {
         if (this.h.onInteractKey?.(e)) e.preventDefault();
       } else if (e.code === 'Escape') {
         this.h.onEscape?.();
+      } else if (e.code === 'KeyH') {
+        this.h.onHorseKey?.();
       } else if (e.code === 'KeyR') {
         this.h.onRotateKey?.();
       } else if (/^Digit[0-9]$/.test(e.code) || e.code === 'Minus' || e.code === 'Equal') {

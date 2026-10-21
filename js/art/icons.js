@@ -181,6 +181,9 @@ export const ICONS = {
   cow: () => icon(p => { p.rect(3, 6, 12, 7, C.white); p.rect(5, 7, 3, 3, C.ink2); p.rect(11, 10, 3, 2, C.ink2); p.rect(13, 4, 4, 5, C.white); p.rect(15, 7, 2, 2, C.pink); p.px(14, 5, C.ink); for (const x of [4, 7, 11, 13]) p.vline(x, 13, 3, C.ink2); }),
   people: () => icon(p => { p.ellipse(9, 5, 3, 3, C.coral); p.rect(5, 9, 8, 7, C.coral2); p.px(8, 4, C.white); }),
   skills: () => icon(p => { p.rect(2, 12, 3, 4, C.grass3); p.rect(6, 9, 3, 7, C.turq); p.rect(10, 6, 3, 10, C.gold); p.rect(14, 3, 2, 13, C.coral); }),
+  coal: () => icon(p => { p.ellipse(9, 10, 6, 5, '#2e2a36'); p.ellipse(7, 8, 3, 2, '#4a4456'); p.px(6, 7, '#8a8496'); p.px(12, 12, '#1e1a26'); }),
+  sap: () => icon(p => { p.ellipse(9, 11, 5, 5, '#c98a3a'); p.rect(8, 3, 3, 5, '#c98a3a'); p.px(7, 9, '#f2c27a'); p.px(8, 8, '#f2c27a'); }),
+  juice: () => icon(p => { p.rect(5, 4, 8, 12, '#9fd6e8'); p.rect(6, 7, 6, 8, '#e98f4a'); p.rect(6, 2, 6, 2, C.wood); p.vline(7, 8, 6, '#f6b66c'); }),
   sparkle: () => icon(p => { p.rect(8, 2, 2, 14, C.yellow); p.rect(2, 8, 14, 2, C.yellow); p.rect(7, 7, 4, 4, C.white); }),
 };
 

@@ -13,7 +13,7 @@ import { sfx, vibrate } from './audio.js';
 import { addXp } from './progression.js';
 import { hitDebris, till, water, plant, harvest } from './farm.js';
 import { SWORDS } from '../data/weapon-data.js';
-import { spendEnergy, restoreEnergy, addSkillXp, skillLevel, combatBonus } from './life.js';
+import { spendEnergy, energyCost, restoreEnergy, addSkillXp, skillLevel, combatBonus } from './life.js';
 
 const DIRV = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const SWING_TIME = 0.26, SWING_COOLDOWN = 0.36;
@@ -66,9 +66,20 @@ export function swing(game, tool = getState().inventory.held) {
   };
   if (tool === 'hoe') { const t = frontTile(p); if (!harvest(game, t.x, t.y)) till(game, t.x, t.y); return true; }
   if (tool === 'watering_can') { const t = frontTile(p); water(game, t.x, t.y); return true; }
+  // Hitting something you placed (a chest, machine, fence, path…) with the axe or pickaxe picks it back up.
+  const pickUp = () => {
+    if (game.visit || (tool !== 'axe' && tool !== 'pickaxe')) return false;
+    const t = frontTile(p);
+    const pl = w.placementAt(t.x, t.y);
+    if (!pl || pl.def.kind !== 'decor') return false;
+    const r = game.build.store(pl);
+    toast(r.message, 'bag', r.ok ? 'good' : 'error');
+    restoreEnergy(energyCost(tool));
+    return true;
+  };
   if (tool === 'axe') {
     const o = nearest(o => ['debris_tree', 'debris_twig', 'debris_stump', 'debris_big_stump'].includes(o.type));
-    if (o) hitDebris(game, o, toolTier('axe').power); else missed(game);
+    if (o) hitDebris(game, o, toolTier('axe').power); else if (!pickUp()) missed(game);
     return true;
   }
   if (tool === 'scythe') {
@@ -89,7 +100,7 @@ export function swing(game, tool = getState().inventory.held) {
     const best = nearest(o => o.type === 'mine_rock' || o.type === 'debris_stone' || o.type === 'debris_boulder');
     if (best?.type === 'mine_rock') hitRock(game, best, toolTier('pickaxe').power);
     else if (best) hitDebris(game, best, toolTier('pickaxe').power);
-    else missed(game);
+    else if (!pickUp()) missed(game);
   } else {
     let hit = false;
     for (const m of w.monsters) {
@@ -190,6 +201,7 @@ function hitCrate(game, o) {
  */
 function missed(game) {
   sfx('swing');
+  restoreEnergy(energyCost(getState().inventory.held));   // swinging at nothing doesn't tire you
   const w = game.world, t = frontTile(game.player);
   const o = w.objects.find(x => x.x === t.x && x.y === t.y && !w.objectHidden(x) && (x.def.tool || x.type === 'mine_rock'));
   if (!o) return;

@@ -71,6 +71,7 @@ export const OBJECT_TYPES = {
   museum: { solid: true, footprint: { w: 4, h: 2 }, interact: { kind: 'enter', verb: 'Enter', label: 'Museum' }, interior: 'museum_interior' },
   museum_desk: { solid: true, footprint: { w: 2, h: 1 }, interact: { kind: 'museum', verb: 'Donate', label: 'Museum Desk' } },
   display_case: { solid: true },
+  kitchen: { solid: true, interact: { kind: 'cook', verb: 'Cook', label: 'Kitchen' } },
   feed_trough: { solid: true, footprint: { w: 2, h: 1 }, interact: { kind: 'feed', verb: 'Add hay', label: 'Feed Trough' } },
   animal_board: { solid: true, interact: { kind: 'animals', verb: 'Buy animals', label: 'Animal Board' } },
   elevator: { solid: true, interact: { kind: 'elevator', verb: 'Ride', label: 'Mine Elevator' } },
@@ -169,6 +170,7 @@ export class World {
   objectHidden(o) {
     if (this.broken.has(o.id)) return true;
     if (o.type === 'gift_box' && getState()?.flags.giftOpened) return true;
+    if (o.type === 'kitchen' && !getState()?.flags.kitchen) return true;
     if (o.type === 'mine_chest' && getState()?.flags.floorChests?.includes(o.level)) return true;
     if (o.type === 'bridgeSite' && this.islandState.flags.bridgeRepaired) return true;
     const res = o.def.resource;
@@ -239,7 +241,8 @@ export class World {
     for (let j = y; j < y + fp.h; j++) for (let i = x; i < x + fp.w; i++) {
       if (i < 0 || j < 0 || i >= this.w || j >= this.h || !this.inBounds(i, j)) { fail('edge', i, j); continue; }
       const k = j * this.w + i;
-      if (!BUILDABLE.has(this.terrain[k])) { fail('terrain', i, j); continue; }
+      if (!BUILDABLE.has(this.terrain[k]) && !(this.def.buildInside && this.terrain[k] === T.I)) { fail('terrain', i, j); continue; }
+      if (this.def.buildInside && PLACEABLES[type].kind === 'building') { fail('terrain', i, j); continue; }
       if (this.islandState.farm?.soil?.[i + ',' + j]?.crop) { fail('occupied', i, j); continue; }
       const p = this.placementAt(i, j);
       if (p && p.uid !== ignoreUid) { fail('occupied', i, j); continue; }

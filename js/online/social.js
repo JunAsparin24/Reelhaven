@@ -127,7 +127,7 @@ export class Social {
    */
   joinIsland(host, island, me, handlers) {
     this.room = { host, island, handlers };
-    this.net.request('island_join', { host, island, x: Math.round(me.x), y: Math.round(me.y), f: me.f })
+    this.net.request('island_join', { host, island, x: Math.round(me.x), y: Math.round(me.y), f: me.f, r: me.r || '', n: me.name })
       .catch(err => { console.warn('Could not join island channel', err.message); });
     return {
       send: pos => this.net.send('pos', pos),

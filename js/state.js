@@ -1,3 +1,4 @@
+import { STARTING_HATS } from '../data/item-data.js';
 // Authoritative game state. Everything that must persist lives in this plain
 // JSON-compatible object; rendering and UI only read from it. Simulation
 // modules mutate it through their own functions and then call commit().
@@ -67,7 +68,7 @@ export function createNewState({ name = 'Islander', look }) {
       rods: [],                   // Mira hands you a rod at the pier
       equippedRod: 'wooden_rod',
       equippedBait: 'none',
-      hats: ['none', 'straw', 'bandana'],
+      hats: [...STARTING_HATS],
       storedDecor: {},            // decorations picked up from the island
       // tier index into TOOLS (data/item-data.js); the sword is found in the mine
       tools: { axe: 0, pickaxe: 0, scythe: 0, hoe: 0, watering_can: 0 },

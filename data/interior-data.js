@@ -51,6 +51,7 @@ export const INTERIORS = {
       m.obj('table', 6, 5);
       m.obj('plant', 1, 7);
       m.obj('tv', 1, 5);
+      m.obj('kitchen', 7, 4);            // appears after the kitchen upgrade
       m.obj('gift_box', 7, 6);
       m.obj('doormat', 4, 8);
     },
@@ -112,6 +113,21 @@ export const INTERIORS = {
       m.obj('feed_trough', 1, 2); m.obj('feed_trough', 3, 2);
       m.obj('animal_board', 10, 2);
       m.obj('barrel', 10, 7);
+      m.obj('doormat', 5, 8);
+    },
+    npcs: [],
+  },
+  // An empty room you furnish yourself (Build menu works in here).
+  shed_interior: {
+    id: 'shed_interior', name: 'Shed', interior: true, theme: THEME, buildInside: true,
+    size: { w: 12, h: 9 },
+    spawn: { x: 6, y: 7 },
+    exit: { x: 5, y: 8, w: 2 },
+    build(m) {
+      const { I, L } = m.T;
+      m.fill(L);
+      m.rect(1, 2, 10, 6, I);
+      m.rect(5, 8, 2, 1, I);
       m.obj('doormat', 5, 8);
     },
     npcs: [],

@@ -170,7 +170,7 @@ def clean_look(look):
     """Appearance is public: keep only known keys with short string values."""
     out = {}
     if isinstance(look, dict):
-        for k in ("skin", "hair", "hairStyle", "shirt", "pants", "hat"):
+        for k in ("skin", "hair", "hairStyle", "shirt", "outfit", "pants", "bottoms", "shoes", "hat", "acc"):
             v = look.get(k)
             if isinstance(v, str) and len(v) <= 24:
                 out[k] = v
@@ -697,7 +697,9 @@ class Server:
 
     def clean_pos(self, m):
         f = m.get("f")
-        return {"x": max(0, min(4000, int(m.get("x", 0)))), "y": max(0, min(4000, int(m.get("y", 0)))), "f": f if f in FACINGS else "down"}
+        # r = which room you're in ('' outdoors, e.g. 'shop_interior' or 'mine:12'); n = your character's name
+        return {"x": max(0, min(4000, int(m.get("x", 0)))), "y": max(0, min(4000, int(m.get("y", 0)))), "f": f if f in FACINGS else "down",
+                "r": clean_text(m.get("r"), 48), "n": clean_text(m.get("n"), 16)}
 
     def on_pos(self, c, m):
         """Relay a position to everyone else on the same island (no reply)."""
@@ -793,7 +795,7 @@ class Server:
                 o.ws.send(msg)
         return None
 
-    RELAY_KINDS = {"sleep", "wake", "clock", "boss"}
+    RELAY_KINDS = {"sleep", "wake", "clock", "boss", "me", "wave", "give", "story", "story_claim"}
 
     def on_room_relay(self, c, m):
         """Small game events shared with everyone on the same island: who is in
@@ -807,6 +809,21 @@ class Server:
         d = m.get("data") if isinstance(m.get("data"), dict) else {}
         if kind == "sleep":
             data = {"on": bool(d.get("on"))}
+        elif kind == "story":
+            if not host:
+                return None
+            data = {"index": max(0, min(999, int(d.get("index", 0) or 0)))}
+        elif kind == "story_claim":
+            data = {"index": max(0, min(999, int(d.get("index", 0) or 0)))}
+        elif kind == "boss":
+            data = {"floor": max(1, min(999, int(d.get("floor", 1) or 1)))}
+        elif kind == "me":
+            # your character in this world: name and look
+            data = {"name": clean_text(d.get("name"), 16), "look": clean_look(d.get("look"))}
+        elif kind == "wave":
+            data = {"to": clean_text(d.get("to"), 16)}
+        elif kind == "give":
+            data = {"to": clean_text(d.get("to"), 16), "item": clean_text(d.get("item"), 40), "n": max(1, min(99, int(d.get("n", 1) or 1)))}
         else:
             if not host:
                 return None

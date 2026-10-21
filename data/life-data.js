@@ -5,7 +5,7 @@
 // ---------------------------------------------------------------- energy
 export const MAX_ENERGY = 100;
 /** Energy used per swing / cast. The skill for that tool lowers it. */
-export const ENERGY_COST = { axe: 3, pickaxe: 3, hoe: 2, watering_can: 2, scythe: 0, sword: 0, cast: 2 };
+export const ENERGY_COST = { axe: 1, pickaxe: 1, hoe: 1, watering_can: 0.5, scythe: 0, sword: 0, cast: 0.5 };
 export const TIRED_AT = 15;
 
 // ---------------------------------------------------------------- skills
@@ -23,20 +23,43 @@ export const MAX_SKILL = 10;
 // ---------------------------------------------------------------- crafting
 /**
  * Crafting menu recipes. `place` = goes to your build storage to place;
- * `item` = goes in the bag. skill = { skill: level } needed to know it.
+ * `item` = goes in the bag. You have to learn a recipe before you can craft it:
+ *   learn: 'start'            known from the beginning
+ *   learn: { skill: lvl }     learned when that skill reaches the level
+ *   learn: { shop: price }    bought at Nori's shop (Recipes tab)
+ *   learn: { hearts: [npc, n] } taught by an islander at n hearts
+ *   learn: { quest: id }      reward for finishing that story quest
  */
 export const CRAFT_RECIPES = [
-  { id: 'chest', name: 'Storage Chest', in: { wood: 50 }, place: 'chest', desc: 'Store anything you don’t want to carry.' },
-  { id: 'sprinkler', name: 'Sprinkler', in: { copper_bar: 1, iron_bar: 1 }, place: 'sprinkler', skill: { farming: 2 }, desc: 'Waters the 4 tilled tiles next to it every morning.' },
-  { id: 'quality_sprinkler', name: 'Quality Sprinkler', in: { iron_bar: 1, gold_bar: 1, quartz: 1 }, place: 'quality_sprinkler', skill: { farming: 6 }, desc: 'Waters all 8 tiles around it every morning.' },
-  { id: 'scarecrow', name: 'Scarecrow', in: { wood: 30, fiber: 20 }, place: 'scarecrow', skill: { farming: 1 }, desc: 'A friendly guardian for your crops.' },
-  { id: 'worm_bait', name: 'Worm Bait ×5', in: { fiber: 5, slime: 1 }, item: { worm_bait: 5 }, skill: { fishing: 1 }, desc: 'Homemade bait — fish bite sooner.' },
-  { id: 'field_snack', name: 'Field Snack', in: { radish: 1, fiber: 2 }, item: { field_snack: 1 }, skill: { foraging: 1 }, desc: 'A quick bite: +30 energy.' },
-  { id: 'fence_pack', name: 'Fence ×5', in: { wood: 5 }, place: 'fence', count: 5, desc: 'Five pieces of wooden fence.' },
-  { id: 'furnace', name: 'Furnace', in: { stone: 25, copper_ore: 10 }, place: 'furnace', skill: { mining: 1 }, desc: 'Smelt ore into bars.' },
-  { id: 'mayo_machine', name: 'Mayonnaise Machine', in: { wood: 15, stone: 15, copper_bar: 1 }, place: 'mayo_machine', skill: { farming: 3 }, desc: 'Turns an egg into mayonnaise overnight.' },
-  { id: 'cheese_press', name: 'Cheese Press', in: { wood: 45, stone: 45, copper_bar: 1 }, place: 'cheese_press', skill: { farming: 5 }, desc: 'Turns milk into cheese overnight.' },
-  { id: 'preserves_jar', name: 'Preserves Jar', in: { wood: 50, stone: 40, fiber: 10 }, place: 'preserves_jar', skill: { farming: 4 }, desc: 'Turns any crop into jam (worth double) overnight.' },
+  // known from the start
+  { id: 'chest', name: 'Storage Chest', in: { wood: 50 }, place: 'chest', learn: 'start', desc: 'Store anything you don’t want to carry.' },
+  { id: 'torch', name: 'Torch', in: { wood: 1, sap: 2 }, place: 'torch', learn: 'start', desc: 'A bright light for your yard at night.' },
+  { id: 'wood_path', name: 'Wood Path', in: { wood: 1 }, place: 'wood_path', learn: 'start', desc: 'Walkable wooden planks.' },
+  { id: 'stone_path', name: 'Stone Path', in: { stone: 1 }, place: 'stone_path', learn: 'start', desc: 'Walkable stepping stones.' },
+  { id: 'fence_pack', name: 'Fence ×5', in: { wood: 5 }, place: 'fence', count: 5, learn: 'start', desc: 'Five pieces of wooden fence.' },
+  // skills
+  { id: 'scarecrow', name: 'Scarecrow', in: { wood: 30, coal: 1, fiber: 20 }, place: 'scarecrow', learn: { farming: 1 }, desc: 'A friendly guardian for your crops.' },
+  { id: 'field_snack', name: 'Field Snack', in: { radish: 1, fiber: 2 }, item: { field_snack: 1 }, learn: { foraging: 1 }, desc: 'A quick bite: +30 energy.' },
+  { id: 'worm_bait', name: 'Worm Bait ×5', in: { fiber: 5, slime: 1 }, item: { worm_bait: 5 }, learn: { fishing: 1 }, desc: 'Homemade bait — fish bite sooner.' },
+  { id: 'furnace', name: 'Furnace', in: { stone: 25, copper_ore: 20 }, place: 'furnace', learn: { mining: 1 }, desc: 'Smelt ore and coal into bars.' },
+  { id: 'sprinkler', name: 'Sprinkler', in: { copper_bar: 1, iron_bar: 1 }, place: 'sprinkler', learn: { farming: 2 }, desc: 'Waters the 4 tilled tiles next to it every morning.' },
+  { id: 'charcoal_kiln', name: 'Charcoal Kiln', in: { wood: 20, copper_bar: 2 }, place: 'charcoal_kiln', learn: { foraging: 2 }, desc: 'Turns 10 wood into 1 coal.' },
+  { id: 'mayo_machine', name: 'Mayonnaise Machine', in: { wood: 15, stone: 15, copper_bar: 1 }, place: 'mayo_machine', learn: { farming: 3 }, desc: 'Turns an egg into mayonnaise.' },
+  { id: 'preserves_jar', name: 'Preserves Jar', in: { wood: 50, stone: 40, coal: 8 }, place: 'preserves_jar', learn: { farming: 4 }, desc: 'Turns any crop into jam.' },
+  { id: 'cheese_press', name: 'Cheese Press', in: { wood: 45, stone: 45, hardwood: 10, copper_bar: 1 }, place: 'cheese_press', learn: { farming: 5 }, desc: 'Turns milk into cheese.' },
+  { id: 'keg', name: 'Keg', in: { wood: 30, copper_bar: 1, iron_bar: 1, sap: 10 }, place: 'keg', learn: { farming: 6 }, desc: 'Turns any crop into juice.' },
+  { id: 'quality_sprinkler', name: 'Quality Sprinkler', in: { iron_bar: 1, gold_bar: 1, quartz: 1 }, place: 'quality_sprinkler', learn: { farming: 7 }, desc: 'Waters all 8 tiles around it every morning.' },
+  // bought at Nori's
+  { id: 'tiki_torch', name: 'Tiki Torch', in: { wood: 2, sap: 3 }, place: 'tiki_torch', learn: { shop: 150 }, desc: 'Flickers cheerfully after dark.' },
+  { id: 'stone_lantern', name: 'Stone Lantern', in: { stone: 5, coal: 1 }, place: 'stone_lantern', learn: { shop: 250 }, desc: 'A calm glow carved from stone.' },
+  { id: 'shrimp_bait', name: 'Shrimp Bait ×3', in: { shell: 2, fiber: 2 }, item: { shrimp_bait: 3 }, learn: { shop: 300 }, desc: 'Bait that tempts the bigger fish.' },
+  // taught by islanders
+  { id: 'lantern', name: 'Lantern', in: { wood: 2, coal: 1 }, place: 'lantern', learn: { hearts: ['nori', 3] }, desc: 'Nori’s favourite warm light.' },
+  { id: 'well', name: 'Stone Well', in: { stone: 10, wood: 3 }, place: 'well', learn: { hearts: ['rowan', 3] }, desc: 'Rowan shows you how to build a well.' },
+  { id: 'fish_statue', name: 'Fish Statue', in: { stone: 8, copper_bar: 1 }, place: 'fish_statue', learn: { hearts: ['pip', 3] }, desc: 'Pip’s proud fish sculpture.' },
+  { id: 'deluxe_bait', name: 'Glow Bait ×3', in: { seaglass: 1, fiber: 3 }, item: { glow_bait: 3 }, learn: { hearts: ['mira', 3] }, desc: 'Mira’s night-fishing secret.' },
+  // story rewards
+  { id: 'bench', name: 'Bench', in: { wood: 3 }, place: 'bench', learn: { quest: 'q_gather' }, desc: 'A place to watch the waves.' },
 ];
 
 // ---------------------------------------------------------------- friendship
@@ -142,15 +165,25 @@ export const LIFE_ITEMS = {
   jam: { id: 'jam', name: 'Jam', icon: 'jam', desc: 'Sweet preserves from your crops.' },
   hay: { id: 'hay', name: 'Hay', icon: 'hay', desc: 'Cut tall grass to get hay. Animals eat it.' },
   hardwood: { id: 'hardwood', name: 'Hardwood', icon: 'hardwood', desc: 'Dense wood from big stumps.' },
+  coal: { id: 'coal', name: 'Coal', icon: 'coal', desc: 'Fuel for the furnace. Found in mine rocks, or made in a kiln.' },
+  sap: { id: 'sap', name: 'Sap', icon: 'sap', desc: 'Sticky stuff from chopped trees.' },
+  juice: { id: 'juice', name: 'Juice', icon: 'juice', desc: 'Pressed in a keg from your crops.' },
 };
-export const LIFE_SELL = { egg: 50, duck_egg: 95, milk: 125, goat_milk: 225, mayonnaise: 190, cheese: 230, jam: 120, hay: 5, hardwood: 15 };
+export const LIFE_SELL = { egg: 50, duck_egg: 95, milk: 125, goat_milk: 225, mayonnaise: 190, cheese: 230, jam: 120, hay: 5, hardwood: 15, coal: 15, sap: 2, juice: 160 };
 
-/** Processing machines: input item(s) → output, ready next morning. */
+/**
+ * Processing machines: put an input in, wait `time` game minutes, collect.
+ * inputs: item id → output id ('*crop' = any crop); need = how many go in.
+ */
 export const MACHINES = {
-  mayo_machine: { name: 'Mayonnaise Machine', inputs: { egg: 'mayonnaise', duck_egg: 'mayonnaise' } },
-  cheese_press: { name: 'Cheese Press', inputs: { milk: 'cheese', goat_milk: 'cheese' } },
-  preserves_jar: { name: 'Preserves Jar', inputs: { '*crop': 'jam' } },
+  mayo_machine: { name: 'Mayonnaise Machine', inputs: { egg: 'mayonnaise', duck_egg: 'mayonnaise' }, time: 180, ask: 'an egg' },
+  cheese_press: { name: 'Cheese Press', inputs: { milk: 'cheese', goat_milk: 'cheese' }, time: 200, ask: 'milk' },
+  preserves_jar: { name: 'Preserves Jar', inputs: { '*crop': 'jam' }, time: 2400, ask: 'a crop' },
+  keg: { name: 'Keg', inputs: { '*crop': 'juice' }, time: 1600, ask: 'a crop' },
+  charcoal_kiln: { name: 'Charcoal Kiln', inputs: { wood: 'coal' }, need: { wood: 10 }, time: 30, ask: '10 wood' },
 };
+/** Furnace smelting times (game minutes) per bar. */
+export const SMELT_TIME = { copper_bar: 30, iron_bar: 120, gold_bar: 300 };
 
 // ---------------------------------------------------------------- mine
 /** Boss floors (every 25): a big monster guarding a treasure shared with the world. */

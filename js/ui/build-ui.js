@@ -1,6 +1,6 @@
 // Build-mode toolbar shown while placing or editing. The catalogue itself is
 // the "build" sheet panel (panels/build.js).
-import { h, icon, button, costView, closeSheet } from './dom.js';
+import { h, icon, button, costView, closeSheet, confirmModal } from './dom.js';
 import { on, toast } from '../events.js';
 import { getState } from '../state.js';
 import { PLACEABLES } from '../../data/building-data.js';
@@ -67,15 +67,21 @@ export class BuildUI {
     } else if (b.selected) {
       const p = b.selected;
       const def = p.def;
+      const own = !this.ui.game.visit;
+      const up = def.upgrade && own && !p.upgrade && !p.buildDay && !(def.upgrade.to === 'kitchen' && s.flags.kitchen) ? def.upgrade : null;
+      const canDemolish = own && def.kind === 'building' && !['cottage', 'guest_cabin'].includes(p.type);
       this.root.replaceChildren(
-        h('div.build-info', h('b', def.name), h('span', def.kind === 'building' ? 'Building' : 'Decoration')),
+        h('div.build-info', h('b', def.name), h('span', p.upgrade ? `Upgrading — ready Day ${p.upgrade.day}` : p.buildDay ? `Being built — ready Day ${p.buildDay}` : def.kind === 'building' ? 'Building' : 'Decoration'),
+          up ? h('span.up-note', `Upgrade to ${up.name || PLACEABLES[up.to]?.name}: `, costView({ coins: up.price, ...(up.cost || {}) }, have)) : null),
         h('div.build-actions',
           button('Back', () => { b.selected = null; this.render(); }, { cls: 'ghost' }),
-          button('Move', () => b.startMove(p), { iconName: 'move' }),
-          def.kind === 'decor' && !this.ui.game.visit ? button('Store', () => { const r = b.store(p); toast(r.message, 'bag'); }, { iconName: 'bag' }) : null));
+          p.type !== 'cottage' ? button('Move', () => b.startMove(p), { iconName: 'move' }) : null,
+          up ? button('Upgrade', () => { const r = b.upgrade(p); toast(r.message, 'build', r.ok ? 'good' : 'error'); }, { cls: 'primary', iconName: 'build' }) : null,
+          def.kind === 'decor' && own ? button('Pick up', () => { const r = b.store(p); toast(r.message, 'bag'); }, { iconName: 'bag' }) : null,
+          canDemolish ? button('Demolish', () => confirmModal(`Demolish the ${def.name}?`, 'It will be torn down for good. Rowan doesn’t give back the materials.', 'Demolish', () => { const r = b.demolish(p); toast(r.message, 'build', r.ok ? 'info' : 'error'); }, { danger: true }), { cls: 'ghost', iconName: 'close' }) : null));
     } else {
       this.root.replaceChildren(
-        h('div.build-info', icon('build'), h('b', 'Edit mode'), h('span', 'Tap anything you built to move it.')),
+        h('div.build-info', icon('build'), h('b', 'Edit mode'), h('span', 'Tap anything you built to move, upgrade, pick up or demolish it.')),
         h('div.build-actions',
           button('Catalogue', () => this.ui.open('build'), { iconName: 'shop' }),
           button('Done', () => this.exit(), { cls: 'primary', iconName: 'check' })));

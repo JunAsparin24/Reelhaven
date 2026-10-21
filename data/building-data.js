@@ -5,6 +5,9 @@
 // solid:     blocks movement; walkable decorations (paths) do not.
 // light:     radius in px of the night-time glow (optional), offset from base.
 // maxCount:  limit across all islands (null = unlimited).
+// days:      how long Rowan takes to build it (finished on the morning of day + days).
+// upgrade:   { to, price, cost, days } — an upgrade swaps the building for a better one.
+// capacity:  animals a coop / barn can hold; autoFeed: fed from the silo each morning.
 
 export const BUILDINGS = {
   cottage: {
@@ -12,6 +15,7 @@ export const BUILDINGS = {
     footprint: { w: 4, h: 2 }, solid: true,
     lights: [{ x: -17, y: -16, r: 18 }, { x: 21, y: -16, r: 18 }],
     desc: 'Your cozy home. Sleep here to skip to the next morning.',
+    upgrade: { to: 'kitchen', name: 'Kitchen', price: 2000, cost: { wood: 150, stone: 30 }, days: 2, desc: 'Rowan adds a kitchen to your cottage so you can cook big meals.' },
   },
   guest_cabin: {
     id: 'guest_cabin', name: 'Guest Cabin', kind: 'building', price: 0, buildable: false,
@@ -21,7 +25,7 @@ export const BUILDINGS = {
   },
   fishing_hut: {
     id: 'fishing_hut', name: 'Fishing Hut', kind: 'building', price: 220, cost: { wood: 10, stone: 4 }, minLevel: 2, maxCount: 1,
-    footprint: { w: 3, h: 2 }, solid: true,
+    footprint: { w: 3, h: 2 }, solid: true, days: 1,
     lights: [{ x: -12, y: -14, r: 16 }, { x: 14, y: -14, r: 16 }],
     desc: 'Unlocks Shrimp Bait, Glow Bait and Treasure Lures. Mira will love it.',
   },
@@ -33,30 +37,60 @@ export const BUILDINGS = {
   },
   fish_market: {
     id: 'fish_market', name: 'Fish Market', kind: 'building', price: 500, cost: { wood: 15, stone: 8, shell: 5 }, minLevel: 3, maxCount: 1,
-    footprint: { w: 4, h: 2 }, solid: true,
+    footprint: { w: 4, h: 2 }, solid: true, days: 2,
     lights: [{ x: -22, y: -6, r: 16 }, { x: 22, y: -6, r: 16 }],
     desc: 'Customers post special orders here, and every fish sells for 15% more.',
   },
   storage_shed: {
     id: 'storage_shed', name: 'Storage Shed', kind: 'building', price: 400, cost: { wood: 20, stone: 10 }, minLevel: 4, maxCount: 2,
-    footprint: { w: 2, h: 2 }, solid: true, use: 'chest',
+    footprint: { w: 2, h: 2 }, solid: true, use: 'chest', days: 1,
     desc: 'A walk-in store for everything that won’t fit in your bag. You can build two.',
   },
   coop: {
     id: 'coop', name: 'Coop', kind: 'building', price: 1500, cost: { wood: 100, stone: 40 }, minLevel: 2, maxCount: 2,
-    footprint: { w: 3, h: 2 }, solid: true, interior: 'coop_interior',
+    footprint: { w: 3, h: 2 }, solid: true, interior: 'coop_interior', days: 2, capacity: 4, animals: 'coop',
     lights: [{ x: 0, y: -12, r: 14 }],
-    desc: 'A home for chickens and ducks. Feed them hay and they lay eggs.',
+    upgrade: { to: 'big_coop', price: 3000, cost: { wood: 150, stone: 50 }, days: 2, desc: 'Room for 8 birds, and they eat from the silo by themselves.' },
+    desc: 'A home for chickens and ducks (4). Feed them hay and they lay eggs.',
+  },
+  big_coop: {
+    id: 'big_coop', name: 'Big Coop', kind: 'building', price: 0, buildable: false, maxCount: 2,
+    footprint: { w: 3, h: 2 }, solid: true, interior: 'coop_interior', capacity: 8, animals: 'coop', autoFeed: true,
+    lights: [{ x: 0, y: -12, r: 14 }],
+    desc: 'A roomy coop for 8 birds. They feed themselves from the silo.',
   },
   barn: {
     id: 'barn', name: 'Barn', kind: 'building', price: 4000, cost: { wood: 200, stone: 80 }, minLevel: 3, maxCount: 2,
-    footprint: { w: 4, h: 3 }, solid: true, interior: 'barn_interior',
+    footprint: { w: 4, h: 3 }, solid: true, interior: 'barn_interior', days: 3, capacity: 4, animals: 'barn',
     lights: [{ x: 0, y: -16, r: 16 }],
-    desc: 'A home for cows and goats. Feed them hay for fresh milk.',
+    upgrade: { to: 'big_barn', price: 6000, cost: { wood: 300, stone: 100 }, days: 3, desc: 'Room for 8 animals, and they eat from the silo by themselves.' },
+    desc: 'A home for cows and goats (4). Feed them hay for fresh milk.',
+  },
+  big_barn: {
+    id: 'big_barn', name: 'Big Barn', kind: 'building', price: 0, buildable: false, maxCount: 2,
+    footprint: { w: 4, h: 3 }, solid: true, interior: 'barn_interior', capacity: 8, animals: 'barn', autoFeed: true,
+    lights: [{ x: 0, y: -16, r: 16 }],
+    desc: 'A big barn for 8 animals. They feed themselves from the silo.',
+  },
+  silo: {
+    id: 'silo', name: 'Silo', kind: 'building', price: 100, cost: { stone: 100, copper_bar: 5 }, minLevel: 2, maxCount: 3,
+    footprint: { w: 2, h: 2 }, solid: true, days: 1, hay: 240,
+    desc: 'Stores up to 240 hay. Cutting tall grass sends hay straight here.',
+  },
+  shed: {
+    id: 'shed', name: 'Shed', kind: 'building', price: 1500, cost: { wood: 300 }, minLevel: 3, maxCount: 3,
+    footprint: { w: 3, h: 2 }, solid: true, days: 2, interior: 'shed_interior',
+    lights: [{ x: 0, y: -12, r: 14 }],
+    desc: 'An empty room to fill with machines, chests and decorations.',
+  },
+  stable: {
+    id: 'stable', name: 'Stable', kind: 'building', price: 3000, cost: { wood: 100, copper_bar: 5 }, minLevel: 3, maxCount: 1,
+    footprint: { w: 3, h: 2 }, solid: true, days: 2,
+    desc: 'Comes with a horse! Ride it to get around much faster (press H).',
   },
   lighthouse: {
     id: 'lighthouse', name: 'Lighthouse', kind: 'building', price: 1500, cost: { stone: 30, wood: 20, seaglass: 6 }, minLevel: 6, maxCount: 1,
-    footprint: { w: 2, h: 2 }, solid: true,
+    footprint: { w: 2, h: 2 }, solid: true, days: 3,
     lights: [{ x: 0, y: -70, r: 40 }],
     desc: 'Lights the way to Moonlit Bay and makes rare night fish a little more common.',
   },
@@ -96,12 +130,16 @@ export const DECOR = {
   // crafted at the Craft menu (they show up in Build → Stored)
   sprinkler: { id: 'sprinkler', name: 'Sprinkler', kind: 'decor', category: 'utility', buildable: false, footprint: { w: 1, h: 1 }, solid: true, sprinkle: 4, desc: 'Waters the 4 tilled tiles next to it every morning.' },
   quality_sprinkler: { id: 'quality_sprinkler', name: 'Quality Sprinkler', kind: 'decor', category: 'utility', buildable: false, footprint: { w: 1, h: 1 }, solid: true, sprinkle: 8, desc: 'Waters all 8 tiles around it every morning.' },
-  mayo_machine: { id: 'mayo_machine', name: 'Mayonnaise Machine', kind: 'decor', category: 'utility', buildable: false, use: 'machine', footprint: { w: 1, h: 1 }, solid: true, desc: 'Egg in, mayonnaise out (overnight).' },
-  cheese_press: { id: 'cheese_press', name: 'Cheese Press', kind: 'decor', category: 'utility', buildable: false, use: 'machine', footprint: { w: 1, h: 1 }, solid: true, desc: 'Milk in, cheese out (overnight).' },
-  preserves_jar: { id: 'preserves_jar', name: 'Preserves Jar', kind: 'decor', category: 'utility', buildable: false, use: 'machine', footprint: { w: 1, h: 1 }, solid: true, desc: 'Crop in, jam out (overnight).' },
+  mayo_machine: { id: 'mayo_machine', name: 'Mayonnaise Machine', kind: 'decor', category: 'utility', buildable: false, use: 'machine', footprint: { w: 1, h: 1 }, solid: true, desc: 'Egg in, mayonnaise out (3 hours).' },
+  cheese_press: { id: 'cheese_press', name: 'Cheese Press', kind: 'decor', category: 'utility', buildable: false, use: 'machine', footprint: { w: 1, h: 1 }, solid: true, desc: 'Milk in, cheese out (about 3 hours).' },
+  preserves_jar: { id: 'preserves_jar', name: 'Preserves Jar', kind: 'decor', category: 'utility', buildable: false, use: 'machine', footprint: { w: 1, h: 1 }, solid: true, desc: 'Crop in, jam out (about 2 days).' },
+  keg: { id: 'keg', name: 'Keg', kind: 'decor', category: 'utility', buildable: false, use: 'machine', footprint: { w: 1, h: 1 }, solid: true, desc: 'Crop in, juice out (about a day).' },
+  charcoal_kiln: { id: 'charcoal_kiln', name: 'Charcoal Kiln', kind: 'decor', category: 'utility', buildable: false, use: 'machine', footprint: { w: 1, h: 1 }, solid: true, lights: [{ x: 0, y: -8, r: 14 }], desc: '10 wood in, 1 coal out (30 minutes).' },
+  torch: { id: 'torch', name: 'Torch', kind: 'decor', buildable: false, footprint: { w: 1, h: 1 }, solid: true, lights: [{ x: 0, y: -18, r: 24 }], desc: 'A bright light for dark corners.' },
+  wood_path: { id: 'wood_path', name: 'Wood Path', kind: 'decor', buildable: false, footprint: { w: 1, h: 1 }, solid: false, flat: true, desc: 'Walkable wooden planks.' },
   // utility: things you use, not just look at
   chest: { id: 'chest', name: 'Storage Chest', kind: 'decor', category: 'utility', use: 'chest', price: 0, cost: { wood: 50 }, footprint: { w: 1, h: 1 }, solid: true, desc: 'Store items you don’t want to carry around.' },
-  furnace: { id: 'furnace', name: 'Furnace', kind: 'decor', category: 'utility', use: 'furnace', price: 120, cost: { stone: 15 }, footprint: { w: 1, h: 1 }, solid: true, minLevel: 2, lights: [{ x: 0, y: -8, r: 18 }], desc: 'Smelt ore into bars and grill fish.' },
+  furnace: { id: 'furnace', name: 'Furnace', kind: 'decor', category: 'utility', use: 'furnace', price: 120, cost: { stone: 25, copper_ore: 20 }, footprint: { w: 1, h: 1 }, solid: true, minLevel: 2, lights: [{ x: 0, y: -8, r: 18 }], desc: 'Smelt ore and coal into bars (takes a little while).' },
   campfire: { id: 'campfire', name: 'Campfire', kind: 'decor', category: 'utility', use: 'campfire', price: 30, cost: { wood: 5, stone: 2 }, footprint: { w: 1, h: 1 }, solid: true, lights: [{ x: 0, y: -6, r: 26 }], desc: 'Grill fish to heal up. Cozy after dark.' },
 };
 

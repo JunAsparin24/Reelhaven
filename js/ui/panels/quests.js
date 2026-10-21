@@ -1,3 +1,6 @@
+import { ensureFavors, completeFavor } from '../../quests.js';
+import { RESOURCES, FOOD, BAIT } from '../../../data/item-data.js';
+import { addFriendship } from '../../life.js';
 // Quests (main story + daily goals + achievements) and Fish Market orders.
 import { h, icon, spriteImg, button, progressBar, tabs, refreshSheet, fmt } from '../dom.js';
 import { getState } from '../../state.js';
@@ -26,7 +29,21 @@ export const questsPanel = {
   title: 'Quests', icon: 'quest',
   render(body) {
     const s = getState();
-    body.append(tabs([['story', 'Story', 'quest'], ['daily', 'Daily', 'sun'], ['achievements', 'Awards', 'trophy']], tab, t => { tab = t; refreshSheet(); }));
+    body.append(tabs([['story', 'Story', 'quest'], ['favors', 'Favors', 'heart'], ['daily', 'Daily', 'sun'], ['achievements', 'Awards', 'trophy']], tab, t => { tab = t; refreshSheet(); }));
+    if (tab === 'favors') {
+      body.append(h('p.muted', 'Islanders ask you for small favors each day. These are yours alone — friends in your world get their own.'));
+      const list = h('div.list');
+      ensureFavors().forEach((f, i) => {
+        const have = s.inventory.items[f.item] || 0;
+        const name = RESOURCES[f.item]?.name || FOOD[f.item]?.name || BAIT[f.item]?.name || f.item;
+        list.append(h('div.item-row' + (f.done ? '.claimed' : ''),
+          spriteImg('portrait_' + f.npc, 2, 'item-icon'),
+          h('div.item-main', h('div.item-name', `${NPCS[f.npc]?.name}: “Could you bring me ${f.n} ${name}?”`), progressBar(Math.min(have, f.n), f.n, have >= f.n ? 'done' : ''), h('div.item-sub', `Reward: ${f.coins} coins and friendship`)),
+          f.done ? h('span.tag', 'Done') : button('Give', () => { const r = completeFavor(i); if (r.ok) { addFriendship(f.npc, 60); toast(`${NPCS[f.npc]?.name} thanks you!`, 'heart', 'good'); } refreshSheet(); }, { cls: 'small primary', disabled: have < f.n, sound: null })));
+      });
+      body.append(list);
+      return;
+    }
     if (tab === 'story') {
       const qp = questProgress();
       if (!qp) body.append(h('div.empty', icon('trophy', 'big'), h('p', 'You’ve completed every story quest. The islands are yours! Keep collecting fish and decorating.')));
@@ -43,6 +60,7 @@ export const questsPanel = {
       }
       body.append(h('div.story-track', MAIN_QUESTS.map((q, i) => h('span.step' + (i < s.quests.index ? '.done' : i === s.quests.index ? '.now' : ''), { title: i <= s.quests.index ? q.title : '???' }))));
       body.append(h('p.muted.center', `Story progress: ${Math.min(s.quests.index, MAIN_QUESTS.length)} / ${MAIN_QUESTS.length}`));
+      if (s.member) body.append(h('p.muted.center', 'The story is shared with everyone in this world — when anyone finishes a step, it moves on for all.'));
     } else if (tab === 'daily') {
       body.append(h('p.muted', 'Fresh goals every day (your local date). No streaks, no pressure.'));
       const list = h('div.list');

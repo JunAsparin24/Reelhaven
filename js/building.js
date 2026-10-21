@@ -3,7 +3,7 @@
 import { getState, commit, uid } from './state.js';
 import { emit } from './events.js';
 import { PLACEABLES, BUILDINGS, footprintOf } from '../data/building-data.js';
-import { checkCost, spend, describeMissing, fullCost } from './economy.js';
+import { checkCost, spend, describeMissing, fullCost, addItem } from './economy.js';
 import { countBuilt } from './building-count.js';
 import { hasBlueprint } from './shop.js';
 import { sprite } from './art/sprites.js';
@@ -20,6 +20,7 @@ export function buildBlocker(type) {
   if (def.minLevel && s.player.level < def.minLevel) return `Reach level ${def.minLevel}`;
   if (def.maxCount && countBuilt(type) >= def.maxCount) return def.maxCount === 1 ? 'Already built' : `Limit ${def.maxCount}`;
   if (def.kind === 'building' && !hasBlueprint(type)) return 'Buy blueprint at Nori’s';
+  if (def.kind === 'building' && getState() && window.__reelhaven?.game?.indoor) return 'Build outside';
   if (def.requiresIsland && !s.islands[def.requiresIsland]?.unlocked) return 'Discover ' + ISLANDS[def.requiresIsland].name;
   return null;
 }
@@ -116,7 +117,7 @@ export class BuildMode {
     if (!this.type || !g) return { ok: false, message: 'Choose something to build first.' };
     if (!g.ok) { sfx('error'); return { ok: false, message: reasonText(g.reasons) }; }
     const s = getState();
-    const isl = s.islands[this.world.id];
+    const isl = this.world.islandState;   // the island, or the shed you're standing in
     const def = PLACEABLES[this.type];
     if (this.moving) {
       const pl = isl.placements.find(p => p.uid === this.moving.uid);
@@ -144,6 +145,8 @@ export class BuildMode {
       if (st[this.type] <= 0) delete st[this.type];
     }
     const placement = { uid: uid('p'), type: this.type, x: g.x, y: g.y, rot: this.rot };
+    // Rowan needs a few days for a new building
+    if (def.days && !this.moving) placement.buildDay = s.world.day + def.days;
     isl.placements.push(placement);
     // Building over tall grass flattens it.
     if (isl.farm?.debris) {
@@ -164,7 +167,48 @@ export class BuildMode {
     if (again) this.setGhost(g.x + g.fw, g.y);
     else if (def.kind === 'building') this.close();   // back to normal play so the new building can be used
     else { this.type = null; this.ghost = null; emit('build:update'); }
-    return { ok: true, message: `${name} placed!` };
+    return { ok: true, message: placement.buildDay ? `Rowan will have your ${name} ready on Day ${placement.buildDay}.` : `${name} placed!` };
+  }
+
+  /** Pay Rowan to upgrade a building (finished on a later morning). */
+  upgrade(placement) {
+    const up = placement.def.upgrade;
+    if (!up) return { ok: false, message: 'That can’t be upgraded.' };
+    if (placement.upgrade || placement.buildDay) return { ok: false, message: 'Rowan is already working on it.' };
+    if (up.to === 'kitchen' && getState().flags.kitchen) return { ok: false, message: 'Your cottage already has a kitchen.' };
+    const cost = { coins: up.price, ...(up.cost || {}) };
+    const check = checkCost(cost);
+    if (!check.ok) { sfx('error'); return { ok: false, message: 'Not enough: ' + describeMissing(check.missing) + '.' }; }
+    spend(cost);
+    const s = getState();
+    const pl = this.world.islandState.placements.find(p => p.uid === placement.uid);
+    pl.upgrade = { to: up.to, day: s.world.day + (up.days || 1) };
+    placement.upgrade = pl.upgrade;
+    this.selected = null;
+    sfx('build');
+    commit('upgrade');
+    emit('build:update');
+    return { ok: true, message: `Rowan starts on the ${up.name || PLACEABLES[up.to]?.name}. Ready on Day ${pl.upgrade.day}.` };
+  }
+
+  /** Tear a building down. Nothing is refunded. */
+  demolish(placement) {
+    const def = placement.def;
+    if (def.kind !== 'building' || ['cottage', 'guest_cabin'].includes(placement.type)) return { ok: false, message: 'That can’t be demolished.' };
+    const s = getState();
+    const isl = this.world.islandState;
+    if ((isl.animals || []).some(a => a.home === placement.uid)) return { ok: false, message: 'Animals live there! Find them a new home first.' };
+    if (def.use === 'chest' && !chestEmpty(this.world.id, placement.uid)) return { ok: false, message: 'Empty it out first.' };
+    if (isl.interiors?.[placement.uid]?.placements?.length) return { ok: false, message: 'Take everything out of it first.' };
+    isl.placements = isl.placements.filter(p => p.uid !== placement.uid);
+    if (isl.interiors) delete isl.interiors[placement.uid];
+    if (placement.type === 'stable' && !isl.placements.some(p => p.type === 'stable')) s.flags.horse = false;
+    this.world.rebuild();
+    this.selected = null;
+    sfx('rockbreak');
+    commit('demolish');
+    emit('build:update');
+    return { ok: true, message: `${def.name} demolished.` };
   }
 
   /** Pick up an existing placement to move it. */
@@ -181,9 +225,13 @@ export class BuildMode {
   store(placement) {
     const def = PLACEABLES[placement.type];
     if (def.kind !== 'decor') return { ok: false, message: 'Buildings can be moved, but not stored.' };
-    if (def.use === 'chest' && !chestEmpty(this.world.id, placement.uid)) return { ok: false, message: 'Empty the chest before storing it.' };
     const s = getState();
-    const isl = s.islands[this.world.id];
+    const outdoor = this.game.outdoor?.id || this.world.id;
+    if (def.use === 'chest' && !chestEmpty(outdoor, placement.uid)) return { ok: false, message: 'Empty the chest before picking it up.' };
+    const isl = this.world.islandState;
+    // a machine hands back what was inside it
+    const job = s.islands[outdoor]?.machines?.[placement.uid];
+    if (job) { if (job.input) addItem(job.input, 1); delete s.islands[outdoor].machines[placement.uid]; }
     isl.placements = isl.placements.filter(p => p.uid !== placement.uid);
     s.inventory.storedDecor[placement.type] = (s.inventory.storedDecor[placement.type] || 0) + 1;
     this.world.rebuild();
@@ -191,7 +239,7 @@ export class BuildMode {
     sfx('gather');
     commit('store');
     emit('build:update');
-    return { ok: true, message: `${def.name} stored.` };
+    return { ok: true, message: `Picked up the ${def.name}. It’s in Build → Stored.` };
   }
 
   cancelPlacement() {

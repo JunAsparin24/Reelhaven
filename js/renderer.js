@@ -12,6 +12,9 @@ import { seasonOf } from '../data/farm-data.js';
 import { cropStage } from './farm.js';
 import { MONSTERS } from '../data/mine-data.js';
 import { ANIMALS } from '../data/life-data.js';
+import { RESOURCES } from '../data/item-data.js';
+import { scaffold } from './art/life-art.js';
+import { machineReady } from './life.js';
 
 /** The current season ('spring' on the title screen). */
 const seasonNow = () => { const s = getState(); return s?.world ? seasonOf(s.world.day).season : 'spring'; };
@@ -388,6 +391,7 @@ export class Renderer {
       ctx.fillRect(tx, ty, 4, 1); ctx.fillRect(tx, ty, 1, 4); ctx.fillRect(tx + 12, ty, 4, 1); ctx.fillRect(tx + 15, ty, 1, 4);
       ctx.fillRect(tx, ty + 15, 4, 1); ctx.fillRect(tx, ty + 12, 1, 4); ctx.fillRect(tx + 12, ty + 15, 4, 1); ctx.fillRect(tx + 15, ty + 12, 1, 4);
     }
+    this.marks = [];
     for (const o of w.objects) {
       if (!inView(o.x * TILE, o.y * TILE) || !inB(o.x * TILE + 1, o.y * TILE + 1)) continue;
       if (w.objectHidden(o)) continue;
@@ -412,6 +416,9 @@ export class Renderer {
       const baseX = p.x * TILE + (p.fw * TILE) / 2, baseY = (p.y + p.fh) * TILE;
       if (p.def.flat) ctx.drawImage(spr, Math.round(baseX - spr.width / 2 - cam.x), Math.round(baseY - spr.height + (p.type === 'small_pond' ? 0 : 1) - cam.y));
       else drawList.push({ y: baseY, spr, x: baseX, by: baseY + 1 });
+      // machines show when they're busy or done
+      const job = (p.def.use === 'machine' || p.def.use === 'furnace') && scene.state?.islands[scene.state.player.island]?.machines?.[p.uid];
+      if (job) this.marks.push({ x: baseX, y: baseY - spr.height - 2, ready: machineReady(job), out: job.output });
     }
     // fishing spot markers
     if (!scene.title) for (const s of w.spots) {
@@ -523,11 +530,35 @@ export class Renderer {
         ctx.fillRect(Math.round(d.x - 5 - cam.x), Math.round(d.by - 2 - cam.y), 10, 2);
         ctx.fillRect(Math.round(d.x - 4 - cam.x), Math.round(d.by - 3 - cam.y), 8, 1);
       }
-      ctx.drawImage(d.spr, Math.round(d.x - d.spr.width / 2 - cam.x), Math.round(d.by - d.spr.height - cam.y + bob + (d.player || d.npc || d.remote ? 2 : 0)));
+      let lift = 0;
+      if (d.player && scene.riding) {
+        // on horseback: the horse first, you sitting on top
+        const pl = scene.player, side = pl.facing === 'right' ? 'r' : 'l';
+        const hs = sprite(`horse_${side}_${pl.moving ? Math.floor(pl.anim * 1.5) % 2 : 0}`);
+        if (hs) ctx.drawImage(hs, Math.round(d.x - hs.width / 2 - cam.x), Math.round(d.by - hs.height + 2 - cam.y));
+        lift = -9;
+      }
+      ctx.drawImage(d.spr, Math.round(d.x - d.spr.width / 2 - cam.x), Math.round(d.by - d.spr.height - cam.y + bob + lift + (d.player || d.npc || d.remote ? 2 : 0)));
       if (d.npc && scene.questGiver === d.npc.id) {
         const m = sprite('marker');
         const hop = this.reducedMotion ? 0 : Math.round(Math.abs(Math.sin(t * 3)) * 3);
         ctx.drawImage(m, Math.round(d.x - m.width / 2 - cam.x), Math.round(d.by - d.spr.height - 14 - hop - cam.y));
+      }
+    }
+    // machine status bubbles: the finished product, or a little puff while working
+    for (const m of this.marks) {
+      const bx = Math.round(m.x - cam.x), by = Math.round(m.y - cam.y);
+      if (m.ready) {
+        const hop = this.reducedMotion ? 0 : Math.round(Math.abs(Math.sin(t * 3)) * 2);
+        ctx.fillStyle = '#fff5df'; ctx.fillRect(bx - 8, by - 18 - hop, 16, 15);
+        ctx.fillStyle = '#3a2e2a'; ctx.fillRect(bx - 8, by - 4 - hop, 16, 1); ctx.fillRect(bx - 1, by - 3 - hop, 2, 2);
+        const ic = sprite('icon_' + (RESOURCES[m.out]?.icon || m.out));
+        if (ic) ctx.drawImage(ic, bx - 6, by - 17 - hop, 12, 12);
+      } else if (!this.reducedMotion) {
+        const k = (t * 0.8 + m.x * 0.01) % 1;
+        ctx.globalAlpha = 0.6 * (1 - k); ctx.fillStyle = '#e8e2d0';
+        ctx.fillRect(bx - 2 + Math.round(Math.sin(k * 6) * 2), by - 4 - Math.round(k * 10), 3, 3);
+        ctx.globalAlpha = 1;
       }
     }
     // tool swing
@@ -632,6 +663,12 @@ export class Renderer {
   }
 
   placementSprite(p, night, state) {
+    // Rowan's still building it: scaffolding over a faded outline
+    if (p.buildDay && state && p.buildDay > state.world.day) {
+      this.scaffolds = this.scaffolds || new Map();
+      if (!this.scaffolds.has(p.type)) this.scaffolds.set(p.type, scaffold(sprite(p.type === 'crop_garden' ? 'crop_garden_3' : p.type)));
+      return this.scaffolds.get(p.type);
+    }
     let id = p.type;
     if (p.rot === 1 && p.def.rotations) id += '_r1';
     if (p.type === 'crop_garden') {

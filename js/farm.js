@@ -11,7 +11,7 @@ import { ISLANDS } from '../data/island-data.js';
 import { T, WATERY } from './world-gen.js';
 import { sfx, vibrate } from './audio.js';
 import { addXp } from './progression.js';
-import { addSkillXp, skillLevel } from './life.js';
+import { addSkillXp, skillLevel, storeHay } from './life.js';
 
 export const FARM_ISLAND = 'sunny';
 const MAX_DEBRIS = 170;
@@ -190,6 +190,15 @@ export function hitDebris(game, o, power) {
     if (Math.random() > chance) continue;
     let n = min + Math.floor(Math.random() * (max - min + 1));
     if (id === 'wood' && o.kind === 'tree' && forage >= 5) n += 2;
+    if (n > 0 && id === 'hay') {
+      // hay goes straight to the silo when there's room
+      const isl = s.islands[game.world.id] || s.islands[FARM_ISLAND];
+      const put = isl ? storeHay(isl, n) : 0;
+      if (put) got.push(`+${put} Hay (silo)`);
+      if (n - put > 0) { addItem(id, n - put); got.push(`+${n - put} Hay`); }
+      s.stats.gathered += n;
+      continue;
+    }
     if (n > 0) { addItem(id, n); got.push(`+${n} ${RESOURCES[id]?.name || id}`); s.stats.gathered += n; }
   }
   if (got.length) game.renderer.floatText(got.join('  '), cx, cy - 10);

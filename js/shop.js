@@ -1,3 +1,4 @@
+import { CRAFT_RECIPES } from '../data/life-data.js';
 // Shop catalogue and purchasing. Every purchase checks requirements and
 // affordability, spends atomically, grants the item, then commits (autosave).
 import { getState, commit } from './state.js';
@@ -45,6 +46,7 @@ export function requirement(kind, id) {
     case 'decor': return need(DECOR[id]);
     case 'blueprint': return hasBlueprint(id) ? 'Owned' : need(BUILDINGS[id]);
     case 'hat': return s.inventory.hats.includes(id) ? 'Owned' : null;
+    case 'recipe': return (s.recipes || []).includes(id) ? 'Owned' : null;
     case 'tool': {
       const next = TOOLS[id][(s.inventory.tools[id] || 0) + 1];
       return next ? need(next) : 'Owned';
@@ -81,6 +83,7 @@ export function priceOf(kind, id) {
     case 'decor': return { coins: DECOR[id].price, ...(DECOR[id].cost || {}) };
     case 'blueprint': return { coins: BLUEPRINTS[id].price };
     case 'hat': return { pearls: HATS[id].pearls };
+    case 'recipe': return { coins: CRAFT_RECIPES.find(r => r.id === id)?.learn?.shop || 0 };
     case 'tool': return { ...(TOOLS[id][(getState().inventory.tools[id] || 0) + 1]?.cost || {}) };
     case 'food': return { coins: FOOD[id].price };
     case 'backpack': return { coins: BACKPACKS.find(x => x.id === id).price };
@@ -146,6 +149,10 @@ export function purchase(kind, id) {
     case 'seed':
       addItem(id, 5);
       message = `+5 ${RESOURCES[id].name}`;
+      break;
+    case 'recipe':
+      s.recipes = [...(s.recipes || []), id];
+      message = `You learned the ${CRAFT_RECIPES.find(r => r.id === id)?.name} recipe!`;
       break;
     case 'hat':
       s.inventory.hats.push(id);

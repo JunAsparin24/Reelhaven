@@ -100,16 +100,15 @@ export class AccountUI {
     const user = field('Username', { type: 'text', autocomplete: 'username', autocapitalize: 'none', spellcheck: 'false', maxlength: '16', placeholder: '3–16 letters or numbers' });
     const pw = field('Password', { type: 'password', autocomplete: mode === 'signup' ? 'new-password' : 'current-password', placeholder: mode === 'signup' ? 'At least 6 characters' : '' });
     if (mode === 'signup') {
-      const name = field('Display name', { type: 'text', maxlength: '20', placeholder: 'What friends will see', value: getState()?.player.name || this.ui.title?.loaded?.state?.player.name || '' });
       const go = button('Create account', () => busy(go, msg, async () => {
-        const bad = validUsername(user.input.value) || validPassword(pw.input.value) || validDisplayName(name.input.value);
+        const bad = validUsername(user.input.value) || validPassword(pw.input.value);
         if (bad) throw userError(bad);
-        await this.auth.signUp(user.input.value, pw.input.value, name.input.value);
+        await this.auth.signUp(user.input.value, pw.input.value);
         toast('Welcome to Reelhaven!', 'check', 'good');
         close();
       }), { cls: 'primary wide', sound: null });
       pw.input.addEventListener('keydown', e => { if (e.key === 'Enter') go.click(); });
-      return [user.el, pw.el, name.el, h('p.muted.small-note', 'Remember your password — there’s no email reset. You can change it later in your account.'), go];
+      return [user.el, pw.el, h('p.muted.small-note', 'Friends see your username. Your character’s name is chosen for each world. Remember your password — there’s no email reset.'), go];
     }
     const go = button('Sign in', () => busy(go, msg, async () => {
       const bad = validUsername(user.input.value) || (pw.input.value ? null : 'Please enter your password.');
@@ -144,13 +143,6 @@ export class AccountUI {
     const msg = h('p.form-msg');
     const look = getState()?.player.look || p.look;
     const avatar = look && look.skin ? h('img.acct-avatar', { src: scaleUp(buildPortrait(look), 4).toDataURL(), alt: '' }) : spriteImg('icon_friends', 3, 'acct-avatar');
-    const name = field('Display name', { type: 'text', maxlength: '20', value: p.name || '' });
-    const saveName = button('Save', () => busy(saveName, msg, async () => {
-      const bad = validDisplayName(name.input.value);
-      if (bad) throw userError(bad);
-      await a.updateProfile({ name: name.input.value });
-      msg.className = 'form-msg ok'; msg.textContent = 'Name saved.';
-    }), { cls: 'small', sound: null });
     const syncBtn = button('Sync now', () => busy(syncBtn, msg, async () => {
       const res = await this.cloud.reconcile();
       if (res.state && this.ui.game.mode === 'play') this.online.applyState(res.state);
@@ -160,14 +152,13 @@ export class AccountUI {
     const synced = this.cloud.lastSyncedAt || this.cloud.meta.syncedAt;
     close = modal(h('div.account',
       h('div.acct-head', avatar, h('div',
-        h('h3', p.name || 'Islander'),
-        h('p.muted', '@' + (p.username || '')))),
+        h('h3', '@' + (p.username || p.name || 'islander')),
+        h('p.muted', 'Your Reelhaven account'))),
       h('div.acct-code', h('span', 'Friend code'), h('b', p.code || '—'),
         button('Copy', async () => {
           try { await navigator.clipboard.writeText(p.code); toast('Friend code copied!', 'check', 'good'); }
           catch { toast('Copy not available — your code is ' + p.code, 'friends'); }
         }, { cls: 'small ghost' })),
-      h('div.form-inline', name.el, saveName),
       h('div.acct-sync', icon('island'), h('div', h('b', status?.text || 'Cloud save'), h('small', synced ? 'Last synced ' + new Date(synced).toLocaleString() : 'Not synced yet'))),
       msg,
       h('div.row.wrap.end',

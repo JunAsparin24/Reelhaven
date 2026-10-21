@@ -11,7 +11,7 @@ import { sfx } from './audio.js';
 import { MONSTERS } from '../data/mine-data.js';
 import { CROPS } from '../data/farm-data.js';
 import { hasRoomFor, freeSlots } from './bag.js';
-import { giftable, giftName } from './life.js';
+import { giftable, giftName, underConstruction } from './life.js';
 import { ANIMALS } from '../data/life-data.js';
 
 export const BRIDGE_COST = { coins: 100, wood: 15, stone: 6 };
@@ -45,6 +45,12 @@ function collectInteractables(game, rangeBoost = 1, only = null) {
     const held = getState().inventory.held;
     if (giftable(held)) consider({ kind: 'gift_npc', npc: n, verb: 'Give ' + giftName(held), label: n.def.name, mx: n.x, my: n.y - 30 }, n.x, n.y - 4, npcRange);
   }
+  // Friends in the same place as you: wave, or hand them what you're holding.
+  for (const r of game.remotesHere?.() || []) {
+    consider({ kind: 'friend_wave', remote: r, verb: 'Wave', label: r.name || 'Friend', mx: r.x, my: r.y - 30 }, r.x, r.y - 4, 26);
+    const held = getState().inventory.held;
+    if (held && giftable(held) && !held.startsWith('fish:')) consider({ kind: 'friend_give', remote: r, verb: 'Give ' + giftName(held), label: r.name || 'Friend', mx: r.x, my: r.y - 30 }, r.x, r.y - 4, 26);
+  }
   // Animals in a coop or barn: collect what they made, or give them a pet.
   for (const c of w.critters || []) {
     consider({ kind: 'pet', critter: c, verb: c.a.ready ? 'Collect' : 'Pet', label: c.a.name, mx: c.x, my: c.y - 20 }, c.x, c.y - 4, 18);
@@ -76,7 +82,7 @@ function collectInteractables(game, rangeBoost = 1, only = null) {
   // Utilities you can use: chests, furnaces, campfires.
   const USE_VERB = { chest: 'Open', furnace: 'Smelt', campfire: 'Cook', machine: 'Use' };
   for (const pl of w.placed) {
-    if (!pl.def.use) continue;
+    if (!pl.def.use || underConstruction(pl)) continue;
     const cx = pl.x * TILE + (pl.fw * TILE) / 2, cy = (pl.y + pl.fh) * TILE - 4;
     const spr = sprite(pl.type);
     consider({ kind: 'use', placement: pl, verb: USE_VERB[pl.def.use] || 'Use', label: pl.def.name, mx: cx, my: (pl.y + pl.fh) * TILE - (spr ? spr.height : 16) - 2 }, cx, cy, 26);
@@ -98,14 +104,19 @@ function collectInteractables(game, rangeBoost = 1, only = null) {
     consider({ kind: 'attack', monster: m, verb: 'Attack', label: MONSTERS[m.type]?.name || 'Monster', mx: m.x, my: m.y - 22 }, m.x, m.y - 2, 26);
   }
   for (const pl of w.placed) {
-    if (pl.def.kind !== 'building' || pl.def.use) continue;
+    if (pl.def.kind !== 'building') continue;
     const cx = pl.x * TILE + (pl.fw * TILE) / 2, cy = (pl.y + pl.fh) * TILE + 6;
+    if (underConstruction(pl) || pl.upgrade) {
+      consider({ kind: 'construction', placement: pl, verb: 'Check', label: pl.upgrade ? `${pl.def.name} (upgrading)` : `${pl.def.name} (being built)`, mx: cx, my: pl.y * TILE - 4 }, cx, cy, 22);
+      if (underConstruction(pl)) continue;
+    }
+    if (pl.def.use) continue;
     if (pl.type === 'cottage' || pl.type === 'guest_cabin' || pl.def.interior) {
       const label = pl.type === 'guest_cabin' ? `${pl.ownerName || 'Guest'}’s Cabin` : pl.def.name;
       consider({ kind: 'enter', placement: pl, verb: 'Enter', label, mx: cx, my: (pl.y + pl.fh) * TILE - (sprite(pl.type)?.height || 32) - 2 }, cx, cy, 22);
       continue;
     }
-    const verbs = { fishing_hut: 'Bait Shop', fish_market: 'Orders', crop_garden: 'Harvest', storage_shed: 'Check', lighthouse: 'Visit' };
+    const verbs = { fishing_hut: 'Bait Shop', fish_market: 'Orders', crop_garden: 'Harvest', storage_shed: 'Check', lighthouse: 'Visit', silo: 'Check', stable: getState().flags.horse ? 'Ride' : 'Look' };
     const spr = sprite(pl.type === 'crop_garden' ? 'crop_garden_3' : pl.type);
     consider({ kind: 'building', placement: pl, verb: verbs[pl.type] || 'Look', label: pl.def.name, mx: cx, my: (pl.y + pl.fh) * TILE - (spr ? spr.height : 32) - 2 }, cx, cy, 22);
   }

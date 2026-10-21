@@ -181,3 +181,112 @@ export function critter(kind, f) {
     }
   }));
 }
+
+// ---------------------------------------------------------------- building & crafting additions
+export function silo() {
+  return O(paint(30, 50, p => {
+    p.rect(3, 12, 24, 36, '#c9c0ae'); for (let y = 16; y < 46; y += 6) p.hline(3, y, 24, '#b0a794');
+    p.vline(25, 12, 36, '#a89f8c'); p.rect(3, 46, 24, 2, C.stone3);
+    for (let i = 0; i < 10; i++) p.hline(15 - i - 2, 2 + i, (i + 2) * 2, i % 3 === 0 ? '#9a4a3a' : '#b85a46');
+    p.rect(12, 36, 6, 10, C.wood2); p.rect(13, 37, 4, 9, C.wood);
+    p.rect(13, 20, 4, 4, '#9fd6e8');
+  }));
+}
+
+export function shedBuilding() {
+  return O(paint(50, 40, p => {
+    p.rect(3, 16, 44, 22, '#9a7a5a'); for (let x = 5; x < 46; x += 4) p.vline(x, 17, 20, '#8a6a4a');
+    p.rect(3, 36, 44, 2, C.stone2);
+    for (let i = 0; i < 14; i++) { const inset = Math.round((14 - i) * 0.9); p.hline(inset, i + 2, 50 - inset * 2, i % 4 === 0 ? '#4f6f86' : '#5f7f96'); }
+    p.rect(0, 15, 50, 2, '#3f5f76');
+    p.rect(19, 24, 12, 12, C.wood2); p.rect(20, 25, 10, 11, C.wood); p.vline(25, 25, 11, C.wood2); p.px(23, 30, C.gold); p.px(27, 30, C.gold);
+    p.rect(7, 22, 7, 5, '#9fd6e8'); p.rect(36, 22, 7, 5, '#9fd6e8');
+  }));
+}
+
+export function stableBuilding() {
+  return O(paint(50, 40, p => {
+    p.rect(3, 16, 44, 22, '#a8744a'); p.rect(3, 36, 44, 2, C.stone2);
+    for (let i = 0; i < 14; i++) { const inset = Math.round((14 - i) * 0.9); p.hline(inset, i + 2, 50 - inset * 2, i % 4 === 0 ? '#6a4a3a' : '#7a5a46'); }
+    p.rect(0, 15, 50, 2, '#5a3a2a');
+    for (const x of [6, 21, 36]) { p.rect(x, 22, 10, 14, '#3a2a22'); p.line(x, 22, x + 9, 35, '#d8c8a0'); p.line(x + 9, 22, x, 35, '#d8c8a0'); }
+    p.rect(22, 8, 6, 5, C.gold); p.px(24, 9, C.gold2);
+  }));
+}
+
+/** The coop / barn, bigger: an extra wing on the side. */
+export function bigVersion(base) {
+  const w = base.width, hgt = base.height;
+  const c = paint(w, hgt, p => p.ctx.drawImage(base, 0, 0));
+  const g = c.getContext('2d');
+  g.fillStyle = '#f2d27e'; g.fillRect(3, Math.round(hgt * 0.45), 5, 3); g.fillRect(w - 8, Math.round(hgt * 0.45), 5, 3);
+  g.fillStyle = C.gold; g.fillRect(Math.round(w / 2) - 2, 2, 4, 3);
+  return c;
+}
+
+export function kitchenStove() {
+  return O(paint(32, 24, p => {
+    p.rect(1, 6, 30, 17, '#e8e2d0'); p.hline(1, 6, 30, C.white); p.rect(1, 21, 30, 2, '#b8b2a0');
+    p.rect(3, 8, 12, 6, '#3a3440'); p.ellipse(6, 9, 2, 1, '#e05a3a'); p.ellipse(12, 9, 2, 1, '#e05a3a');
+    p.rect(3, 15, 12, 5, '#c8c2b0'); p.hline(4, 16, 10, '#a8a290');
+    p.rect(18, 8, 11, 12, C.wood); p.rect(19, 9, 9, 4, '#9fd6e8'); p.rect(20, 15, 7, 1, C.wood2);
+    p.rect(5, 1, 6, 5, '#8a8a96'); p.rect(4, 0, 8, 1, '#6a6a76');
+  }));
+}
+
+export function torch() {
+  return O(paint(10, 24, p => {
+    p.rect(4, 8, 2, 15, C.wood2); p.rect(3, 6, 4, 3, C.wood);
+    p.ellipse(5, 4, 3, 3.5, C.orange); p.ellipse(5, 4, 1.5, 2.5, C.yellow); p.px(5, 1, C.yellow);
+  }));
+}
+
+export function woodPath() {
+  return paint(16, 16, p => {
+    for (let y = 1; y < 16; y += 5) { p.rect(0, y, 16, 4, '#b98a5a'); p.hline(0, y, 16, '#cfa070'); p.hline(0, y + 3, 16, '#8a6a4a'); p.px(3, y + 1, '#8a6a4a'); p.px(11, y + 2, '#8a6a4a'); }
+  });
+}
+
+export function keg() {
+  return O(paint(16, 22, p => {
+    p.ellipse(8, 12, 7, 9, C.wood); for (const y of [5, 12, 18]) p.hline(1, y, 14, '#6a6a76');
+    p.vline(4, 4, 16, C.wood2); p.vline(11, 4, 16, C.woodLight);
+    p.rect(7, 13, 3, 2, C.gold2); p.px(9, 15, C.gold);
+  }));
+}
+
+export function charcoalKiln() {
+  return O(paint(16, 22, p => {
+    p.rect(2, 6, 12, 15, C.stone2); for (let y = 8; y < 20; y += 4) p.hline(2, y, 12, C.stone3);
+    p.rect(5, 13, 6, 6, '#2e2a36'); p.rect(6, 15, 4, 3, C.orange);
+    p.rect(6, 1, 4, 5, C.stone3); p.px(7, 0, '#8a8a96');
+  }));
+}
+
+/** Your horse, side view (faces left; flip for right). f = walk frame. */
+export function horse(f = 0) {
+  return O(paint(30, 22, p => {
+    const body = '#8a5a36', dark = '#6a4226';
+    p.ellipse(15, 11, 10, 5, body);
+    p.rect(3, 4, 6, 9, body); p.rect(1, 2, 6, 5, body); p.px(2, 3, C.ink); p.rect(0, 5, 2, 2, dark);
+    p.rect(6, 1, 4, 9, dark);           // mane
+    p.rect(24, 8, 4, 2, dark); p.rect(26, 9, 2, 6, dark);   // tail
+    const l = f ? 1 : 0;
+    for (const [x, o] of [[7, l], [10, -l], [19, -l], [22, l]]) p.rect(x, 15 + Math.max(0, o), 2, 6 - Math.max(0, o), dark);
+    p.rect(12, 7, 7, 3, '#c2554f');     // saddle
+  }));
+}
+
+/** A building under construction: scaffolding over a faded outline. */
+export function scaffold(base) {
+  const w = base.width, hgt = base.height;
+  return paint(w, hgt, p => {
+    const g = p.ctx;
+    g.globalAlpha = 0.35; g.drawImage(base, 0, 0); g.globalAlpha = 1;
+    const wood = '#b98a5a', dark = '#7a5a3a';
+    for (let x = 1; x < w; x += 10) p.rect(x, Math.round(hgt * 0.2), 2, Math.round(hgt * 0.8), wood);
+    for (let y = Math.round(hgt * 0.3); y < hgt; y += 9) p.rect(0, y, w, 2, dark);
+    p.line(1, hgt - 2, w - 2, Math.round(hgt * 0.3), wood);
+    p.rect(Math.round(w / 2) - 4, hgt - 8, 8, 7, '#e8c66a'); p.hline(Math.round(w / 2) - 4, hgt - 5, 8, dark);
+  });
+}

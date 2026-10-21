@@ -7,7 +7,7 @@ import { sfx } from '../../audio.js';
 import { checkCost, spend, addItem, describeMissing } from '../../economy.js';
 import { hasRoomFor, slotInfo, ownedKeys } from '../../bag.js';
 import {
-  skillLevel, hearts, friendOf, tasteOf, unreadMail, takeAttachment, bundleState, bundleProgress, donateToBundle,
+  knowsRecipe, learnText, skillLevel, hearts, friendOf, tasteOf, unreadMail, takeAttachment, bundleState, bundleProgress, donateToBundle,
   payBundleCoins, canDonate, donateToMuseum, museumKey,
 } from '../../life.js';
 import { SKILLS, SKILL_XP, MAX_SKILL, CRAFT_RECIPES, TASTES, MAX_HEARTS, BUNDLES, MUSEUM_GEMS, MUSEUM_REWARDS, HEART_REWARDS } from '../../../data/life-data.js';
@@ -28,44 +28,63 @@ function keyArt(key) {
 
 // ---------------------------------------------------------------- crafting
 function recipeLocked(r) {
-  for (const [sk, lvl] of Object.entries(r.skill || {})) if (skillLevel(sk) < lvl) return `${SKILLS[sk].name} level ${lvl}`;
-  return null;
+  return knowsRecipe(r.id) ? null : learnText(r);
 }
 
-export function craft(r) {
-  if (recipeLocked(r)) return { ok: false, message: `Needs ${recipeLocked(r)}.` };
-  const c = checkCost(r.in);
+/** How many of a recipe you could make right now. */
+export function craftable(r) {
+  let n = Infinity;
+  for (const [id, need] of Object.entries(r.in)) n = Math.min(n, Math.floor(have(id) / need));
+  return n === Infinity ? 0 : n;
+}
+
+export function craft(r, times = 1) {
+  if (recipeLocked(r)) return { ok: false, message: `You haven’t learned that yet (${recipeLocked(r)}).` };
+  times = Math.max(1, Math.min(times, craftable(r)));
+  const total = Object.fromEntries(Object.entries(r.in).map(([id, n]) => [id, n * times]));
+  const c = checkCost(total);
   if (!c.ok) return { ok: false, message: 'Not enough: ' + describeMissing(c.missing) + '.' };
   if (r.item && !Object.keys(r.item).every(id => hasRoomFor(id))) return { ok: false, message: 'Your bag is full! Make room first.' };
-  spend(r.in);
+  spend(total);
   const s = getState();
-  if (r.place) s.inventory.storedDecor[r.place] = (s.inventory.storedDecor[r.place] || 0) + (r.count || 1);
-  for (const [id, n] of Object.entries(r.item || {})) addItem(id, n);
-  s.stats.crafted = (s.stats.crafted || 0) + 1;
+  if (r.place) s.inventory.storedDecor[r.place] = (s.inventory.storedDecor[r.place] || 0) + (r.count || 1) * times;
+  for (const [id, n] of Object.entries(r.item || {})) addItem(id, n * times);
+  s.stats.crafted = (s.stats.crafted || 0) + times;
   sfx('build');
   commit('craft');
-  return { ok: true, message: r.place ? `Crafted ${r.name}! Place it from Build → Stored.` : `Crafted ${r.name}!` };
+  const what = times > 1 ? `${times}× ${r.name}` : r.name;
+  return { ok: true, message: r.place ? `Crafted ${what}! Place it from Build → Stored.` : `Crafted ${what}!` };
 }
+
+let craftFilter = 'known';
 
 export const craftPanel = {
   title: 'Crafting', icon: 'craft',
   render(body) {
-    body.append(h('p.muted', 'Turn what you gather into useful things. Level up your skills to learn new recipes.'));
+    const s = getState();
+    const known = CRAFT_RECIPES.filter(r => knowsRecipe(r.id));
+    body.append(tabs([['known', `Recipes (${known.length})`, 'craft'], ['locked', 'Not learned', 'lock']], craftFilter, t => { craftFilter = t; refreshSheet(); }));
+    body.append(h('p.muted', craftFilter === 'known'
+      ? 'Crafting uses up the ingredients. Machines, chests and decorations go to Build → Stored so you can place them.'
+      : 'Learn more recipes by levelling skills, making friends, finishing story quests, or buying them at Nori’s shop.'));
     const list = h('div.list.shop-list');
-    for (const r of CRAFT_RECIPES) {
+    for (const r of CRAFT_RECIPES.filter(r => (craftFilter === 'known') === knowsRecipe(r.id))) {
       const lock = recipeLocked(r);
-      const ok = !lock && checkCost(r.in).ok;
+      const n = lock ? 0 : craftable(r);
       const out = r.place || Object.keys(r.item || {})[0];
-      list.append(h('div.item-row.shop-row' + (lock ? '.locked' : ''),
-        icon(PLACEABLES[out] ? (r.place === 'chest' ? 'chest' : r.place === 'furnace' ? 'fire' : 'craft') : itemIcon(out), 'item-icon'),
-        h('div.item-main', h('div.item-name', r.name), h('div.item-sub', r.desc)),
+      const art = PLACEABLES[out] ? spriteImg(out, 1, 'decor-thumb') : icon(itemIcon(out), 'item-icon');
+      const needs = h('div.needs', Object.entries(r.in).map(([id, k]) => h('span.need' + (have(id) >= k ? '.ok' : '.short'), icon(itemIcon(id)), `${itemName(id)} ${Math.min(have(id), 9999)}/${k}`)));
+      const go = t => () => { const res = craft(r, t); toast(res.message, res.ok ? 'craft' : null, res.ok ? 'good' : 'error'); refreshSheet(); };
+      list.append(h('div.item-row.shop-row.recipe' + (lock ? '.locked' : ''),
+        art,
+        h('div.item-main', h('div.item-name', r.name, !lock && n ? h('span.count', ` can make ${n}`) : null), h('div.item-sub', r.desc), needs),
         h('div.buy-col',
-          lock ? h('span.req', icon('lock'), lock) : [costView(r.in, have), button('Craft', () => {
-            const res = craft(r);
-            toast(res.message, res.ok ? 'craft' : null, res.ok ? 'good' : 'error');
-            refreshSheet();
-          }, { cls: 'small' + (ok ? ' primary' : ''), disabled: !ok, sound: null })])));
+          lock ? h('span.req', icon('lock'), lock) : [
+            button('Craft', go(1), { cls: 'small' + (n ? ' primary' : ''), disabled: !n, sound: null }),
+            n >= 5 ? button('×5', go(5), { cls: 'small', sound: null }) : null,
+            n > 1 ? button(`All (${Math.min(n, 99)})`, go(Math.min(n, 99)), { cls: 'small ghost', sound: null }) : null])));
     }
+    if (!list.children.length) list.append(h('p.muted', craftFilter === 'known' ? 'No recipes yet.' : 'You know every recipe!'));
     body.append(list);
   },
 };

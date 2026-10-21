@@ -55,13 +55,13 @@ export function missingFor(recipe) {
 }
 
 /** Make one of a recipe. Returns { ok, message }. */
-export function smelt(recipe) {
+export function smelt(recipe, { keep = false } = {}) {
   if (missingFor(recipe).length) { sfx('error'); return { ok: false, message: 'Not enough materials.' }; }
   for (const [id, need] of Object.entries(recipe.in)) {
     if (id === 'fish') { for (let i = 0; i < need; i++) { const f = cheapestFish(); if (f) removeFishByUid([f.uid]); } }
     else removeItem(id, need);
   }
-  for (const [id, n] of Object.entries(recipe.out)) addItem(id, n);
+  if (!keep) for (const [id, n] of Object.entries(recipe.out)) addItem(id, n);
   sfx('smelt');
   emit('smelted', { id: recipe.id });
   commit('smelt');
@@ -70,5 +70,5 @@ export function smelt(recipe) {
 
 /** Recipes a station can make: the campfire only cooks. */
 export function recipesFor(station) {
-  return station === 'campfire' ? SMELT_RECIPES.filter(r => r.id === 'grilled_fish') : SMELT_RECIPES;
+  return SMELT_RECIPES.filter(r => (r.station || 'furnace') === station);
 }
