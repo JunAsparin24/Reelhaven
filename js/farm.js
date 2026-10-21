@@ -5,12 +5,13 @@ import { TILE } from './art/tiles.js';
 import { getState, commit } from './state.js';
 import { toast, emit } from './events.js';
 import { addItem, removeItem, itemCount } from './economy.js';
-import { RESOURCES, WATER_CAPACITY } from '../data/item-data.js';
+import { RESOURCES, TOOLS } from '../data/item-data.js';
 import { CROPS, DEBRIS, seasonOf } from '../data/farm-data.js';
 import { ISLANDS } from '../data/island-data.js';
 import { T, WATERY } from './world-gen.js';
 import { sfx, vibrate } from './audio.js';
 import { addXp } from './progression.js';
+import { addSkillXp, skillLevel } from './life.js';
 
 export const FARM_ISLAND = 'sunny';
 const MAX_DEBRIS = 170;
@@ -99,6 +100,24 @@ export function seedWild(world, isl) {
   return true;
 }
 
+/**
+ * Large stumps and boulders (need copper / iron tools) scattered around the
+ * home area once per save.
+ */
+export function seedBig(world, isl) {
+  const farm = farmOf(isl);
+  if (farm.big) return false;
+  farm.big = true;
+  const r = rnd(4242 + isl.placements.length);
+  let stumps = 0, boulders = 0;
+  for (let tries = 0; tries < 600 && (stumps < 5 || boulders < 4); tries++) {
+    const tx = 2 + Math.floor(r() * 30), ty = 10 + Math.floor(r() * 36);
+    if (!freeForDebris(world, farm, tx, ty) || world.tile(tx, ty) !== T.G) continue;
+    if (stumps < 5) { addDebris(farm, 'big_stump', tx, ty); stumps++; } else { addDebris(farm, 'boulder', tx, ty); boulders++; }
+  }
+  return true;
+}
+
 /** A few new weeds pop up every morning. */
 export function sproutWeeds(world, isl, n = 4) {
   const farm = farmOf(isl);
@@ -130,6 +149,13 @@ export function debrisObjects(isl) {
 export function hitDebris(game, o, power) {
   const def = DEBRIS[o.kind];
   if (!def) return;
+  // big stumps and boulders need an upgraded tool
+  if (def.minTier && (getState().inventory.tools[def.tool] || 0) < def.minTier) {
+    o.shake = 0.5;
+    sfx(def.tool === 'axe' ? 'chop' : 'pick');
+    toast(`You need a better ${def.tool}.`, def.tool);
+    return;
+  }
   if (o.hp == null) o.hp = def.hp;
   o.hp -= power;
   o.shake = 1;   // the renderer wiggles it for a moment
@@ -159,13 +185,16 @@ export function hitDebris(game, o, power) {
   }
   vibrate(10);
   const got = [];
+  const forage = skillLevel('foraging');
   for (const [id, min, max, chance] of def.drops) {
     if (Math.random() > chance) continue;
-    const n = min + Math.floor(Math.random() * (max - min + 1));
+    let n = min + Math.floor(Math.random() * (max - min + 1));
+    if (id === 'wood' && o.kind === 'tree' && forage >= 5) n += 2;
     if (n > 0) { addItem(id, n); got.push(`+${n} ${RESOURCES[id]?.name || id}`); s.stats.gathered += n; }
   }
   if (got.length) game.renderer.floatText(got.join('  '), cx, cy - 10);
   s.stats.debrisCleared = (s.stats.debrisCleared || 0) + 1;
+  addSkillXp(def.tool === 'pickaxe' ? 'mining' : 'foraging', { tree: 6, stump: 4, big_stump: 10, boulder: 10 }[o.kind] || 1);
   addXp(1);
   w.rebuild();
   emit('gathered', { type: o.kind });
@@ -181,6 +210,11 @@ export function farmBlocker(game) {
 }
 
 const keyOf = (x, y) => x + ',' + y;
+/** The watering can you own (capacity, area). */
+export function canTier() {
+  const tiers = TOOLS.watering_can;
+  return tiers[Math.min(tiers.length - 1, getState().inventory.tools?.watering_can || 0)];
+}
 
 export function plotAt(world, tx, ty) { return world.islandState.farm?.soil?.[keyOf(tx, ty)] || null; }
 
@@ -209,8 +243,9 @@ export function till(game, tx, ty) {
 export function water(game, tx, ty) {
   const s = getState(), w = game.world;
   // Refill from any water in front of you.
+  const can = canTier();
   if (WATERY.has(w.tile(tx, ty)) || w.tile(tx, ty) === T.H) {
-    s.inventory.water = WATER_CAPACITY;
+    s.inventory.water = can.capacity;
     sfx('splash');
     toast('Watering can refilled.', 'watering_can', 'good');
     commit('refill', false);
@@ -218,12 +253,18 @@ export function water(game, tx, ty) {
   }
   const why = farmBlocker(game);
   if (why) { toast(why, 'watering_can'); return false; }
-  const plot = plotAt(w, tx, ty);
-  if ((s.inventory.water ?? WATER_CAPACITY) <= 0) { toast('Your watering can is empty. Refill it at the pond or the sea.', 'watering_can'); sfx('error'); return false; }
-  s.inventory.water = (s.inventory.water ?? WATER_CAPACITY) - 1;
-  game.renderer.emit('splash', tx * TILE + 8, ty * TILE + 8, 6, { speed: 30, life: 0.4 });
+  if ((s.inventory.water ?? can.capacity) <= 0) { toast('Your watering can is empty. Refill it at the pond or the sea.', 'watering_can'); sfx('error'); return false; }
+  s.inventory.water = (s.inventory.water ?? can.capacity) - 1;
+  // Better cans water a line (3) or a 3x3 patch around the target tile.
+  const p = game.player, dir = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[p.facing];
+  const tiles = can.area >= 9 ? [-1, 0, 1].flatMap(j => [-1, 0, 1].map(i => [tx + i, ty + j]))
+    : can.area >= 3 ? [0, 1, 2].map(k => [tx + dir[0] * k, ty + dir[1] * k]) : [[tx, ty]];
+  for (const [x, y] of tiles) {
+    const plot = plotAt(w, x, y);
+    if (plot) plot.water = true;
+    game.renderer.emit('splash', x * TILE + 8, y * TILE + 8, 4, { speed: 30, life: 0.4 });
+  }
   sfx('pour');
-  if (plot) plot.water = true;
   commit('water', false);
   return true;
 }
@@ -267,6 +308,7 @@ export function harvest(game, tx, ty) {
   if (crop.regrow) { plot.ready = false; plot.age = crop.days - crop.regrow; }
   else Object.assign(plot, { crop: null, age: 0, ready: false });
   s.stats.cropsHarvested = (s.stats.cropsHarvested || 0) + n;
+  addSkillXp('farming', crop.big ? 14 : 5);
   addXp(crop.big ? 12 : 4);
   sfx('coin');
   emit('harvested', { crop: crop.id });

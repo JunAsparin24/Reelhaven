@@ -27,6 +27,12 @@ import { chestItems, transfer, smelt, missingFor, recipesFor } from '../crafting
 import { RESOURCES, FOOD, BAIT, TOOLS } from '../../data/item-data.js';
 import { toolTier } from '../combat.js';
 import { seasonOf, SEASON_NAMES, TV_TIPS } from '../../data/farm-data.js';
+import { unreadMail, ship, itemValue, animalsIn, buyAnimal, friendOf } from '../life.js';
+import { ANIMALS, ANIMAL_CAPACITY } from '../../data/life-data.js';
+import { ownedKeys, slotInfo } from '../bag.js';
+import { addCoins, addPearls, spend, addItem } from '../economy.js';
+import { commit } from '../state.js';
+import { NPCS } from '../../data/npc-data.js';
 
 // Menu bar: one compact row of icon buttons (top-right in landscape,
 // bottom edge in portrait). null = visual separator.
@@ -34,6 +40,8 @@ const MENU = [
   ['inventory', 'Bag', 'bag'],
   ['quests', 'Quests', 'quest'],
   ['build', 'Build', 'build'],
+  ['craft', 'Craft', 'craft'],
+  ['life', 'Life', 'people'],
   null,
   ['encyclopedia', 'Fish', 'fish'],
   ['map', 'Map', 'map'],
@@ -50,7 +58,18 @@ function actionIcon(it) {
     case 'enter': return it.obj ? 'shop' : 'home';
     case 'exit': return 'home';
     case 'bed': return 'sleep';
-    case 'use': return { chest: 'chest', furnace: 'fire', campfire: 'fire' }[it.placement.def.use] || 'sparkle';
+    case 'use': return { chest: 'chest', furnace: 'fire', campfire: 'fire', machine: 'craft' }[it.placement.def.use] || 'sparkle';
+    case 'ship': return 'sell';
+    case 'mail': return 'mail';
+    case 'restore': return 'build';
+    case 'museum': return 'museum';
+    case 'gift_npc': return 'gift';
+    case 'festival': return 'star';
+    case 'elevator': return 'ladder';
+    case 'boss_chest': return 'chest';
+    case 'feed': return 'hay';
+    case 'animals': return 'chicken';
+    case 'pet': return it.critter?.a.ready ? 'egg' : 'heart';
     case 'swing': return it.icon || (getState().inventory.held === 'sword' ? 'sword' : 'pickaxe');
     case 'mine_enter': case 'mine': return 'pickaxe';
     case 'attack': return 'sword';
@@ -116,11 +135,12 @@ export class UI {
     const nav = document.getElementById('nav');
     this.navButtons = {};
     this.el.questBadge = h('span.badge', { hidden: true }, '!');
+    this.el.mailBadge = h('span.badge', { hidden: true }, '!');
     for (const item of MENU) {
       if (!item) { nav.append(h('span.nav-sep')); continue; }
       const [id, label, ic] = item;
       const b = h('button.nav-btn', { type: 'button', 'data-tab': id, 'aria-label': label, title: label, on: { click: () => { sfx('click'); this.navTo(id); } } },
-        icon(ic), h('span', label), id === 'quests' ? this.el.questBadge : null);
+        icon(ic), h('span', label), id === 'quests' ? this.el.questBadge : id === 'life' ? this.el.mailBadge : null);
       this.navButtons[id] = b;
       nav.append(b);
     }
@@ -199,6 +219,7 @@ export class UI {
     const qp = questProgress();
     const dailyReady = s.daily.goals.some(g => !g.claimed && dailyProgress(g) >= g.count);
     this.el.questBadge.hidden = !(qp && qp.ready) && !dailyReady;
+    this.el.mailBadge.hidden = !unreadMail();
     this.hotbar?.render();
     this.refreshWhere();
     if (qp) {
@@ -521,17 +542,114 @@ export class UI {
   }
 
   /** Choose which floor to start the mine from (every 5th floor is a checkpoint). */
-  mineMenu() {
+  mineMenu(elevator = false) {
     const deep = getState().stats.mineDeepest || 0;
+    if (elevator && deep < 5) { toast('The elevator will take you to every 5th floor you reach.', 'ladder'); return; }
     const floors = [1];
     for (let f = 5; f <= deep; f += 5) floors.push(f);
     if (floors.length === 1) { this.game.enterMine(1); return; }
     let close;
     close = modal(h('div.confirm',
-      h('h3', 'The Old Mine'),
+      h('h3', elevator ? 'Mine Elevator' : 'The Old Mine'),
       h('p', `Deepest floor reached: ${deep}. Where would you like to start?`),
       h('div.rest-grid', floors.map(f => button(f === 1 ? 'Top (Floor 1)' : `Floor ${f}`, () => { close(); this.game.enterMine(f); }, { iconName: 'ladder' }))),
       h('div.row.end', button('Cancel', () => close(), { cls: 'ghost' }))));
+  }
+
+  /** Shipping bin: drop things in, get paid overnight. */
+  shipModal() {
+    const body = h('div.list');
+    let close;
+    const render = () => {
+      const s = getState();
+      const keys = ownedKeys(s).filter(k => !k.startsWith('tool:') && k !== 'rod' && itemValue(k) > 0);
+      const total = s.shipping.coins;
+      body.replaceChildren(
+        h('p.muted', total ? `In the bin: ${s.shipping.count} thing${s.shipping.count === 1 ? '' : 's'} worth ${fmt(total)} coins. You’ll be paid tomorrow morning.` : 'Put things in the bin and you’ll be paid for them tomorrow morning.'),
+        ...(keys.length ? keys.map(k => {
+          const info = slotInfo(k, s);
+          return h('div.item-row.compact',
+            info.sprite ? h('img.px-icon.item-icon', { src: spriteUrl(info.sprite, 1), alt: '' }) : icon(info.icon, 'item-icon'),
+            h('div.item-main', h('div.item-name', info.name, info.count != null ? h('span.count', '×' + info.count) : null), h('div.item-sub', `${fmt(itemValue(k))} each`)),
+            button('Ship 1', () => { ship(k, 1); render(); }, { cls: 'small ghost', sound: null }),
+            button('All', () => { ship(k, info.count || 1); render(); }, { cls: 'small', sound: null }));
+        }) : [h('p.muted', 'Nothing in your bag to ship.')]));
+    };
+    render();
+    close = modal(h('div.confirm.chest-modal', h('h3', icon('sell'), ' Shipping Bin'), body, h('div.row.end', button('Done', () => close(), { cls: 'primary' }))));
+  }
+
+  mailModal() { this.open('life', { tab: 'mail' }); }
+
+  /** Buy animals for a coop or barn. */
+  animalShop(homeUid, homeType) {
+    const s = getState();
+    const isl = s.islands[this.game.outdoor.id];
+    const kind = homeType === 'barn' ? 'barn' : 'coop';
+    const list = h('div.list');
+    let close;
+    const render = () => {
+      const here = animalsIn(isl, homeUid);
+      list.replaceChildren(
+        h('p.muted', `${here.length}/${ANIMAL_CAPACITY[kind]} animals live here. Fill the trough with hay (cut tall grass with your scythe) so they make something every day.`),
+        h('p.muted', `Hay in the trough: ${isl.feed[homeUid] || 0}`),
+        ...Object.entries(ANIMALS).filter(([, a]) => a.home === kind).map(([id, a]) => h('div.item-row',
+          icon(kind === 'barn' ? 'cow' : 'chicken', 'item-icon'),
+          h('div.item-main', h('div.item-name', a.name), h('div.item-sub', `Makes ${RESOURCES[a.product]?.name || a.product}${a.every > 1 ? ' every ' + a.every + ' days' : ' every day'} when fed.`)),
+          button(`${fmt(a.price)}`, () => {
+            const r = buyAnimal(isl, { uid: homeUid }, id, `${a.name} ${here.length + 1}`);
+            toast(r.message, 'heart', r.ok ? 'good' : 'error');
+            if (r.ok) this.game.spawnCritters(homeUid);
+            render();
+          }, { cls: 'small primary', iconName: 'coin', disabled: s.player.coins < a.price || here.length >= ANIMAL_CAPACITY[kind], sound: null }))),
+        ...here.map(a => h('div.item-row.compact', icon(kind === 'barn' ? 'cow' : 'chicken', 'item-icon'),
+          h('div.item-main', h('div.item-name', a.name, h('span.hearts', ' ' + '♥'.repeat(Math.floor(a.hearts)))),
+            h('div.item-sub', a.ready ? 'Has something for you!' : a.fedDay === s.world.day ? 'Fed today' : 'Hungry')))));
+    };
+    render();
+    close = modal(h('div.confirm.chest-modal', h('h3', icon('chicken'), kind === 'barn' ? ' Barn Animals' : ' Coop Animals'), list, h('div.row.end', button('Done', () => close(), { cls: 'primary' }))));
+  }
+
+  /** The season's festival in town. */
+  festivalModal(f) {
+    if (!f) { toast('The festival is over for today.', 'star'); return; }
+    const s = getState();
+    const done = s.festivals[f.key] || (s.festivals[f.key] = {});
+    let close;
+    const finish = () => { commit('festival'); close(); };
+    const content = [];
+    const everyone = pts => { for (const id of Object.keys(NPCS)) { const fr = friendOf(id); fr.pts = Math.min(2500, fr.pts + pts); } };
+    if (f.id === 'flower_fair') {
+      const stall = [['tidemelon_seeds', 60], ['emberpumpkin_seeds', 70], ['frostleek_seeds', 40], ['flower', 15]];
+      content.push(h('p', 'Stalls overflow with rare seeds — today only, no level needed.'),
+        h('div.list', stall.map(([id, price]) => h('div.item-row.compact', icon(RESOURCES[id]?.icon || 'flower', 'item-icon'), h('div.item-main', h('div.item-name', RESOURCES[id]?.name || id)),
+          button(`${price * 5} for 5`, () => { if (!spend({ coins: price * 5 })) { toast('Not enough coins.', 'coin', 'error'); return; } addItem(id, 5); sfx('buy'); toast(`Bought 5 ${RESOURCES[id]?.name}.`, 'flower', 'good'); }, { cls: 'small', iconName: 'coin', sound: null })))),
+        done.dance ? h('p.muted', 'You danced the Flower Dance. What a day!') : button('Join the Flower Dance', () => { done.dance = true; everyone(60); sfx('levelup'); toast('You danced with everyone! Friendship grew with all the islanders.', 'heart', 'gold'); finish(); }, { cls: 'primary', iconName: 'heart' }));
+    } else if (f.id === 'fishing_derby') {
+      content.push(h('p', 'Catch as many fish as you can in 3 minutes. Bronze at 2, Silver at 5, Gold at 8!'),
+        this.game.derby ? h('p.muted', 'The derby is on — go fish!') : done.derby ? h('p.muted', 'You already fished in this year’s derby.') :
+          button('Start the Derby!', () => { done.derby = true; this.game.derby = { start: s.stats.fishCaught, end: performance.now() + 180000 }; toast('The Fishing Derby has begun! 3 minutes — go!', 'rod', 'gold'); finish(); }, { cls: 'primary', iconName: 'rod' }));
+    } else if (f.id === 'harvest_fair') {
+      const keys = ownedKeys(s).filter(k => !k.startsWith('tool:') && k !== 'rod' && itemValue(k) > 0).sort((a, b) => itemValue(b) - itemValue(a)).slice(0, 9);
+      const score = keys.reduce((n, k) => n + itemValue(k), 0) + keys.length * 15;
+      content.push(h('p', 'The judges look over the 9 most valuable different things in your bag (you keep them).'),
+        h('div.museum-grid', keys.map(k => { const i = slotInfo(k, s); return h('div.museum-item', i.sprite ? h('img.px-icon', { src: spriteUrl(i.sprite, 1), alt: '' }) : icon(i.icon), h('span', i.name)); })),
+        done.judged ? h('p.muted', `Your display scored ${done.judged} points.`) : button(`Enter my display (${score} points)`, () => {
+          done.judged = score;
+          const prize = score >= 1500 ? { coins: 1500, pearls: 3, place: '1st' } : score >= 700 ? { coins: 700, pearls: 1, place: '2nd' } : { coins: 250, place: '3rd' };
+          addCoins(prize.coins, 'reward'); if (prize.pearls) addPearls(prize.pearls);
+          sfx('levelup'); toast(`${prize.place} place! You won ${prize.coins} coins${prize.pearls ? ' and ' + prize.pearls + ' pearls' : ''}.`, 'trophy', 'gold'); finish();
+        }, { cls: 'primary', iconName: 'trophy' }));
+    } else {
+      content.push(h('p', 'Everyone gathers on the shore to send lanterns out over the winter sea.'),
+        done.lantern ? h('p.muted', 'Your lantern drifts out with the others…') : button('Release a lantern', () => {
+          done.lantern = true; everyone(40); addPearls(1);
+          const pl = this.game.player;
+          for (let i = 0; i < 6; i++) setTimeout(() => this.game.renderer.emit('sparkle', pl.x + (Math.random() * 60 - 30), pl.y - 30, 10, { speed: 20, gravity: -30, life: 2.5, color: '#ffc46a' }), i * 300);
+          sfx('levelup'); toast('Your lantern floats away. The islanders feel closer to you. (+1 pearl)', 'lantern', 'gold'); finish();
+        }, { cls: 'primary', iconName: 'lantern' }));
+    }
+    close = modal(h('div.confirm.festival-modal', h('h3', icon('star'), ` ${f.name}`), h('p.muted', f.desc), ...content, h('div.row.end', button('Close', () => close(), { cls: 'ghost' }))), { cls: 'celebrate' });
   }
 
   useUtility(pl) {
@@ -541,6 +659,7 @@ export class UI {
 
   /** Move items between your bag and a storage chest. */
   chestModal(pl) {
+    if (this.game.visit) return this.sharedChestModal(pl);
     const islandId = this.game.outdoor.id;
     const body = h('div.chest-cols');
     let close;
@@ -563,6 +682,48 @@ export class UI {
     };
     render();
     close = modal(h('div.confirm.chest-modal', h('h3', icon('chest'), ' Storage Chest'), body,
+      h('div.row.end', button('Done', () => close(), { cls: 'primary' }))));
+  }
+
+  /** A chest in a friend's world: the host's game holds what's inside. */
+  async sharedChestModal(pl) {
+    const social = this.online?.social;
+    if (!social) return;
+    const ask = edit => social.coopEdit({ op: 'chest', uid: pl.uid, ...edit });
+    const first = await ask({ dir: 'peek' });
+    if (!first.ok) { toast(first.error || 'You can’t open this chest.', 'chest', 'error'); return; }
+    let box = first.data || {};
+    const body = h('div.chest-cols');
+    let close, busy = false;
+    const name = id => RESOURCES[id]?.name || FOOD[id]?.name || BAIT[id]?.name || id;
+    const ic = id => RESOURCES[id]?.icon || FOOD[id]?.icon || BAIT[id]?.icon || 'bag';
+    const move = async (id, n, toChest) => {
+      if (busy || n <= 0) return;
+      busy = true;
+      if (toChest && !spend({ [id]: n })) { busy = false; return; }
+      const r = await ask({ dir: toChest ? 'put' : 'take', item: id, n });
+      if (r.ok) { if (!toChest) addItem(id, n); commit('sharedChest'); }
+      else { if (toChest) addItem(id, n); toast(r.error || 'That didn’t work — try again.', 'chest', 'error'); }
+      if (r.data) box = r.data;
+      busy = false;
+      render();
+    };
+    const render = () => {
+      const s = getState();
+      const col = (title, entries, toChest) => h('div.chest-col',
+        h('h4.section', title),
+        entries.length ? h('div.list', entries.map(([id, n]) => h('div.item-row.compact',
+          icon(ic(id), 'item-icon'),
+          h('div.item-main', h('div.item-name', name(id), h('span.count', '×' + n))),
+          button(toChest ? 'Store 1' : 'Take 1', () => move(id, 1, toChest), { cls: 'small ghost', sound: null }),
+          button('All', () => move(id, n, toChest), { cls: 'small', sound: null }))))
+          : h('p.muted', toChest ? 'Your bag has no items.' : 'This chest is empty.'));
+      body.replaceChildren(
+        col('Your bag', Object.entries(s.inventory.items).filter(([, n]) => n > 0), true),
+        col('Shared chest', Object.entries(box).filter(([, n]) => n > 0), false));
+    };
+    render();
+    close = modal(h('div.confirm.chest-modal', h('h3', icon('chest'), ' Shared Chest'), body,
       h('div.row.end', button('Done', () => close(), { cls: 'primary' }))));
   }
 

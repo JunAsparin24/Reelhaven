@@ -61,7 +61,20 @@ export const OBJECT_TYPES = {
   // walk-through grass: no button for it, just swing your scythe
   debris_grass: { solid: false, quiet: true, interact: { kind: 'clear', verb: 'Cut', label: 'Tall Grass' }, tool: 'scythe' },
   debris_stump: { solid: true, interact: { kind: 'clear', verb: 'Chop', label: 'Stump' }, tool: 'axe' },
+  debris_big_stump: { solid: true, interact: { kind: 'clear', verb: 'Chop', label: 'Large Stump' }, tool: 'axe' },
+  debris_boulder: { solid: true, interact: { kind: 'clear', verb: 'Break', label: 'Boulder' }, tool: 'pickaxe' },
   gift_box: { solid: true, interact: { kind: 'gift', verb: 'Open', label: 'Welcome Gift' } },
+  // home, town and island-life objects
+  shipping_bin: { solid: true, interact: { kind: 'ship', verb: 'Ship', label: 'Shipping Bin' } },
+  home_mailbox: { solid: true, interact: { kind: 'mail', verb: 'Check', label: 'Mailbox' } },
+  restore_board: { solid: true, interact: { kind: 'restore', verb: 'Read', label: 'Restoration Board' } },
+  museum: { solid: true, footprint: { w: 4, h: 2 }, interact: { kind: 'enter', verb: 'Enter', label: 'Museum' }, interior: 'museum_interior' },
+  museum_desk: { solid: true, footprint: { w: 2, h: 1 }, interact: { kind: 'museum', verb: 'Donate', label: 'Museum Desk' } },
+  display_case: { solid: true },
+  feed_trough: { solid: true, footprint: { w: 2, h: 1 }, interact: { kind: 'feed', verb: 'Add hay', label: 'Feed Trough' } },
+  animal_board: { solid: true, interact: { kind: 'animals', verb: 'Buy animals', label: 'Animal Board' } },
+  elevator: { solid: true, interact: { kind: 'elevator', verb: 'Ride', label: 'Mine Elevator' } },
+  boss_chest: { solid: true, interact: { kind: 'boss_chest', verb: 'Open', label: 'Boss Treasure' } },
   tv: { solid: true, interact: { kind: 'tv', verb: 'Watch', label: 'TV' } },
 };
 
@@ -76,7 +89,7 @@ export class World {
     this.terrain = new Uint8Array(this.map.terrain);
     this.applyFlags();
     this.objects = this.map.objects.map(o => ({ ...o, def: OBJECT_TYPES[o.type] || {}, variant: (o.x * 7 + o.y * 3) % 4 }));
-    this.spots = this.map.spots;
+    this.allSpots = this.map.spots;
     this.broken = new Set();      // mine rocks broken this visit
     this.monsters = (this.map.monsters || []).map((m, i) => ({ id: 'm' + i, ...m, x: m.x * TILE + 8, y: m.y * TILE + 12, hp: null, vx: 0, vy: 0, cool: 0, flash: 0, anim: Math.random() * 4, dir: 'down' }));
     this.npcs = (this.def.npcs || []).map(n => ({
@@ -129,9 +142,16 @@ export class World {
   }
   inBoundsPx(x, y) { return this.inBounds(Math.floor(x / TILE), Math.floor(y / TILE)); }
 
+  /** Fishing spots you can use (some open up after a restoration project). */
+  get spots() { const f = getState()?.flags || {}; return this.allSpots.filter(s => !s.flag || f[s.flag]); }
+
   applyFlags() {
     const flags = this.islandState.flags;
     if (flags.bridgeRepaired) for (let i = 0; i < this.terrain.length; i++) if (this.terrain[i] === T.X) this.terrain[i] = T.B;
+    // Restoration Board: the long pier reaches out past the old dock end.
+    for (const s of this.map.spots) if (s.pier && getState()?.flags[s.flag]) {
+      for (let y = s.pier.y; y <= s.y; y++) for (let x = s.pier.x; x < s.pier.x + 2; x++) if (x >= 0 && y >= 0 && x < this.w && y < this.h) this.terrain[y * this.w + x] = T.D;
+    }
   }
 
   /** Surface under a world-pixel position (for footsteps). Decorations like

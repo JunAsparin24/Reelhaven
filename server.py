@@ -740,9 +740,18 @@ class Server:
         if not hc:
             raise ApiError(f"{a['name']} needs to be on this island for you to build here.", "host_away")
         sess = self.sessions.get(host) or {}
+        op = m.get("op")
+        if op == "chest":
+            # chests are shared with everyone who joined this world
+            dirn = m.get("dir")
+            if dirn not in ("peek", "put", "take"):
+                raise ApiError("Unknown chest action.", "bad")
+            edit = {"op": "chest", "uid": clean_text(m.get("uid"), 40), "item": clean_text(m.get("item"), 40),
+                    "n": max(0, min(999, int(m.get("n", 0) or 0))), "dir": dirn}
+            hc.ws.send({"t": "coop_edit", "from": c.user, "name": self.store.accounts[c.user]["name"], "req": clean_text(m.get("req"), 40), **edit})
+            return {}
         if not sess.get("settings", {}).get("membersBuild", True):
             raise ApiError(f"{a['name']} hasn't allowed building in this world.", "forbidden")
-        op = m.get("op")
         if op not in ("place", "move"):
             raise ApiError("Unknown building action.", "bad")
         edit = {"op": op, "type": clean_text(m.get("type"), 32), "uid": clean_text(m.get("uid"), 40),
@@ -758,7 +767,13 @@ class Server:
         to = clean_text(m.get("to"), 16)
         for o in self.rooms.get(c.room, ()):
             if o.user == to:
-                o.ws.send({"t": "coop_result", "req": clean_text(m.get("req"), 40), "ok": bool(m.get("ok")), "error": clean_text(m.get("error"), 160)})
+                data = m.get("data")
+                clean = {}
+                if isinstance(data, dict):
+                    for k, v in list(data.items())[:120]:
+                        if isinstance(v, (int, float)) and not isinstance(v, bool):
+                            clean[clean_text(k, 40)] = max(0, min(99999, int(v)))
+                o.ws.send({"t": "coop_result", "req": clean_text(m.get("req"), 40), "ok": bool(m.get("ok")), "error": clean_text(m.get("error"), 160), "data": clean})
         return None
 
     def on_coop_layout(self, c, m):
@@ -778,7 +793,7 @@ class Server:
                 o.ws.send(msg)
         return None
 
-    RELAY_KINDS = {"sleep", "wake", "clock"}
+    RELAY_KINDS = {"sleep", "wake", "clock", "boss"}
 
     def on_room_relay(self, c, m):
         """Small game events shared with everyone on the same island: who is in

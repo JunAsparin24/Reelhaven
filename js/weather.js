@@ -110,6 +110,7 @@ export function sleepToMorning() {
   lastPhase = null;
   s.stats.daysSlept = (s.stats.daysSlept || 0) + 1;
   s.player.hp = s.player.maxHp || 100;
+  s.player.energy = s.player.maxEnergy || 100;
   emit('newDay', { day: w.day, slept: true });
   commit('sleep');
   return w.day;

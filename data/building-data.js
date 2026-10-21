@@ -42,6 +42,18 @@ export const BUILDINGS = {
     footprint: { w: 2, h: 2 }, solid: true, use: 'chest',
     desc: 'A walk-in store for everything that won’t fit in your bag. You can build two.',
   },
+  coop: {
+    id: 'coop', name: 'Coop', kind: 'building', price: 1500, cost: { wood: 100, stone: 40 }, minLevel: 2, maxCount: 2,
+    footprint: { w: 3, h: 2 }, solid: true, interior: 'coop_interior',
+    lights: [{ x: 0, y: -12, r: 14 }],
+    desc: 'A home for chickens and ducks. Feed them hay and they lay eggs.',
+  },
+  barn: {
+    id: 'barn', name: 'Barn', kind: 'building', price: 4000, cost: { wood: 200, stone: 80 }, minLevel: 3, maxCount: 2,
+    footprint: { w: 4, h: 3 }, solid: true, interior: 'barn_interior',
+    lights: [{ x: 0, y: -16, r: 16 }],
+    desc: 'A home for cows and goats. Feed them hay for fresh milk.',
+  },
   lighthouse: {
     id: 'lighthouse', name: 'Lighthouse', kind: 'building', price: 1500, cost: { stone: 30, wood: 20, seaglass: 6 }, minLevel: 6, maxCount: 1,
     footprint: { w: 2, h: 2 }, solid: true,
@@ -81,6 +93,12 @@ export const DECOR = {
   garden_arch: { id: 'garden_arch', name: 'Garden Arch', kind: 'decor', price: 120, cost: { wood: 5, flower: 4 }, footprint: { w: 2, h: 1 }, solid: false, minLevel: 3, desc: 'A flowery arch you can walk under.' },
   well: { id: 'well', name: 'Stone Well', kind: 'decor', price: 160, cost: { stone: 10, wood: 3 }, footprint: { w: 2, h: 1 }, solid: true, minLevel: 3, desc: 'A classic village well.' },
   fish_statue: { id: 'fish_statue', name: 'Fish Statue', kind: 'decor', price: 200, cost: { stone: 8, copper_bar: 1 }, footprint: { w: 1, h: 1 }, solid: true, minLevel: 4, desc: 'A proud tribute to the big one.' },
+  // crafted at the Craft menu (they show up in Build → Stored)
+  sprinkler: { id: 'sprinkler', name: 'Sprinkler', kind: 'decor', category: 'utility', buildable: false, footprint: { w: 1, h: 1 }, solid: true, sprinkle: 4, desc: 'Waters the 4 tilled tiles next to it every morning.' },
+  quality_sprinkler: { id: 'quality_sprinkler', name: 'Quality Sprinkler', kind: 'decor', category: 'utility', buildable: false, footprint: { w: 1, h: 1 }, solid: true, sprinkle: 8, desc: 'Waters all 8 tiles around it every morning.' },
+  mayo_machine: { id: 'mayo_machine', name: 'Mayonnaise Machine', kind: 'decor', category: 'utility', buildable: false, use: 'machine', footprint: { w: 1, h: 1 }, solid: true, desc: 'Egg in, mayonnaise out (overnight).' },
+  cheese_press: { id: 'cheese_press', name: 'Cheese Press', kind: 'decor', category: 'utility', buildable: false, use: 'machine', footprint: { w: 1, h: 1 }, solid: true, desc: 'Milk in, cheese out (overnight).' },
+  preserves_jar: { id: 'preserves_jar', name: 'Preserves Jar', kind: 'decor', category: 'utility', buildable: false, use: 'machine', footprint: { w: 1, h: 1 }, solid: true, desc: 'Crop in, jam out (overnight).' },
   // utility: things you use, not just look at
   chest: { id: 'chest', name: 'Storage Chest', kind: 'decor', category: 'utility', use: 'chest', price: 0, cost: { wood: 50 }, footprint: { w: 1, h: 1 }, solid: true, desc: 'Store items you don’t want to carry around.' },
   furnace: { id: 'furnace', name: 'Furnace', kind: 'decor', category: 'utility', use: 'furnace', price: 120, cost: { stone: 15 }, footprint: { w: 1, h: 1 }, solid: true, minLevel: 2, lights: [{ x: 0, y: -8, r: 18 }], desc: 'Smelt ore into bars and grill fish.' },

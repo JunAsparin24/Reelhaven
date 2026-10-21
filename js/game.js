@@ -27,12 +27,14 @@ import { tick as tickWeather, lighting, currentWeather, currentPhase } from './w
 import { initQuests, ensureOrders, ensureDaily, currentQuest } from './quests.js';
 import { travelTo } from './islands.js';
 import { checkAchievements } from './progression.js';
-import { initAudio, sfx, setVolumes, startMusic, setMood, pauseAudio, resumeAudio } from './audio.js';
+import { initAudio, sfx, setVolumes, startMusic, setMood, pauseAudio, resumeAudio, setMusicScene } from './audio.js';
 import { ISLANDS } from '../data/island-data.js';
 import { INTERIORS } from '../data/interior-data.js';
 import { markTalked } from './dialogue.js';
 import { pendingSettings } from './ui/panels/settings.js';
 import { FootstepSystem } from './footsteps.js';
+import { GamepadInput, moveMenuFocus, confirmMenu } from './gamepad.js';
+import { heldFor as heldForKey } from './bag.js';
 import { buildCharacter } from './art/characters.js';
 import { PLACEABLES } from '../data/building-data.js';
 import { fullCost, checkCost, spend } from './economy.js';
@@ -46,11 +48,14 @@ import { forgetMap } from './world-gen.js';
 import { swing, updateMonsters, faceToward as facePoint, frontTile, SWING_TOOLS } from './combat.js';
 import { sleepToMorning, setClock } from './weather.js';
 import { shiftSunnyLayout } from './save.js';
-import { FARM_ISLAND, seedYard, seedWild, sproutWeeds, growFarms, hitDebris, harvest, farmBlocker } from './farm.js';
+import { FARM_ISLAND, seedYard, seedWild, seedBig, sproutWeeds, growFarms, hitDebris, harvest, farmBlocker } from './farm.js';
 import { seasonOf } from '../data/farm-data.js';
 import { memberSlot, notePersonal, noteJoined, personalName, lastPersonal } from './worlds.js';
 import { clearUrlCache } from './art/sprites.js';
 import { FLOOR_CHESTS, SWORDS } from '../data/weapon-data.js';
+import { ensureLife, onNewDay, talkedTo, giveGift, giftable, giftName, animalsIn, petAnimal, fillTrough, useMachine, sendMail, spendEnergy, energyCost } from './life.js';
+import { SCHEDULES, OPENING_HOURS, FESTIVALS, FESTIVAL_HOURS, BOSSES, ANIMALS } from '../data/life-data.js';
+import { PLACEABLES as ALL_PLACEABLES } from '../data/building-data.js';
 import { RESOURCES } from '../data/item-data.js';
 import { addCoins as addCoinsTo, addItem as addItemTo } from './economy.js';
 
@@ -104,6 +109,26 @@ export class Game {
       onKeyNudge: dir => this.build.active && this.build.type && this.build.nudge(...{ up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[dir]),
       onDrag: (dx, dy) => this.onBuildDrag(dx, dy),
       onDragEnd: () => { this.dragAcc = null; },
+    });
+    this.pad = new GamepadInput({
+      blocked: () => this.inputBlocked(),
+      fishing: () => !!(this.fishing && this.fishing.active),
+      connected: () => toast('Controller connected! A interact · X use tool · B back · Y bag · LB/RB hotbar.', 'sparkle'),
+      interact: down => {
+        if (this.fishing && this.fishing.active) { window.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code: 'KeyE', key: 'e' })); return; }
+        if (down) this.onInteractKey();
+      },
+      use: () => { const p = this.player; if (p) this.useHeld({ x: p.x, y: p.y }); },
+      back: () => this.onEscape(),
+      menu: name => { if (this.mode === 'play') this.ui.navTo(name); },
+      cycle: dir => {
+        const s = getState(); if (!s || this.mode !== 'play') return;
+        const keys = this.ui.hotbar?.keys || [];
+        const cur = keys.findIndex(k => k && heldForKey(k) === s.inventory.held);
+        for (let i = 1; i <= keys.length; i++) { const j = (cur + dir * i + keys.length * 2) % keys.length; if (keys[j]) { this.ui.hotbar.pick(j); break; } }
+      },
+      confirm: () => { if (this.ui.dialogueUI.open) this.ui.dialogueUI.advance(); else confirmMenu(); },
+      focusMove: dir => moveMenuFocus(dir),
     });
   }
 
@@ -260,11 +285,14 @@ export class Game {
     this.indoor = null;
     this.world = new World(id, s.islands[id]);
     // First time home: the yard is covered in trees, stones and weeds.
+    ensureLife(s);
     if (id === FARM_ISLAND) {
       const a = seedYard(this.world, s.islands[id]);
       if (a) this.world.syncDebris();
       const b = seedWild(this.world, s.islands[id]);
-      if (a || b) { this.world.syncDebris(); commit('seedYard', false); }
+      if (b) this.world.syncDebris();
+      const c = seedBig(this.world, s.islands[id]);
+      if (a || b || c) { this.world.syncDebris(); commit('seedYard', false); }
     }
     this.renderer.setWorld(this.world);
     this.revealedSpots = new Set();
@@ -493,10 +521,24 @@ export class Game {
     });
     on('phase', ({ phase }) => setMood(phase === 'night' || phase === 'evening' ? 'night' : 'day'));
     // A new morning: crops grow, weeds sprout, the mine opens on Day 5.
+    on('restored', () => {
+      // a restoration project can change the map (the long pier)
+      const w = this.indoor ? this.outdoor : this.world;
+      if (w?.id !== FARM_ISLAND) return;
+      w.applyFlags(); w.rebuild();
+      if (!this.indoor) this.renderer.buildLand();
+    });
     on('newDay', ({ day }) => {
       if (this.mode !== 'play' || this.visit) return;
       const s = getState();
       growFarms(day, s.world.weather);
+      this.waterSprinklers();
+      const summary = onNewDay(day);
+      if (summary.shipped) setTimeout(() => toast(`Your shipping bin earned ${summary.shipped} coins overnight!`, 'coin', 'gold'), 1200);
+      if (summary.products) setTimeout(() => toast(`Your animals have ${summary.products} thing${summary.products === 1 ? '' : 's'} for you.`, 'egg', 'good'), 1800);
+      const fest = FESTIVALS[seasonOf(day).season];
+      if (fest && seasonOf(day).day === fest.day) setTimeout(() => toast(`Today is the ${fest.name}! Head to the quest board in town, 9 AM – 3 PM.`, 'sparkle', 'gold'), 2400);
+      if (fest && seasonOf(day + 1).day === fest.day) sendMail({ id: `fest_${fest.id}_${seasonOf(day).year}`, from: 'Nori', subject: `Tomorrow: the ${fest.name}!`, body: `${fest.desc} Come by the quest board in town between 9 AM and 3 PM.`, attach: {} });
       const home = this.outdoor;
       if (home?.id === FARM_ISLAND) { sproutWeeds(home, s.islands[FARM_ISLAND], 3); home.syncDebris(); }
       if (!s.flags.mineOpen && day >= 5) {
@@ -541,7 +583,8 @@ export class Game {
     const b = this.renderer.cssToBuffer(cssX, cssY);
     const wpt = this.camera.toWorld(b.x, b.y);
     const target = this.interactableNear(wpt.x, wpt.y);
-    const it = (target && findInteractable(this, 1.6, target.match)) || this.interactTarget;
+    let it = (target && findInteractable(this, 1.6, target.match)) || this.interactTarget;
+    if (it?.kind === 'npc' && giftable(getState().inventory.held)) it = { kind: 'gift_npc', npc: it.npc, label: it.label };
     if (it) this.interact(it);
   }
 
@@ -615,7 +658,8 @@ export class Game {
       return true;
     }
     const target = this.interactableNear(wpt.x, wpt.y);
-    const it = (target && findInteractable(this, 1.6, target.match)) || this.interactTarget;
+    let it = (target && findInteractable(this, 1.6, target.match)) || this.interactTarget;
+    if (it?.kind === 'npc' && giftable(held)) it = { kind: 'gift_npc', npc: it.npc, label: it.label };
     if (it) { this.interact(it); return true; }
     return false;
   }
@@ -661,7 +705,9 @@ export class Game {
     // Joined players can fish, gather, shop, mine and sleep (their own progress);
     // a host's chests stay the host's.
     if (it.kind === 'use') return this.visit.member && it.placement?.def.use !== 'chest';
-    return this.visit.member && ['spot', 'gather', 'shop', 'hall', 'board', 'bed', 'mine_enter', 'mine', 'attack', 'descend', 'ascend', 'swing', 'floor_chest'].includes(it.kind);
+    if (it.kind === 'use') return this.visit.member && it.placement?.def.use === 'chest';   // chests are shared with everyone in the world
+    return this.visit.member && ['spot', 'gather', 'shop', 'hall', 'board', 'bed', 'mine_enter', 'mine', 'attack', 'descend', 'ascend', 'swing', 'floor_chest',
+      'ship', 'mail', 'museum', 'gift_npc', 'festival', 'elevator', 'boss_chest', 'pet'].includes(it.kind);
   }
 
   // ---------------------------------------------------------------- co-op
@@ -677,8 +723,24 @@ export class Game {
   /** Host: a visiting friend wants to place or move something. */
   hostCoopEdit(m) {
     const social = this.ui.online?.social;
-    const reply = (ok, error = '') => social?.coopResult(m.from, m.req, ok, error);
+    const reply = (ok, error = '', data) => social?.coopResult(m.from, m.req, ok, error, data);
     const s = getState();
+    if (m.op === 'chest') {
+      // a friend uses one of your chests: your game holds the contents
+      if (this.visit || this.mode !== 'play') return reply(false, 'The host isn’t on this island right now.');
+      const isl = s.islands[this.outdoor.id];
+      const pl = isl.placements.find(p => p.uid === m.uid);
+      if (!pl || PLACEABLES[pl.type]?.use !== 'chest') return reply(false, 'That chest isn’t there any more.');
+      isl.chests = isl.chests || {};
+      const box = (isl.chests[pl.uid] = isl.chests[pl.uid] || {});
+      if (m.dir === 'put' && m.item && m.n > 0) box[m.item] = (box[m.item] || 0) + m.n;
+      if (m.dir === 'take') {
+        if ((box[m.item] || 0) < m.n || m.n <= 0) return reply(false, 'Someone already took that.', box);
+        box[m.item] -= m.n; if (box[m.item] <= 0) delete box[m.item];
+      }
+      if (m.dir !== 'peek') commit('coopChest', false);
+      return reply(true, '', box);
+    }
     const def = PLACEABLES[m.type];
     if (this.visit || this.mode !== 'play' || !def) return reply(false, 'The host isn’t on this island right now.');
     const world = this.outdoor;
@@ -784,6 +846,7 @@ export class Game {
         n.dir = faceToward(n, p);
         p.facing = faceToward(p, n);
         markTalked(n.id);
+        talkedTo(n.id);
         this.ui.talk(n.id);
         // Nori sets new islanders up with a starter rod and sword.
         if (n.id === 'nori' && !this.visit) this.starterGear();
@@ -802,6 +865,27 @@ export class Game {
         break;
       }
       case 'gift': this.openGift(); break;
+      case 'gift_npc': {
+        const r = giveGift(it.npc.id, getState().inventory.held);
+        toast(r.message, r.ok ? (r.taste === 'dislike' ? 'friends' : 'heart') : 'friends', r.ok && r.taste === 'love' ? 'gold' : r.ok ? 'good' : 'info');
+        this.ui.hotbar?.render();
+        break;
+      }
+      case 'ship': this.ui.shipModal(); break;
+      case 'mail': this.ui.mailModal(); break;
+      case 'restore': this.ui.open('restore'); break;
+      case 'museum': this.ui.open('museum'); break;
+      case 'festival': this.ui.festivalModal(this.festivalToday()); break;
+      case 'elevator': this.ui.mineMenu(true); break;
+      case 'boss_chest': this.openBossChest(it.obj); break;
+      case 'feed': {
+        const n = fillTrough(getState().islands[this.outdoor.id], this.indoor?.home);
+        if (n) this.renderer.troughFull = true;
+        toast(n ? `Added ${n} hay to the trough. Each animal eats one a day.` : 'You have no hay. Cut tall grass with your scythe to get some.', 'hay');
+        break;
+      }
+      case 'animals': this.ui.animalShop(this.indoor?.home, this.indoor?.homeType); break;
+      case 'pet': toast(petAnimal(it.critter.a), 'heart', 'good'); this.ui.hotbar?.render(); break;
       case 'hall': this.ui.open('hall'); break;
       case 'floor_chest': this.openFloorChest(it.obj); break;
       case 'tv': this.ui.tvModal(); break;
@@ -814,7 +898,10 @@ export class Game {
       case 'enter': this.enterInterior(it); break;
       case 'exit': this.exitInterior(); break;
       case 'bed': this.ui.sleepPrompt(); break;
-      case 'use': this.ui.useUtility(it.placement); break;
+      case 'use':
+        if (it.placement.def.use === 'machine') { const r = useMachine(getState().islands[this.outdoor.id], it.placement, getState().inventory.held); toast(r.message, 'sparkle', r.ok ? 'good' : 'info'); this.ui.hotbar?.render(); }
+        else this.ui.useUtility(it.placement);
+        break;
       case 'mine_enter': {
         const s = getState();
         if (!s.flags.mineOpen && !this.visit) { toast(`Fallen rocks block the way in. Rowan says they’ll be cleared by Day 5 (it’s Day ${s.world.day}).`, 'pickaxe'); return; }
@@ -852,9 +939,17 @@ export class Game {
   /** Walk into a building: the shop object or a cottage placement. */
   enterInterior(it, { instant = false, spawn = null } = {}) {
     if (this.indoor || (this.ui.fading && !instant)) return;
-    const id = it.obj ? it.obj.def.interior : it.placement?.type === 'guest_cabin' ? 'cabin_interior' : 'cottage_interior';
+    const id = it.obj ? it.obj.def.interior : it.placement?.def?.interior || (it.placement?.type === 'guest_cabin' ? 'cabin_interior' : 'cottage_interior');
     const def = INTERIORS[id];
     if (!def) return;
+    // shops keep opening hours (festival days too)
+    const hours = OPENING_HOURS[id];
+    const hour = getState().world.minutes / 60;
+    if (hours && !instant && (hour < hours.from || hour >= hours.to)) {
+      const t = n => `${((n + 11) % 12) + 1} ${n < 12 ? 'AM' : 'PM'}`;
+      toast(`${hours.name[0].toUpperCase() + hours.name.slice(1)} is closed. Open ${t(hours.from)} – ${t(hours.to)}.`, 'lock');
+      return;
+    }
     // Where to stand when coming back out: the tile in front of the door.
     let ret;
     if (it.obj) { const fp = it.obj.def.footprint || { w: 1, h: 1 }; ret = { x: it.obj.x + Math.floor(fp.w / 2), y: it.obj.y + fp.h }; }
@@ -862,8 +957,10 @@ export class Game {
     const outside = this.world;
     if (!outside.walkableTile(ret.x, ret.y)) ret = outside.nearestWalkable(ret.x, ret.y, this.player.tileX, this.player.tileY) || { x: this.player.tileX, y: this.player.tileY };
     const go = () => {
-      this.indoor = { id, outside, ret };
+      this.indoor = { id, outside, ret, home: it.placement?.uid, homeType: it.placement?.type };
       this.world = new World(id, { unlocked: true, visited: true, nodes: {}, gardens: {}, flags: {}, placements: [] });
+      // animals live inside their coop / barn
+      if (it.placement?.uid && (id === 'coop_interior' || id === 'barn_interior')) this.spawnCritters(it.placement.uid);
       this.renderer.setWorld(this.world);
       const sp = spawn || def.spawn;
       this.player.placeAtTile(sp.x, sp.y);
@@ -970,6 +1067,7 @@ export class Game {
       this.player.facing = 'down';
       sleepToMorning();
       s.player.hp = Math.ceil(s.player.maxHp * 0.75);
+      s.player.energy = Math.ceil((s.player.maxEnergy || 100) * 0.5);
       if (this.channel && this.bedPeers().length) {
         const w = s.world;
         this.ui.online?.social.relay('wake', { day: w.day, minutes: Math.floor(w.minutes), weather: w.weather });
@@ -1138,6 +1236,7 @@ export class Game {
         setClock(clock);
         const s = getState();
         s.player.hp = s.player.maxHp;
+        s.player.energy = s.player.maxEnergy || 100;
         s.stats.daysSlept = (s.stats.daysSlept || 0) + 1;
         emit('newDay', { day: clock.day, slept: true });
         commit('sleep');
@@ -1156,6 +1255,13 @@ export class Game {
 
   onRelay(m) {
     const fromHost = this.visit && m.user === this.visit.hostId;
+    if (m.kind === 'boss') {
+      // someone in this world beat a boss: everyone shares the treasure
+      const r = BOSSES[m.data.floor]?.reward;
+      if (r) sendMail({ id: `boss_${m.data.floor}_${getState().world.day}`, from: 'Bram', subject: `Shared treasure from floor ${m.data.floor}!`, body: `Word travels fast — a friend beat the boss on floor ${m.data.floor}. The Hall splits the treasure with everyone in the world.`, attach: { coins: Math.round((r.coins || 0) / 2), pearls: 1 } });
+      toast('A friend beat a mine boss! A share of the treasure is in your mailbox.', 'trophy', 'gold');
+      return;
+    }
     if (m.kind === 'sleep') {
       if (m.data.on) this.sleepers.add(m.user); else this.sleepers.delete(m.user);
       this.ui.refreshSleep?.();
@@ -1200,7 +1306,21 @@ export class Game {
     if (added) commit('build');
   }
 
+  /** Fishing Derby: count catches for 3 minutes, then hand out a prize. */
+  updateDerby() {
+    const d = this.derby;
+    if (!d || performance.now() < d.end || this.ui.fading) return;
+    this.derby = null;
+    const n = getState().stats.fishCaught - d.start;
+    const prize = n >= 8 ? { coins: 1500, pearls: 3, medal: 'Gold' } : n >= 5 ? { coins: 700, pearls: 1, medal: 'Silver' } : n >= 2 ? { coins: 250, medal: 'Bronze' } : null;
+    if (prize) { addCoinsTo(prize.coins); if (prize.pearls) getState().player.pearls += prize.pearls; sfx('levelup'); }
+    toast(prize ? `Fishing Derby over! ${n} fish — ${prize.medal} medal: ${prize.coins} coins${prize.pearls ? ' and ' + prize.pearls + ' pearls' : ''}!` : `Fishing Derby over! You caught ${n}. Better luck next year!`, 'rod', prize ? 'gold' : 'info');
+    commit('derby');
+    this.ui.refreshWhere?.();
+  }
+
   startFishing(spot) {
+    if (getState().player.energy < energyCost('cast')) { toast('You’re too tired to fish. Eat something or go to bed.', 'sleep', 'error'); return; }
     const p = this.player;
     // Step onto the spot tile so the cast lines up.
     p.placeAtTile(spot.x, spot.y);
@@ -1241,7 +1361,9 @@ export class Game {
     // Menus, dialogue and fishing stop the player (and their footsteps) at once,
     // including a tap-to-walk that was in progress.
     if (blocked && this.player.path) this.player.cancelPath();
-    const input = blocked ? { x: 0, y: 0 } : this.controls.read();
+    const padVec = this.pad.poll();
+    let input = blocked ? { x: 0, y: 0 } : this.controls.read();
+    if (!blocked && !input.x && !input.y && (padVec.x || padVec.y)) input = { x: padVec.x, y: padVec.y };
     if (!this.build.active) this.player.update(dt, input, this.world);
     else this.player.moving = false;
     this.footsteps.update(dt);
@@ -1253,6 +1375,13 @@ export class Game {
     if (pl.invuln > 0) pl.invuln -= dt;
     if (this.world.monsters.length && !this.ui.fading) updateMonsters(this, dt);
     this.updateNpcs(dt);
+    { // music follows the season, and goes quiet and dark underground
+      const ms = { season: seasonOf(getState().world.day).season, mine: !!this.world?.def.mine };
+      const key = ms.season + ms.mine;
+      if (key !== this.musicKey) { this.musicKey = key; setMusicScene(ms); }
+    }
+    this.updateCritters(dt);
+    this.updateDerby();
     if (this.fishing) this.fishing.update(dt);
     this.interactTarget = this.build.active || this.fishing ? null : findInteractable(this);
     // Fog hides secret spots until you get close.
@@ -1298,8 +1427,97 @@ export class Game {
     return this.insetCache;
   }
 
+  /** Islanders move between places through the day (data/life-data.js). */
+  scheduleNpcs() {
+    const w = this.world;
+    if (w.id !== FARM_ISLAND) return;
+    const hour = Math.floor(getState().world.minutes / 60);
+    for (const n of w.npcs) {
+      const sch = SCHEDULES[n.id];
+      if (!sch) continue;
+      let e = sch[sch.length - 1];
+      for (const x of sch) if (hour >= x[0]) e = x;
+      if (n.schedKey === e[0]) continue;
+      n.schedKey = e[0];
+      const tx = e[1] * TILE + 8, ty = e[2] * TILE + 12;
+      n.homeX = tx; n.homeY = ty;
+      const here = w.areaAt(Math.floor(n.x / TILE), Math.floor(n.y / TILE)), there = w.areaAt(e[1], e[2]);
+      if (here !== there || !w.inBoundsPx(n.x, n.y)) { n.x = tx; n.y = ty; n.tx = null; }
+      else { n.tx = tx; n.ty = ty; n.walkHome = true; }
+    }
+  }
+
+  /** Animals in the coop / barn you're standing in. */
+  spawnCritters(homeUid) {
+    const isl = getState().islands[this.outdoor.id];
+    const def = this.world.def;
+    this.renderer.troughFull = (isl.feed?.[homeUid] || 0) > 0;
+    this.world.critters = animalsIn(isl, homeUid).map((a, i) => ({
+      a, x: (2 + (i * 2) % (def.size.w - 4)) * TILE + 8, y: (4 + (i % 2)) * TILE + 12, dir: 'down', anim: Math.random() * 4, t: 1 + Math.random() * 2, tx: null, ty: null,
+    }));
+  }
+
+  updateCritters(dt) {
+    for (const c of this.world.critters || []) {
+      c.t -= dt;
+      if (c.tx != null) {
+        const dx = c.tx - c.x, dy = c.ty - c.y, d = Math.hypot(dx, dy);
+        if (d < 1.5) { c.tx = null; c.moving = false; c.t = 1.5 + Math.random() * 3; }
+        else { const sp = 14 * dt, nx = c.x + dx / d * sp, ny = c.y + dy / d * sp; if (this.world.boxFree(nx, ny - 3, 5, 3)) { c.x = nx; c.y = ny; c.moving = true; c.anim += dt * 5; c.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up'; } else { c.tx = null; c.moving = false; } }
+      } else if (c.t <= 0) { c.tx = c.x + (Math.random() * 2 - 1) * 28; c.ty = c.y + (Math.random() * 2 - 1) * 20; }
+    }
+  }
+
+  /** Sprinklers water the tilled soil around them every morning. */
+  waterSprinklers() {
+    const isl = getState().islands[FARM_ISLAND];
+    const soil = isl?.farm?.soil;
+    if (!soil) return;
+    for (const p of isl.placements) {
+      const d = ALL_PLACEABLES[p.type];
+      if (!d?.sprinkle) continue;
+      const around = d.sprinkle >= 8 ? [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] : [[0, -1], [-1, 0], [1, 0], [0, 1]];
+      for (const [dx, dy] of around) { const plot = soil[(p.x + dx) + ',' + (p.y + dy)]; if (plot) plot.water = true; }
+    }
+  }
+
+  /** The festival happening right now in town, if any. */
+  festivalToday() {
+    const s = getState();
+    if (!s || this.world?.id !== FARM_ISLAND || this.indoor) return null;
+    const sn = seasonOf(s.world.day), f = FESTIVALS[sn.season];
+    const h = s.world.minutes / 60;
+    if (!f || sn.day !== f.day || h < FESTIVAL_HOURS.from || h >= FESTIVAL_HOURS.to) return null;
+    return { ...f, season: sn.season, year: sn.year, key: `${sn.year}-${f.id}` };
+  }
+
+  /** A beaten boss: you open its chest; everyone else in the world gets a share. */
+  onBossDefeated(level, name) {
+    toast(`You defeated the ${name}! Its treasure is yours.`, 'trophy', 'gold');
+    sfx('levelup');
+    if (this.channel) this.ui.online?.social.relay('boss', { floor: level });
+  }
+
+  openBossChest(o) {
+    const s = getState();
+    s.flags.bossDay = s.flags.bossDay || {};
+    if (s.flags.bossDay[o.level] === s.world.day) { toast('You already opened this treasure today.', 'chest'); return; }
+    s.flags.bossDay[o.level] = s.world.day;
+    const r = BOSSES[o.level]?.reward || {};
+    const got = [];
+    if (r.coins) { addCoinsTo(r.coins); got.push(`${r.coins} coins`); }
+    for (const [id, n] of Object.entries(r.items || {})) { addItemTo(id, n); got.push(`${n} ${RESOURCES[id]?.name || id}`); }
+    if (r.pearls) { s.player.pearls += r.pearls; got.push(`${r.pearls} pearls`); }
+    this.world.broken.add(o.id);
+    this.world.rebuild();
+    sfx('levelup');
+    toast(`Boss treasure: ${got.join(', ')}!`, 'chest', 'gold');
+    commit('bossChest');
+  }
+
   updateNpcs(dt) {
     const p = this.mode === 'play' ? this.player : null;
+    this.scheduleNpcs();
     for (const n of this.world.npcs) {
       if (!this.world.inBoundsPx(n.homeX, n.homeY - 2)) continue;   // in another area
       // Hold still while the player is close (or heading over to chat).
@@ -1310,11 +1528,12 @@ export class Game {
       n.timer -= dt;
       if (n.tx != null) {
         const dx = n.tx - n.x, dy = n.ty - n.y, d = Math.hypot(dx, dy);
-        if (d < 1.5) { n.tx = null; n.moving = false; n.timer = 2 + Math.random() * 4; }
+        if (d < 1.5) { n.tx = null; n.moving = false; n.walkHome = false; n.timer = 2 + Math.random() * 4; }
         else {
           const sp = 22 * dt;
           const nx = n.x + (dx / d) * sp, ny = n.y + (dy / d) * sp;
           if (this.world.boxFree(nx, ny - 3, 5, 3) && !(this.player && Math.hypot(nx - this.player.x, ny - this.player.y) < 10)) { n.x = nx; n.y = ny; n.moving = true; n.anim += dt * 6; }
+          else if (n.walkHome) { n.x = n.tx; n.y = n.ty; n.tx = null; n.moving = false; n.walkHome = false; }   // blocked: they took another way
           else { n.tx = null; n.moving = false; n.timer = 1.5; }
           n.dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
         }

@@ -115,7 +115,7 @@ export class Social {
     catch (err) { const p = this.coopPending.get(req); if (p) { clearTimeout(p.timer); this.coopPending.delete(req); } return { ok: false, error: err.server ? err.message : 'You seem to be offline.' }; }
     return reply;
   }
-  coopResult(to, req, ok, error = '') { this.net.send('coop_result', { to, req, ok, error }); }
+  coopResult(to, req, ok, error = '', data = undefined) { this.net.send('coop_result', { to, req, ok, error, data }); }
   shareLayout(flags, placements) { this.net.send('coop_layout', { flags, placements }); }
   /** Tell everyone on this island something small (sleep / wake / clock). */
   relay(kind, data) { this.net.send('room_relay', { kind, data }); }

@@ -262,7 +262,12 @@
 .hp-bar { display: flex; align-items: center; gap: 6px; padding: 3px 8px 3px 4px; font-weight: 700; font-size: 0.78rem; }
 .hp-bar[hidden] { display: none; }
 .hp-bar .px-icon { width: 18px; height: 18px; }
-.bar.hp { width: 110px; height: 9px; margin: 0; background: #3a1e2a; box-shadow: 0 0 0 1.5px var(--ink); }
+#hotbar .bars { display: flex; gap: 6px; justify-content: center; }
+.energy-bar .bar.energy { width: 80px; background: #3a2e1e; }
+.bar.energy .fill { transition: width 0.15s; }
+.bar.energy .fill { background: linear-gradient(#ffe27a, #e8a93a); }
+.bar.energy.low .fill { background: linear-gradient(#ff9a6a, #d9553a); }
+.bar.hp, .bar.energy { width: 110px; height: 9px; margin: 0; background: #3a1e2a; box-shadow: 0 0 0 1.5px var(--ink); }
 .bar.hp .fill { background: #e05a5a; transition: width 0.15s; }
 .bar.hp.low .fill { animation: pulse 0.5s ease-in-out infinite alternate; }
 #app.fishing #hotbar, #app.building #hotbar, #app.talking #hotbar { display: none; }

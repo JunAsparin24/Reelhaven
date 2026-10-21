@@ -325,7 +325,39 @@ export function setMood(m) { mood = m; }
 export const MUSIC_TRACK = 'assets/audio/music/main_theme.mp3';
 const TRACK_GAIN = 2.2;            // the recording is quieter than the synth tune
 const POS_KEY = 'reelhaven.musicPos';
-let track = null, trackFailed = false, posTimer = null;
+let track = null, trackFailed = false, posTimer = null, trackGain = null, trackFilter = null;
+
+// Each season colours the soundtrack a little (tempo / warmth), and the Old
+// Mine has its own darker synth piece.
+const SEASON_SOUND = {
+  spring: { rate: 1.0, cutoff: 18000 },
+  summer: { rate: 1.03, cutoff: 18000 },
+  fall: { rate: 0.97, cutoff: 4200 },
+  winter: { rate: 0.94, cutoff: 2400 },
+};
+let scene = { season: 'spring', mine: false };
+
+/** Tell the music where you are: { season, mine }. */
+export function setMusicScene(next) {
+  const was = scene;
+  scene = { ...scene, ...next };
+  if (!ctx) return;
+  const look = SEASON_SOUND[scene.season] || SEASON_SOUND.spring;
+  if (track) { track.preservesPitch = false; track.playbackRate = look.rate; }
+  if (trackFilter) trackFilter.frequency.setTargetAtTime(look.cutoff, ctx.currentTime, 0.8);
+  if (!musicOn || was.mine === scene.mine) return;
+  if (scene.mine) {
+    // fade the main track out and start the mine piece
+    if (trackGain) trackGain.gain.setTargetAtTime(0, ctx.currentTime, 0.4);
+    setTimeout(() => { if (scene.mine && track) track.pause(); }, 1500);
+    startSynth();
+  } else {
+    clearInterval(musicTimer); musicTimer = null;
+    if (track && !trackFailed) { track.play().catch(() => {}); if (trackGain) trackGain.gain.setTargetAtTime(TRACK_GAIN, ctx.currentTime, 0.6); }
+    else startSynth();
+  }
+}
+export function musicScene() { return { ...scene }; }
 
 function saveTrackPos() {
   try { if (track && track.currentTime > 0) localStorage.setItem(POS_KEY, String(Math.floor(track.currentTime))); } catch { /* storage blocked */ }
@@ -352,13 +384,19 @@ function startTrack() {
     track.src = MUSIC_TRACK;
     try {
       const node = ctx.createMediaElementSource(track);
-      const g = ctx.createGain();
-      g.gain.value = TRACK_GAIN;
-      node.connect(g); g.connect(musicGain);
+      trackGain = ctx.createGain();
+      trackGain.gain.value = scene.mine ? 0 : TRACK_GAIN;
+      trackFilter = ctx.createBiquadFilter();
+      trackFilter.type = 'lowpass';
+      trackFilter.frequency.value = (SEASON_SOUND[scene.season] || SEASON_SOUND.spring).cutoff;
+      node.connect(trackFilter); trackFilter.connect(trackGain); trackGain.connect(musicGain);
     } catch { /* plays straight to the speakers if Web Audio can't take it */ }
     posTimer = setInterval(saveTrackPos, 10000);
     window.addEventListener('pagehide', saveTrackPos);
   }
+  track.preservesPitch = false;
+  track.playbackRate = (SEASON_SOUND[scene.season] || SEASON_SOUND.spring).rate;
+  if (scene.mine) { startSynth(); return true; }
   track.play().catch(() => { /* waits for the next tap (see unlock) */ });
   return true;
 }
@@ -382,8 +420,24 @@ export function stopMusic() {
   if (track) { saveTrackPos(); track.pause(); }
 }
 
+// The mine: a slow minor drone with drips and far-off chimes.
+const PROG_MINE = [[45, 48, 52], [41, 45, 48], [43, 46, 50], [40, 43, 47]];
+function scheduleMine() {
+  const beat = 0.6;
+  while (nextNoteTime < ctx.currentTime + 0.6) {
+    const chord = PROG_MINE[Math.floor(step / 8) % PROG_MINE.length];
+    const i = step % 8, t = nextNoteTime;
+    if (i === 0) { tone(N(chord[0] - 12), t, beat * 7.5, { type: 'sine', vol: 0.2, dest: musicGain, attack: 0.6 }); tone(N(chord[2] - 12), t, beat * 7.5, { type: 'sine', vol: 0.08, dest: musicGain, attack: 0.9 }); }
+    if (i % 2 === 1 && Math.random() < 0.6) tone(N(chord[Math.floor(Math.random() * 3)] + 12), t, beat * 1.4, { type: 'triangle', vol: 0.05, dest: musicGain, attack: 0.02 });
+    if (Math.random() < 0.12) tone(N(chord[0] + 36 + [0, 3, 7][Math.floor(Math.random() * 3)]), t + beat / 2, 0.5, { type: 'sine', vol: 0.025, dest: musicGain, attack: 0.005 });
+    nextNoteTime += beat;
+    step++;
+  }
+}
+
 function scheduleMusic() {
   if (!ctx || ctx.state !== 'running') return;
+  if (scene.mine) { scheduleMine(); return; }
   const night = mood === 'night';
   const beat = night ? 0.42 : 0.34;
   while (nextNoteTime < ctx.currentTime + 0.5) {

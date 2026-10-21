@@ -2,6 +2,7 @@
 // Balance values live here so they can be tuned without touching logic.
 import { FARM_ITEMS, FARM_SELL } from './farm-data.js';
 import { SWORDS } from './weapon-data.js';
+import { LIFE_ITEMS, LIFE_SELL } from './life-data.js';
 
 export const RODS = {
   wooden_rod: {
@@ -76,13 +77,16 @@ export const RESOURCES = {
   bat_wing: { id: 'bat_wing', name: 'Bat Wing', icon: 'wing', desc: 'Dropped by cave bats.' },
   // farming: seeds, produce and fiber (data/farm-data.js)
   ...FARM_ITEMS,
+  // animal products, artisan goods, hay, hardwood (data/life-data.js)
+  ...LIFE_ITEMS,
 };
 
 /** Things you can eat from the hotbar to heal. heal = HP restored. */
 export const FOOD = {
-  seaweed_snack: { id: 'seaweed_snack', name: 'Seaweed Snack', icon: 'snack', heal: 20, price: 15, desc: 'Salty and crunchy. Heals 20 HP.' },
-  island_salad: { id: 'island_salad', name: 'Island Salad', icon: 'salad', heal: 40, price: 40, desc: 'Fresh greens and fruit. Heals 40 HP.' },
-  grilled_fish: { id: 'grilled_fish', name: 'Grilled Fish', icon: 'grilled', heal: 60, sell: 25, desc: 'Cooked at a furnace or campfire. Heals 60 HP.' },
+  seaweed_snack: { id: 'seaweed_snack', name: 'Seaweed Snack', icon: 'snack', heal: 20, energy: 15, price: 15, desc: 'Salty and crunchy. +20 HP, +15 energy.' },
+  island_salad: { id: 'island_salad', name: 'Island Salad', icon: 'salad', heal: 40, energy: 35, price: 40, desc: 'Fresh greens and fruit. +40 HP, +35 energy.' },
+  grilled_fish: { id: 'grilled_fish', name: 'Grilled Fish', icon: 'grilled', heal: 60, energy: 45, sell: 25, desc: 'Cooked at a furnace or campfire. +60 HP, +45 energy.' },
+  field_snack: { id: 'field_snack', name: 'Field Snack', icon: 'snack', heal: 10, energy: 30, sell: 20, desc: 'Crafted from a radish and fiber. +30 energy.' },
 };
 
 export const MAX_HP = 100;
@@ -102,7 +106,11 @@ export const TOOLS = {
   ],
   scythe: [{ name: 'Scythe', power: 1, desc: 'Cuts weeds in a wide sweep.' }],
   hoe: [{ name: 'Hoe', power: 1, desc: 'Tills grass or sand in your yard so you can plant seeds.' }],
-  watering_can: [{ name: 'Watering Can', power: 1, desc: 'Waters crops. Refill it at any water.' }],
+  watering_can: [
+    { name: 'Watering Can', power: 1, capacity: 40, area: 1, desc: 'Waters one tile. Refill it at any water.' },
+    { name: 'Copper Can', power: 1, capacity: 60, area: 3, cost: { coins: 400, copper_bar: 4 }, minLevel: 2, desc: 'Holds more and waters 3 tiles in a row.' },
+    { name: 'Iron Can', power: 1, capacity: 90, area: 9, cost: { coins: 1200, iron_bar: 4 }, minLevel: 4, desc: 'Holds lots and waters a 3×3 patch.' },
+  ],
   pickaxe: [
     { name: 'Old Pickaxe', power: 1, desc: 'Breaks rocks in the mine.' },
     { name: 'Copper Pickaxe', power: 2, cost: { coins: 300, copper_bar: 4 }, minLevel: 2, desc: 'Breaks rocks twice as fast.' },
@@ -127,6 +135,7 @@ export const RESOURCE_SELL = {
   copper_ore: 5, iron_ore: 9, gold_ore: 16, copper_bar: 30, iron_bar: 55, gold_bar: 95,
   quartz: 20, amethyst: 45, slime: 3, bat_wing: 6,
   ...FARM_SELL,
+  ...LIFE_SELL,
 };
 
 export const HATS = {

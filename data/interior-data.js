@@ -81,6 +81,62 @@ export const INTERIORS = {
     npcs: [{ id: 'bram', x: 6, y: 3 }],
   },
 
+  // Animals live here (js/life.js). Put hay in the trough every day.
+  coop_interior: {
+    id: 'coop_interior', name: 'Coop', interior: true, theme: THEME,
+    size: { w: 10, h: 8 },
+    spawn: { x: 4, y: 6 },
+    exit: { x: 4, y: 7, w: 2 },
+    build(m) {
+      const { I, L } = m.T;
+      m.fill(L);
+      m.rect(1, 2, 8, 5, I);
+      m.rect(4, 7, 2, 1, I);
+      m.obj('feed_trough', 1, 2);
+      m.obj('animal_board', 8, 2);
+      m.obj('crate', 8, 6);
+      m.obj('doormat', 4, 7);
+    },
+    npcs: [],
+  },
+  barn_interior: {
+    id: 'barn_interior', name: 'Barn', interior: true, theme: THEME,
+    size: { w: 12, h: 9 },
+    spawn: { x: 6, y: 7 },
+    exit: { x: 5, y: 8, w: 2 },
+    build(m) {
+      const { I, L } = m.T;
+      m.fill(L);
+      m.rect(1, 2, 10, 6, I);
+      m.rect(5, 8, 2, 1, I);
+      m.obj('feed_trough', 1, 2); m.obj('feed_trough', 3, 2);
+      m.obj('animal_board', 10, 2);
+      m.obj('barrel', 10, 7);
+      m.obj('doormat', 5, 8);
+    },
+    npcs: [],
+  },
+  // The island museum: donated fish and gems go on display.
+  museum_interior: {
+    id: 'museum_interior', name: 'Museum', interior: true, theme: THEME,
+    size: { w: 14, h: 10 },
+    spawn: { x: 7, y: 8 },
+    exit: { x: 6, y: 9, w: 2 },
+    build(m) {
+      const { I, L } = m.T;
+      m.fill(L);
+      m.rect(1, 2, 12, 7, I);
+      m.rect(6, 9, 2, 1, I);
+      let k = 0;
+      for (const y of [2, 5]) for (const x of [2, 4, 6, 8, 10]) m.obj('display_case', x, y, { showIdx: k++ });
+      for (const x of [1, 12]) for (const y of [3, 6]) m.obj('display_case', x, y, { showIdx: k++ });
+      m.obj('museum_desk', 6, 7);
+      m.obj('plant', 1, 8); m.obj('plant', 12, 8);
+      m.obj('doormat', 6, 9);
+    },
+    npcs: [],
+  },
+
   // Each friend who joins your game gets one of these in your yard.
   cabin_interior: {
     id: 'cabin_interior', name: 'Guest Cabin', interior: true, theme: THEME,

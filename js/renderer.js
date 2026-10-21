@@ -10,6 +10,8 @@ import { lighting } from './weather.js';
 import { getState } from './state.js';
 import { seasonOf } from '../data/farm-data.js';
 import { cropStage } from './farm.js';
+import { MONSTERS } from '../data/mine-data.js';
+import { ANIMALS } from '../data/life-data.js';
 
 /** The current season ('spring' on the title screen). */
 const seasonNow = () => { const s = getState(); return s?.world ? seasonOf(s.world.day).season : 'spring'; };
@@ -436,10 +438,16 @@ export class Renderer {
       drawList.push({ y: r.y, spr, x: r.x, by: r.y + 1, remote: true });
       this.nameTags.push({ text: r.name || 'Islander', x: r.x, y: r.y - spr.height - 1, host: r.host });
     }
+    for (const c of w.critters || []) {
+      const spr = sprite(`critter_${ANIMALS[c.a.kind]?.sprite || 'chicken'}_${c.moving ? Math.floor(c.anim) % 2 : 0}`);
+      if (spr) drawList.push({ y: c.y, spr, x: c.x, by: c.y + 1, flip: c.dir === 'left' });
+      if (c.a.ready && !this.reducedMotion) this.twinkle(ctx, c.x - cam.x, c.y - 16 - cam.y, c.x);
+    }
     for (const m of w.monsters) {
       if (m.dead || !inView(m.x, m.y)) continue;
-      const spr = sprite(`mon_${m.type}_${Math.floor(m.anim) % 2}`);
-      if (spr) drawList.push({ y: m.y, spr, x: m.x, by: m.y + (m.type === 'bat' || m.type === 'shade' ? -6 : 1), monster: m });
+      const md = MONSTERS[m.type] || {};
+      const spr = sprite(`mon_${md.sprite || m.type}_${Math.floor(m.anim) % 2}`);
+      if (spr) drawList.push({ y: m.y, spr, x: m.x, by: m.y + (md.flies ? -6 : 1), monster: m, scale: md.scale || 1 });
     }
     if (scene.player && !scene.title) {
       const p = scene.player;
@@ -478,12 +486,14 @@ export class Renderer {
         ctx.fillStyle = 'rgba(10,6,16,0.35)';
         ctx.fillRect(Math.round(d.x - 5 - cam.x), Math.round(m.y - 1 - cam.y), 10, 2);
         if (m.flash > 0 && Math.floor(t * 30) % 2) ctx.globalAlpha = 0.35;
-        ctx.drawImage(d.spr, Math.round(d.x - d.spr.width / 2 - cam.x), Math.round(d.by - d.spr.height - cam.y));
+        const sc = d.scale || 1, sw = d.spr.width * sc, sh = d.spr.height * sc;
+        ctx.drawImage(d.spr, Math.round(d.x - sw / 2 - cam.x), Math.round(d.by - sh - cam.y), sw, sh);
         ctx.globalAlpha = 1;
-        if (m.maxHp && m.hp < m.maxHp) {
-          const bx = Math.round(d.x - 8 - cam.x), by = Math.round(d.by - d.spr.height - 5 - cam.y);
-          ctx.fillStyle = C.ink; ctx.fillRect(bx - 1, by - 1, 18, 4);
-          ctx.fillStyle = '#e05a5a'; ctx.fillRect(bx, by, Math.max(0, Math.round(16 * m.hp / m.maxHp)), 2);
+        if (m.maxHp && (m.hp < m.maxHp || sc > 1)) {
+          const bw = sc > 1 ? 40 : 16;
+          const bx = Math.round(d.x - bw / 2 - cam.x), by = Math.round(d.by - sh - 5 - cam.y);
+          ctx.fillStyle = C.ink; ctx.fillRect(bx - 1, by - 1, bw + 2, 4);
+          ctx.fillStyle = sc > 1 ? '#b27be0' : '#e05a5a'; ctx.fillRect(bx, by, Math.max(0, Math.round(bw * m.hp / m.maxHp)), 2);
         }
         continue;
       }
@@ -597,8 +607,28 @@ export class Renderer {
         return sprite(`debris_grass_${seasonNow()}_${(o.variant % 2) * 3 + sw}`);
       }
       case 'mine_rock': return sprite('rock_' + (o.kind || 'stone'));
+      case 'display_case': return this.caseSprite(o);
+      case 'feed_trough': return sprite(this.troughFull ? 'feed_trough_full' : 'feed_trough');
       default: return sprite(o.type);
     }
+  }
+
+  /** A museum case with whatever was donated in that slot. */
+  caseSprite(o) {
+    const id = getState()?.museum?.donated?.[o.showIdx];
+    if (!id) return sprite('display_case');
+    this.cases = this.cases || new Map();
+    let c = this.cases.get(id);
+    if (!c) {
+      const base = sprite('display_case');
+      c = makeCanvas(base.width, base.height);
+      const g = c.getContext('2d');
+      g.drawImage(base, 0, 0);
+      const art = hasSprite('fish_' + id) ? sprite('fish_' + id) : sprite('icon_' + ({ copper_ore: 'ore_copper', iron_ore: 'ore_iron', gold_ore: 'ore_gold' }[id] || id));
+      if (art) { const s = Math.min(1, 11 / Math.max(art.width, art.height)); g.imageSmoothingEnabled = false; g.drawImage(art, Math.round(8 - art.width * s / 2), Math.round(8 - art.height * s / 2), Math.round(art.width * s), Math.round(art.height * s)); }
+      this.cases.set(id, c);
+    }
+    return c;
   }
 
   placementSprite(p, night, state) {

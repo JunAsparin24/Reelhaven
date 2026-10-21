@@ -3,6 +3,7 @@
 // and every 5th floor becomes a checkpoint you can start from next time.
 import { INTERIORS } from './interior-data.js';
 import { FLOOR_CHESTS } from './weapon-data.js';
+import { BOSSES } from './life-data.js';
 
 const THEME = { deep: 'deep', near: 'ocean', shallow: 'shallow', pond: 'pond', reef: 'reef', grass: 'grass', sand: 'sand' };
 
@@ -24,6 +25,10 @@ export const MONSTERS = {
   bat: { name: 'Cave Bat', hp: 14, speed: 36, damage: 6, xp: 5, coins: [2, 5], drops: [['bat_wing', 1, 0.5]], from: 3, flies: true },
   crab: { name: 'Rock Crab', hp: 48, speed: 15, damage: 12, xp: 9, coins: [4, 9], drops: [['stone', 2, 1], ['iron_ore', 1, 0.3]], from: 6 },
   shade: { name: 'Shadow Wisp', hp: 40, speed: 30, damage: 15, xp: 14, coins: [8, 16], drops: [['amethyst', 1, 0.15]], from: 11, flies: true },
+  // bosses (floors 25 / 50 / 75; see BOSSES in life-data.js)
+  king_slime: { name: 'King Slime', hp: 600, speed: 16, damage: 18, xp: 120, coins: [150, 250], drops: [['slime', 10, 1]], from: 999, boss: true, sprite: 'slime', scale: 3 },
+  stone_golem: { name: 'Stone Golem', hp: 1500, speed: 13, damage: 26, xp: 260, coins: [300, 500], drops: [['iron_bar', 3, 1]], from: 999, boss: true, sprite: 'crab', scale: 3 },
+  void_wisp: { name: 'Void Wisp', hp: 2600, speed: 24, damage: 34, xp: 400, coins: [500, 900], drops: [['amethyst', 4, 1]], from: 999, boss: true, flies: true, sprite: 'shade', scale: 3 },
 };
 
 function rng(seed) {
@@ -46,7 +51,7 @@ export function mineFloor(level, seed = Date.now()) {
   const r = rng(seed * 31 + level * 977);
   const w = 30, h = 24;
   const def = {
-    id, name: `Old Mine · Floor ${level}`, interior: true, mine: true, level, theme: THEME,
+    id, name: `Old Mine · Floor ${level}`, interior: true, mine: true, level, theme: THEME, boss: BOSSES[level] ? level : null,
     size: { w, h },
     spawn: null,          // filled in by build()
     build(m) {
@@ -88,7 +93,13 @@ export function mineFloor(level, seed = Date.now()) {
       // exactly one rock far from the start hides the ladder down
       const far = rocks.filter(t => Math.abs(t.x - sx) + Math.abs(t.y - sy) > 8);
       const pick = (far.length ? far : rocks)[Math.floor(r() * (far.length || rocks.length))];
-      def.ladderAt = pick ? { x: pick.x, y: pick.y } : null;
+      // boss floors: the ladder only appears once the boss is beaten
+      def.ladderAt = pick && !BOSSES[level] ? { x: pick.x, y: pick.y } : null;
+      // every 5th floor has an elevator next to the ladder up
+      if (level % 5 === 0) {
+        const e = [[sx + 1, sy], [sx - 1, sy], [sx + 1, sy + 1]].find(([x, y]) => open.has(x + ',' + y));
+        if (e) { m.obj('elevator', e[0], e[1]); rocks.push({ x: e[0], y: e[1] }); }
+      }
       // a few breakable crates (coins, snacks, ore, rare swords)
       const freeTile = () => {
         for (let tries = 0; tries < 40; tries++) {
@@ -110,7 +121,12 @@ export function mineFloor(level, seed = Date.now()) {
       }
       // monsters
       const kinds = Object.entries(MONSTERS).filter(([, d]) => level >= d.from).map(([k]) => k);
-      const n = Math.min(14, 3 + Math.floor(level * 0.7));
+      if (BOSSES[level]) {
+        // the boss waits in the biggest open space, far from the ladder
+        const spot = tiles.filter(([x, y]) => Math.abs(x - sx) + Math.abs(y - sy) > 8 && !rocks.some(q => q.x === x && q.y === y)).sort((a, b) => (Math.abs(b[0] - sx) + Math.abs(b[1] - sy)) - (Math.abs(a[0] - sx) + Math.abs(a[1] - sy)))[0];
+        if (spot) m.monster(BOSSES[level].type, spot[0], spot[1]);
+      }
+      const n = BOSSES[level] ? 3 : Math.min(14, 3 + Math.floor(level * 0.7));
       const free = tiles.filter(([x, y]) => Math.abs(x - sx) + Math.abs(y - sy) > 6 && !rocks.some(q => q.x === x && q.y === y));
       for (let k = 0; k < n && free.length; k++) {
         const [x, y] = free.splice(Math.floor(r() * free.length), 1)[0];

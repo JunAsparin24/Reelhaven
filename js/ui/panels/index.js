@@ -8,6 +8,7 @@ import { questsPanel, ordersPanel } from './quests.js';
 import { friendsPanel, profilePanel } from './social.js';
 import { settingsPanel } from './settings.js';
 import { hallPanel } from './hall.js';
+import { craftPanel, lifePanel, restorePanel, museumPanel } from './life.js';
 
 export const PANELS = {
   inventory: inventoryPanel,
@@ -21,4 +22,8 @@ export const PANELS = {
   profile: profilePanel,
   settings: settingsPanel,
   hall: hallPanel,
+  craft: craftPanel,
+  life: lifePanel,
+  restore: restorePanel,
+  museum: museumPanel,
 };

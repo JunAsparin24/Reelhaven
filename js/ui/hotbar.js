@@ -18,8 +18,11 @@ export class Hotbar {
     this.hpFill = h('div.fill');
     this.hpText = h('span.hp-text');
     this.hp = h('div.hp-bar.hud-glass', { title: 'Health' }, icon('heart'), h('div.bar.hp', this.hpFill), this.hpText);
+    this.enFill = h('div.fill');
+    this.enText = h('span.hp-text');
+    this.en = h('div.hp-bar.energy-bar.hud-glass', { title: 'Energy — tools and fishing use it. Eat or sleep to refill.' }, icon('bolt'), h('div.bar.energy', this.enFill), this.enText);
     this.slotsEl = h('div.slots');
-    this.root.append(this.hp, this.slotsEl);
+    this.root.append(h('div.bars', this.hp, this.en), this.slotsEl);
     document.getElementById('hud').append(this.root);
     this.keys = [];
   }
@@ -56,6 +59,10 @@ export class Hotbar {
     this.hpFill.style.width = Math.max(0, (p.hp / p.maxHp) * 100) + '%';
     this.hpFill.parentElement.classList.toggle('low', p.hp / p.maxHp < 0.3);
     this.hpText.textContent = `${Math.ceil(p.hp)}/${p.maxHp}`;
+    const me = p.maxEnergy || 100, e = p.energy ?? me;
+    this.enFill.style.width = Math.max(0, (e / me) * 100) + '%';
+    this.enFill.parentElement.classList.toggle('low', e / me < 0.2);
+    this.enText.textContent = `${Math.ceil(e)}`;
   }
 
   /** Use a slot (from a tap or a number key). Returns true if handled. */

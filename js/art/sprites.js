@@ -2,6 +2,7 @@
 // by id. To swap in hand-made art, drop a PNG into assets/ and register it in
 // SPRITE_OVERRIDES — overrides replace the generated canvas with the image.
 import * as OBJ from './objects.js';
+import * as LIFE from './life-art.js';
 import { ICONS } from './icons.js';
 import { buildTileset } from './tiles.js';
 import { buildFishSprite } from './fish-art.js';
@@ -99,6 +100,16 @@ export function buildAllSprites() {
   put('gift_box', OBJ.giftBox()); put('tv', OBJ.tvSet());
   put('hall_counter', store.get('counter')); put('mine_crate', store.get('crate')); put('mine_chest', store.get('chest'));
   for (const t of ['slime', 'bat', 'crab', 'shade']) for (let f = 0; f < 2; f++) put(`mon_${t}_${f}`, OBJ.monster(t, f));
+  // island life
+  put('shipping_bin', LIFE.shippingBin()); put('home_mailbox', OBJ.mailbox()); put('restore_board', LIFE.restoreBoard());
+  put('museum', LIFE.museumBuilding()); put('museum_desk', LIFE.museumDesk()); put('display_case', LIFE.displayCase());
+  put('feed_trough', LIFE.feedTrough(false)); put('feed_trough_full', LIFE.feedTrough(true)); put('animal_board', LIFE.animalBoard());
+  put('elevator', LIFE.elevator()); put('boss_chest', LIFE.bossChest());
+  put('sprinkler', LIFE.sprinkler(false)); put('quality_sprinkler', LIFE.sprinkler(true));
+  for (const m of ['mayo_machine', 'cheese_press', 'preserves_jar']) put(m, LIFE.machine(m));
+  put('debris_big_stump', LIFE.bigStump()); put('debris_boulder', LIFE.bigBoulder());
+  put('coop', LIFE.coopBuilding()); put('barn', LIFE.barnBuilding());
+  for (const k of ['chicken', 'duck', 'cow', 'goat']) for (let f = 0; f < 2; f++) put(`critter_${k}_${f}`, LIFE.critter(k, f));
   // utilities + extra decorations
   put('furnace', OBJ.furnace(false)); put('furnace_lit', OBJ.furnace(true));
   put('campfire', OBJ.campfire());

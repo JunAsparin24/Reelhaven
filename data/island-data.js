@@ -56,6 +56,8 @@ export const ISLANDS = {
       m.path([[11, 26], [11, 30], [33, 30]], P, 2);       // cottage door -> east gate -> town
       m.path([[16, 23], [16, 19], [12, 19]], P, 2);       // north gate -> the lookout hill
       m.place('cottage', 9, 24);
+      m.obj('shipping_bin', 14, 25);
+      m.obj('home_mailbox', 8, 26);
       m.obj('flowerbush', 11, 16); m.obj('bush', 13, 15);
       for (const [x, y] of [[8, 15], [15, 14], [17, 17], [7, 18]]) m.obj('rock', x, y);
       for (const [x, y] of [[3, 27], [4, 38], [30, 22], [29, 40], [2, 33]]) m.obj('palm', x, y);
@@ -105,12 +107,18 @@ export const ISLANDS = {
       for (const [x, y] of [[16, 36], [28, 36], [37, 22], [7, 25], [36, 32]]) m.obj('shells', x, y);
       m.obj('seaglass', 44, 9);
       for (const [x, y] of [[18, 29], [27, 22], [38, 11]]) m.obj('flowerbush', x, y);
-      for (const [x, y] of [[33, 24], [16, 15], [25, 27], [40, 7]]) m.obj('bush', x, y);
-      for (const [x, y] of [[19, 18], [10, 26], [28, 25], [16, 21], [24, 21], [36, 9], [31, 27], [12, 17]]) m.obj('flowers', x, y);
+      for (const [x, y] of [[33, 24], [16, 15], [40, 7]]) m.obj('bush', x, y);
+      for (const [x, y] of [[19, 18], [10, 26], [16, 21], [24, 21], [36, 9], [31, 27], [12, 17]]) m.obj('flowers', x, y);
+      // the museum and the Island Restoration Board
+      m.obj('museum', 25, 25);
+      m.path([[26, 27], [26, 28], [22, 28]], P, 1);
+      m.obj('restore_board', 16, 23);
       for (const [x, y] of [[12, 35], [34, 34], [38, 26]]) m.obj('rock', x, y);
 
       m.spot('dock_end', 'ocean', 21, 41, 'down', 'Dock End');
       m.spot('dock_west', 'ocean', 18, 40, 'left', 'Dock Corner');
+      // opens when the Old Pier is repaired (Restoration Board): rarer fish
+      m.spot('far_pier', 'ocean', 21, 44, 'down', 'Deep-Sea Pier', { flag: 'pierRepaired', luck: 0.25, pier: { x: 51, y: 50 } });
       m.spot('east_beach', 'beach', 34, 25, 'right', 'East Beach');
       m.spot('pond', 'pond', 13, 24, 'down', 'Lily Pond');
       m.spot('lagoon', 'lagoon', 39, 9, 'up', 'Hidden Lagoon');

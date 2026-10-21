@@ -17,6 +17,7 @@ import { currentPhase, currentWeather } from './weather.js';
 import { hasBuilding } from './building-count.js';
 import { sfx, vibrate } from './audio.js';
 import { eventEffect } from './world-events.js';
+import { skillLevel, addSkillXp, spendEnergy } from './life.js';
 
 const DIR = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 export const PERFECT_ZONE = [0.78, 0.93];
@@ -127,6 +128,7 @@ export class FishingSession {
       tx = this.spot.waterX * TILE + 8; ty = this.spot.waterY * TILE + 8;
     }
     const s = this.state;
+    spendEnergy('cast');
     s.stats.casts += 1;
     if (this.perfect) {
       s.stats.perfectCasts += 1;
@@ -147,14 +149,15 @@ export class FishingSession {
     const difficulty = Math.min(10, this.fish.difficulty + (isl.fishingMod?.difficulty || 0));
     const beh = BEHAVIORS[this.fish.behavior] || BEHAVIORS.smooth;
     // Catch zone ~10% narrower than v1 (fishing was a little too easy).
-    const zoneW = Math.max(0.16, Math.min(0.46, rod.zone * 0.9 - (difficulty - 3) * 0.008));
+    const fl = skillLevel('fishing');
+    const zoneW = Math.max(0.16, Math.min(0.5, rod.zone * 0.9 - (difficulty - 3) * 0.008 + (fl >= 10 ? 0.06 : fl >= 5 ? 0.035 : fl * 0.004)));
     this.reel = {
       difficulty, beh, zoneW, power: rod.power,
       fishPos: 0.5, fishVel: 0, fishTarget: 0.5, nextMove: 0.6, t: 0,
       zonePos: 0.5 - zoneW / 2, zoneVel: 0,
       progress: 0.28,
       inZone: false,
-      treasure: Math.random() < 0.12 + ctx.spotLuck * 0.2 ? { at: rand(1, 3), pos: rand(0.1, 0.9), progress: 0, shown: false, done: false, life: 7 } : null,
+      treasure: Math.random() < 0.12 + ctx.spotLuck * 0.2 + (fl >= 10 ? 0.08 : 0) ? { at: rand(1, 3), pos: rand(0.1, 0.9), progress: 0, shown: false, done: false, life: 7 } : null,
     };
     this.tension = 0;
     sfx('splash');
@@ -359,6 +362,7 @@ export class FishingSession {
     }
     const xp = RARITY_XP[fish.rarity] + (isNew ? 25 : 0);
     addXp(xp);
+    addSkillXp('fishing', Math.round(xp / 2) + 3);
     this.player.cheer();
     this.result = { fish, size, variant, isNew, isRecord: isRecord && !isNew, xp, entry, stored, released: !!fish.release };
     emit('fishCaught', { fish, entry, isNew, zone: this.spot.zone, night: ph === 'night' });

@@ -182,7 +182,7 @@ function multiplayerSection(body, ctx, online) {
       button('Stop hosting', () => social.hostStop().then(() => toast('Your world is closed.', 'home')).catch(err), { cls: 'small ghost' })));
     // the owner decides what joined players may do
     const build = h('input', { type: 'checkbox', checked: host.settings?.membersBuild !== false, on: { change: e => social.hostSettings({ membersBuild: e.target.checked }).then(() => toast(e.target.checked ? 'Friends can build in your world.' : 'Only you can build in your world now.', 'build')).catch(err) } });
-    wrap.append(h('label.setting.toggle', h('span', 'Friends can build here', h('small', 'They pay with their own character’s coins and materials. Chests and your farm stay yours.')), build));
+    wrap.append(h('label.setting.toggle', h('span', 'Friends can build here', h('small', 'They pay with their own character’s coins and materials. Chests in your world are shared with everyone who joins.')), build));
     if (host.members.length) {
       wrap.append(h('div.list', host.members.map(m => h('div.item-row', icon('friends', 'item-icon'),
         h('div.item-main', h('div.item-name', m.name), h('div.item-sub', 'In your game')),

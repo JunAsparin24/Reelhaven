@@ -13,6 +13,7 @@ import { sfx, vibrate } from './audio.js';
 import { addXp } from './progression.js';
 import { hitDebris, till, water, plant, harvest } from './farm.js';
 import { SWORDS } from '../data/weapon-data.js';
+import { spendEnergy, restoreEnergy, addSkillXp, skillLevel, combatBonus } from './life.js';
 
 const DIRV = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const SWING_TIME = 0.26, SWING_COOLDOWN = 0.36;
@@ -49,6 +50,7 @@ export function swing(game, tool = getState().inventory.held) {
   }
   if (!SWING_TOOLS.has(tool) || !ownsTool(tool)) return false;
   if ((p.swingCool || 0) > 0) return false;
+  if (!spendEnergy(tool)) { p.swingCool = 0.4; return false; }
   p.swing = { tool, t: 0, dur: SWING_TIME };
   p.swingCool = SWING_COOLDOWN;
   const [dx, dy] = DIRV[p.facing];
@@ -65,7 +67,7 @@ export function swing(game, tool = getState().inventory.held) {
   if (tool === 'hoe') { const t = frontTile(p); if (!harvest(game, t.x, t.y)) till(game, t.x, t.y); return true; }
   if (tool === 'watering_can') { const t = frontTile(p); water(game, t.x, t.y); return true; }
   if (tool === 'axe') {
-    const o = nearest(o => o.type === 'debris_tree' || o.type === 'debris_twig' || o.type === 'debris_stump');
+    const o = nearest(o => ['debris_tree', 'debris_twig', 'debris_stump', 'debris_big_stump'].includes(o.type));
     if (o) hitDebris(game, o, toolTier('axe').power); else missed(game);
     return true;
   }
@@ -84,7 +86,7 @@ export function swing(game, tool = getState().inventory.held) {
   const crate = (tool === 'pickaxe' || tool === 'sword') && nearest(o => o.type === 'mine_crate');
   if (crate) { hitCrate(game, crate); return true; }
   if (tool === 'pickaxe') {
-    const best = nearest(o => o.type === 'mine_rock' || o.type === 'debris_stone');
+    const best = nearest(o => o.type === 'mine_rock' || o.type === 'debris_stone' || o.type === 'debris_boulder');
     if (best?.type === 'mine_rock') hitRock(game, best, toolTier('pickaxe').power);
     else if (best) hitDebris(game, best, toolTier('pickaxe').power);
     else missed(game);
@@ -92,7 +94,7 @@ export function swing(game, tool = getState().inventory.held) {
     let hit = false;
     for (const m of w.monsters) {
       if (m.dead) continue;
-      if (Math.hypot(m.x - hx, m.y - 6 - hy) < 17) { hitMonster(game, m, toolTier('sword').damage, dx, dy); hit = true; }
+      if (Math.hypot(m.x - hx, m.y - 6 - hy) < (MONSTERS[m.type]?.boss ? 30 : 17)) { hitMonster(game, m, Math.round(toolTier('sword').damage * combatBonus()), dx, dy); hit = true; }
     }
     sfx(hit ? 'hit' : 'swing');
   }
@@ -126,10 +128,13 @@ function hitRock(game, o, power) {
   const s = getState();
   s.stats.rocksBroken = (s.stats.rocksBroken || 0) + 1;
   const got = [];
+  const extra = skillLevel('mining') >= 10 ? 2 : skillLevel('mining') >= 5 ? 1 : 0;
   for (const d of def.drops) {
-    const n = roll(d);
+    let n = roll(d);
+    if (n > 0 && d[0].endsWith('_ore')) n += extra;
     if (n > 0) { addItem(d[0], n); got.push(`+${n} ${RESOURCES[d[0]]?.name || d[0]}`); }
   }
+  addSkillXp('mining', o.kind === 'stone' ? 2 : o.kind === 'gold' || o.kind === 'gem' ? 8 : 5);
   if (got.length) game.renderer.floatText(got.join('  '), cx, cy - 8, o.kind === 'gold' ? '#f8dc7c' : '#fff5df');
   game.renderer.emit('leaf', cx, cy, 8, { speed: 45, gravity: 120, life: 0.6, color: o.kind === 'copper' ? '#e3924a' : o.kind === 'gold' ? '#f0c14b' : '#918b88' });
   // The one rock hiding the ladder down.
@@ -198,6 +203,7 @@ function missed(game) {
 /** Monster stats scaled for the current floor. */
 export function monsterStats(m, level = 1) {
   const d = MONSTERS[m.type];
+  if (d.boss) return { ...d };
   const k = 1 + 0.12 * (level - 1);
   return { ...d, hp: Math.round(d.hp * k), damage: Math.round(d.damage * (1 + 0.08 * (level - 1))), speed: d.speed * (1 + 0.02 * Math.min(20, level)) };
 }
@@ -221,11 +227,20 @@ function hitMonster(game, m, dmg, dx, dy) {
   s.stats.kills[m.type] = (s.stats.kills[m.type] || 0) + 1;
   // A very rare blade drop, never past what this depth would unlock.
   maybeSwordDrop(game, level, 0.006, m.x, m.y);
+  // a boss leaves the ladder down and a treasure shared with the whole world
+  if (st.boss) {
+    const tx = Math.floor(m.x / TILE), ty = Math.floor((m.y - 1) / TILE);
+    game.world.objects.push({ id: 'ladder_down', type: 'ladder_down', x: tx, y: ty, def: OBJECT_TYPES.ladder_down, variant: 0 });
+    game.world.objects.push({ id: 'boss_chest', type: 'boss_chest', x: tx + 1, y: ty, level, def: OBJECT_TYPES.boss_chest, variant: 0 });
+    game.world.rebuild();
+    game.onBossDefeated?.(level, st.name);
+  }
   game.renderer.emit('sparkle', m.x, m.y - 6, 10, { speed: 50, gravity: 40, color: m.type === 'slime' ? '#8ee07a' : '#c9b8e6' });
   const coins = st.coins[0] + Math.floor(Math.random() * (st.coins[1] - st.coins[0] + 1)) + Math.floor(level / 3);
   addCoins(coins, 'treasure');
   for (const [id, n, chance] of st.drops) if (Math.random() < chance) { addItem(id, n); game.renderer.floatText(`+${n} ${RESOURCES[id]?.name || id}`, m.x, m.y - 26); }
   addXp(st.xp);
+  addSkillXp('combat', st.xp);
   commit('slay', false);
 }
 
@@ -244,7 +259,7 @@ export function updateMonsters(game, dt) {
   for (const m of w.monsters) {
     if (m.dead) continue;
     const st = monsterStats(m, level);
-    if (m.hp == null) m.hp = st.hp;
+    if (m.hp == null) { m.hp = st.hp; m.maxHp = st.hp; }
     m.anim += dt * (st.flies ? 9 : 5);
     m.flash = Math.max(0, m.flash - dt);
     m.cool = Math.max(0, m.cool - dt);
@@ -269,7 +284,7 @@ export function updateMonsters(game, dt) {
     if (isOpen(w, m.x, m.y + my, st.flies)) m.y += my;
     if (Math.abs(vx) > 0.05 || Math.abs(vy) > 0.05) m.dir = Math.abs(vx) > Math.abs(vy) ? (vx > 0 ? 'right' : 'left') : vy > 0 ? 'down' : 'up';
     // contact damage
-    if (d < 11 && m.cool <= 0 && (p.invuln || 0) <= 0 && !game.ui.fading) {
+    if (d < (st.boss ? 24 : 11) && m.cool <= 0 && (p.invuln || 0) <= 0 && !game.ui.fading) {
       m.cool = 0.8;
       hurtPlayer(game, st.damage, m.x, m.y);
     }
@@ -296,12 +311,13 @@ export function eat(game, id) {
   const s = getState();
   const f = FOOD[id];
   if (!f || itemCount(id) <= 0) return { ok: false, message: 'You don’t have any.' };
-  if (s.player.hp >= s.player.maxHp) return { ok: false, message: 'You’re already at full health.' };
+  if (s.player.hp >= s.player.maxHp && (s.player.energy ?? 0) >= (s.player.maxEnergy || 100)) return { ok: false, message: 'You’re already full of energy and health.' };
   removeItem(id, 1);
-  const before = s.player.hp;
+  const before = s.player.hp, eBefore = s.player.energy ?? 0;
   s.player.hp = Math.min(s.player.maxHp, s.player.hp + f.heal);
+  if (f.energy) restoreEnergy(f.energy);
   sfx('eat');
-  if (game?.player) game.renderer.floatText(`+${s.player.hp - before} HP`, game.player.x, game.player.y - 26, '#a8f0a0');
+  if (game?.player) game.renderer.floatText(`+${s.player.hp - before} HP  +${Math.round(s.player.energy - eBefore)} energy`, game.player.x, game.player.y - 26, '#a8f0a0');
   commit('eat');
   return { ok: true, message: `Ate ${f.name}.` };
 }

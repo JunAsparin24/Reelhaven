@@ -11,6 +11,8 @@ import { sfx } from './audio.js';
 import { MONSTERS } from '../data/mine-data.js';
 import { CROPS } from '../data/farm-data.js';
 import { hasRoomFor, freeSlots } from './bag.js';
+import { giftable, giftName } from './life.js';
+import { ANIMALS } from '../data/life-data.js';
 
 export const BRIDGE_COST = { coins: 100, wood: 15, stone: 6 };
 
@@ -40,6 +42,17 @@ function collectInteractables(game, rangeBoost = 1, only = null) {
   const npcRange = w.def.interior ? 40 : 28;
   for (const n of w.npcs) {
     consider({ kind: 'npc', npc: n, verb: 'Talk', label: n.def.name, mx: n.x, my: n.y - 30 }, n.x, n.y - 4, npcRange);
+    const held = getState().inventory.held;
+    if (giftable(held)) consider({ kind: 'gift_npc', npc: n, verb: 'Give ' + giftName(held), label: n.def.name, mx: n.x, my: n.y - 30 }, n.x, n.y - 4, npcRange);
+  }
+  // Animals in a coop or barn: collect what they made, or give them a pet.
+  for (const c of w.critters || []) {
+    consider({ kind: 'pet', critter: c, verb: c.a.ready ? 'Collect' : 'Pet', label: c.a.name, mx: c.x, my: c.y - 20 }, c.x, c.y - 4, 18);
+  }
+  // Festival day: the stalls set up by the quest board.
+  const fest = game.festivalToday?.();
+  if (fest) for (const o of w.objects) if (o.type === 'board') {
+    consider({ kind: 'festival', verb: 'Join', label: fest.name, mx: o.x * TILE + 8, my: o.y * TILE - 22 }, o.x * TILE + 8, (o.y + 1) * TILE, 40);
   }
   for (const o of w.objects) {
     if (w.objectHidden(o) || o.def.quiet) continue;
@@ -61,7 +74,7 @@ function collectInteractables(game, rangeBoost = 1, only = null) {
     }
   }
   // Utilities you can use: chests, furnaces, campfires.
-  const USE_VERB = { chest: 'Open', furnace: 'Smelt', campfire: 'Cook' };
+  const USE_VERB = { chest: 'Open', furnace: 'Smelt', campfire: 'Cook', machine: 'Use' };
   for (const pl of w.placed) {
     if (!pl.def.use) continue;
     const cx = pl.x * TILE + (pl.fw * TILE) / 2, cy = (pl.y + pl.fh) * TILE - 4;
@@ -87,7 +100,7 @@ function collectInteractables(game, rangeBoost = 1, only = null) {
   for (const pl of w.placed) {
     if (pl.def.kind !== 'building' || pl.def.use) continue;
     const cx = pl.x * TILE + (pl.fw * TILE) / 2, cy = (pl.y + pl.fh) * TILE + 6;
-    if (pl.type === 'cottage' || pl.type === 'guest_cabin') {
+    if (pl.type === 'cottage' || pl.type === 'guest_cabin' || pl.def.interior) {
       const label = pl.type === 'guest_cabin' ? `${pl.ownerName || 'Guest'}’s Cabin` : pl.def.name;
       consider({ kind: 'enter', placement: pl, verb: 'Enter', label, mx: cx, my: (pl.y + pl.fh) * TILE - (sprite(pl.type)?.height || 32) - 2 }, cx, cy, 22);
       continue;
