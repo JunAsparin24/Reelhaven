@@ -958,7 +958,8 @@ export class Renderer {
   /** The held pickaxe / sword sweeping in front of the player. */
   drawSwing(ctx, p, cam) {
     const sw = p.swing;
-    const spr = sprite('icon_' + sw.tool);
+    const lvl = getState()?.inventory.tools?.[sw.tool] || 0;
+    const spr = hasSprite(`icon_${sw.tool}_t${lvl}`) ? sprite(`icon_${sw.tool}_t${lvl}`) : sprite('icon_' + sw.tool);
     if (!spr) return;
     const u = Math.min(1, sw.t / sw.dur);
     const base = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 }[p.facing];

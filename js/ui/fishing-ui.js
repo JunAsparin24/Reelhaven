@@ -14,12 +14,13 @@ import { ZONE_NAMES } from '../fish.js';
 
 const TRACK_W = 168, TRACK_H = 30;
 
+// No buttons: hold / tap anywhere on the screen (or Space / E) to play.
 const LABELS = {
-  ready: 'Hold to cast', charge: 'Release!', cast: '…', wait: 'Waiting…', bite: 'TAP NOW!',
-  reel: 'Hold to reel', landing: 'Got it!', result: '', missed: 'Cast again',
+  ready: 'Hold anywhere to cast', charge: 'Let go!', cast: '…', wait: 'Waiting…', bite: 'TAP NOW!',
+  reel: 'Hold anywhere to reel', landing: 'Got it!', result: '', missed: 'Tap to cast again',
 };
 const HINTS = {
-  ready: 'Hold the button and let go in the gold zone for a perfect cast.',
+  ready: 'Hold anywhere and let go in the gold zone for a perfect cast.',
   charge: 'Let go in the gold zone!',
   cast: '',
   wait: 'Watch the bobber… tap only when it splashes.',
@@ -49,21 +50,28 @@ export class FishingUI {
     this.el.progFill = h('div.fill');
     this.el.prog = h('div.bar.catch', this.el.progFill);
     this.el.reelBox = h('div.reel-box', this.el.track, this.el.prog);
-    this.el.action = h('button.action-btn', { type: 'button' }, h('span.lbl', 'Hold to cast'));
+    this.el.action = h('div.fish-cue', { 'aria-live': 'polite' }, h('span.lbl', LABELS.ready));
     this.el.close = h('button.icon-btn.close', { type: 'button', 'aria-label': 'Stop fishing', on: { click: () => this.ui.game.stopFishing() } }, icon('close'));
     this.root.append(
       h('div.fish-head', icon('rod'), this.el.title, this.el.rod, this.el.baitBtn, this.el.close),
       this.el.msg,
       h('div.fish-play', this.el.meter, this.el.reelBox),
       this.el.action);
-    // Hold-style input that works for touch, mouse and pen.
+    // Hold-style input anywhere on the screen (touch, mouse and pen). Buttons
+    // in the fishing bar (bait, close), menus and pop-ups keep working as usual.
     const btn = this.el.action;
-    const down = e => { e.preventDefault(); if (this.pointer != null) return; this.pointer = e.pointerId; btn.setPointerCapture?.(e.pointerId); btn.classList.add('held'); this.session?.press(); };
+    const busy = () => !this.session || this.resultOpen || this.ui.blocking() || ['cast', 'landing', 'result'].includes(this.session.phase);
+    const down = e => {
+      if (busy() || this.pointer != null) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (e.target.closest?.('button, a, input, select, .fish-head, #nav, #hud-top, #hotbar, .modal-wrap, .sheet')) return;
+      e.preventDefault();
+      this.pointer = e.pointerId; btn.classList.add('held'); this.session.press();
+    };
     const up = e => { if (this.pointer !== e.pointerId) return; this.pointer = null; btn.classList.remove('held'); this.session?.release(); };
-    btn.addEventListener('pointerdown', down);
-    btn.addEventListener('pointerup', up);
-    btn.addEventListener('pointercancel', up);
-    btn.addEventListener('contextmenu', e => e.preventDefault());
+    window.addEventListener('pointerdown', down, true);
+    window.addEventListener('pointerup', up, true);
+    window.addEventListener('pointercancel', up, true);
     // Keyboard: Space / E / Enter behave like holding the button.
     window.addEventListener('keydown', e => {
       if (!this.session || this.resultOpen || this.ui.blocking()) return;
@@ -84,7 +92,7 @@ export class FishingUI {
     this.el.title.title = ZONE_NAMES[session.spot.zone];
     this.refreshGear();
     this.root.classList.add('show');
-    this.el.action.focus({ preventScroll: true });
+    document.activeElement?.blur?.();
   }
 
   end() {
@@ -131,7 +139,7 @@ export class FishingUI {
     this.el.msg.textContent = ses.message || HINTS[ph] || '';
     this.el.meter.hidden = !(ph === 'ready' || ph === 'charge' || ph === 'missed');
     this.el.reelBox.hidden = ph !== 'reel';
-    this.el.action.disabled = ph === 'cast' || ph === 'landing' || ph === 'result';
+    this.el.action.classList.toggle('dim', ph === 'cast' || ph === 'landing' || ph === 'result');
     this.el.baitBtn.disabled = !(ph === 'ready' || ph === 'missed');
     if (ph === 'ready' || ph === 'missed') this.refreshGear();
     if (ph === 'result') this.showResult(ses.result);

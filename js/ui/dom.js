@@ -72,11 +72,11 @@ export function initLayers() {
 /**
  * Open a sheet. render(body) fills it and is re-run by refreshSheet().
  */
-export function openSheet(id, title, render, { onClose = null, wide = false, iconName = null } = {}) {
+export function openSheet(id, title, render, { onClose = null, wide = false, iconName = null, center = false } = {}) {
   if (current && current.id === id) { refreshSheet(); return; }
   closeSheet(true);
   const body = h('div.sheet-body');
-  const el = h('section.sheet' + (wide ? '.wide' : ''), { role: 'dialog', 'aria-label': title, 'aria-modal': 'true' },
+  const el = h('section.sheet' + (wide ? '.wide' : '') + (center ? '.center' : ''), { role: 'dialog', 'aria-label': title, 'aria-modal': 'true' },
     h('header.sheet-head',
       iconName ? icon(iconName, 'head-icon') : null,
       h('h2', title),
@@ -84,6 +84,7 @@ export function openSheet(id, title, render, { onClose = null, wide = false, ico
     body);
   sheetLayer.append(el);
   sheetLayer.classList.add('open');
+  sheetLayer.classList.toggle('dim', !!center);
   current = { id, el, body, render, onClose };
   sfx('open');
   render(body);

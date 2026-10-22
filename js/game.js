@@ -703,9 +703,17 @@ export class Game {
     if (this.fishing && this.fishing.active) return false; // fishing UI handles keys
     if (this.ui.blocking()) return false;
     // E / Space only interact (talk, open, enter, fish...). Tools are used with a left click.
-    const it = nearbyInteractables(this, 6).find(x => !TOOL_KINDS.has(x.kind));
-    if (it) { this.interact(it); return true; }
-    return false;
+    const list = nearbyInteractables(this, 8).filter(x => !TOOL_KINDS.has(x.kind));
+    if (!list.length) return false;
+    // what you're facing wins over something just beside you
+    const p = this.player, [fx, fy] = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[p.facing] || [0, 1];
+    const score = x => {
+      const dx = (x.ax ?? p.x) - p.x, dy = (x.ay ?? p.y) - (p.y - 4), len = Math.hypot(dx, dy);
+      if (len < 6) return x.d + 10;   // someone standing right on top of you isn't what you're looking at
+      return x.d - ((dx * fx + dy * fy) / len > 0.5 ? 14 : 0);
+    };
+    this.interact(list.sort((a, b) => score(a) - score(b))[0]);
+    return true;
   }
 
   /**
@@ -1664,6 +1672,11 @@ export class Game {
       if (!o) return null;
       const fp = o.def.footprint || { w: 1, h: 1 };
       x = o.x + Math.floor(fp.w / 2); y = o.y + fp.h;
+      // stand beside it, so the spot in front stays free for you
+      for (const [dx, dy] of [[-1, 0], [fp.w, 0], [-1, -1], [fp.w, -1], [0, 1]]) {
+        const nx = (dx === fp.w ? o.x + fp.w : o.x + Math.floor(fp.w / 2) + dx), ny = y + dy;
+        if (w.walkableTile(nx, ny) && !(nx === x && ny === y)) { x = nx; y = ny; break; }
+      }
     } else return null;
     if (!w.walkableTile(x, y)) { const nw = w.nearestWalkable(x, y, x, y); if (nw) ({ x, y } = nw); }
     return { x, y };

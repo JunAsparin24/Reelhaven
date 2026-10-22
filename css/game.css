@@ -352,3 +352,25 @@
 @media (orientation: landscape) {
   #action-region { bottom: calc(var(--edge-b) + var(--hotbar-h, 44px) + 10px); }
 }
+
+/* Fishing: no action button — hold / tap anywhere. The cue is just a label. */
+#fishing-ui, #fishing-ui[class] { grid-template-columns: 1fr !important; grid-template-areas: "head" "msg" "play" "act"; }
+.fish-cue {
+  grid-area: act; justify-self: center; margin-top: 6px; padding: 4px 14px; font-weight: 700; font-size: 0.95rem; letter-spacing: 0.03em;
+  background: var(--turq); color: var(--ink); box-shadow: 0 0 0 2px var(--ink); pointer-events: none; user-select: none;
+}
+.fish-cue.held { filter: brightness(0.9); }
+.fish-cue.dim { opacity: 0.55; }
+#fishing-ui[data-phase="bite"] .fish-cue { background: var(--coral); animation: pulse 0.25s ease-in-out infinite alternate; }
+#fishing-ui[data-phase="reel"] .fish-cue { background: var(--grass); }
+#fishing-ui[data-phase="charge"] .fish-cue { background: var(--gold); }
+
+/* bag: plain slots, drag to move */
+.bag-title { margin: 6px 2px 4px; }
+.bag-slot { touch-action: none; cursor: grab; user-select: none; }
+.bag-slot.held { box-shadow: inset 0 0 0 2px var(--turq), inset 0 0 0 4px var(--ink); }
+.bag-slot.dragging { opacity: 0.35; }
+.bag-slot.over { background: var(--turq); }
+.bag-ghost { position: fixed; z-index: 999; width: 40px; height: 40px; transform: translate(-50%, -60%); pointer-events: none; display: grid; place-items: center; filter: drop-shadow(0 3px 0 rgba(0,0,0,0.35)); }
+.bag-ghost .px-icon { width: 36px; height: 36px; }
+.warn-note { color: #c2554f; font-weight: 700; margin: 6px 2px; font-size: 0.85rem; }

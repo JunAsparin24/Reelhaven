@@ -103,9 +103,10 @@ export function slotInfo(key, s = getState()) {
   const inv = s.inventory;
   if (key.startsWith('tool:')) {
     const id = key.slice(5), tier = TOOLS[id][Math.min(TOOLS[id].length - 1, inv.tools[id] || 0)];
-    return { key, kind: 'tool', id, icon: id, name: tier.name, desc: tier.desc, count: id === 'watering_can' ? inv.water ?? 0 : null };
+    const lvl = Math.min(TOOLS[id].length - 1, inv.tools[id] || 0);
+    return { key, kind: 'tool', id, icon: `${id}_t${lvl}`, name: tier.name, desc: tier.desc, count: id === 'watering_can' ? inv.water ?? 0 : null };
   }
-  if (key === 'rod') { const r = RODS[inv.equippedRod] || RODS.wooden_rod; return { key, kind: 'rod', id: r.id, icon: 'rod', name: r.name, desc: r.desc }; }
+  if (key === 'rod') { const r = RODS[inv.equippedRod] || RODS.wooden_rod; return { key, kind: 'rod', id: r.id, icon: 'rod_' + r.id, name: r.name, desc: r.desc }; }
   if (key.startsWith('fish:')) {
     const variant = key.endsWith('*'), id = key.slice(5).replace('*', '');
     const f = FISH_BY_ID[id];

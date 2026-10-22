@@ -112,7 +112,9 @@ export const ISLANDS = {
       // the museum and the Island Restoration Board
       m.obj('museum', 25, 25);
       m.path([[26, 27], [26, 28], [22, 28]], P, 1);
-      m.obj('restore_board', 16, 23);
+      // the Restoration Board stands beside the museum, with its own little path
+      m.obj('restore_board', 30, 26);
+      m.path([[26, 28], [30, 28], [30, 27]], P, 1);
       for (const [x, y] of [[12, 35], [34, 34], [38, 26]]) m.obj('rock', x, y);
 
       m.spot('dock_end', 'ocean', 21, 41, 'down', 'Dock End');

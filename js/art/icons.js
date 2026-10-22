@@ -2,6 +2,7 @@
 import { paint, outline, shade } from './pixel.js';
 import { C } from './palette.js';
 import { CROPS } from '../../data/farm-data.js';
+import * as TOOL from './tool-art.js';
 
 const O = c => outline(c, C.ink);
 const icon = fn => O(paint(18, 18, p => fn(p)));
@@ -188,6 +189,16 @@ export const ICONS = {
   syrup: () => icon(p => { p.rect(6, 5, 6, 11, '#a8602a'); p.rect(7, 2, 4, 3, C.cream); p.vline(7, 7, 7, '#d8904a'); p.rect(6, 9, 6, 3, C.cream); }),
   sparkle: () => icon(p => { p.rect(8, 2, 2, 14, C.yellow); p.rect(2, 8, 14, 2, C.yellow); p.rect(7, 7, 4, 4, C.white); }),
 };
+
+// Tools: chunky shaded art with a different metal per upgrade (tool-art.js).
+ICONS.pickaxe = () => TOOL.pickaxe(0); ICONS.axe = () => TOOL.axe(0); ICONS.hoe = () => TOOL.hoe(0);
+ICONS.scythe = () => TOOL.scythe(0); ICONS.watering_can = () => TOOL.wateringCan(0); ICONS.sword = () => TOOL.sword(2); ICONS.rod = () => TOOL.rod('wooden_rod');
+for (let t = 0; t < 4; t++) {
+  ICONS['pickaxe_t' + t] = () => TOOL.pickaxe(t); ICONS['axe_t' + t] = () => TOOL.axe(t); ICONS['hoe_t' + t] = () => TOOL.hoe(t);
+  ICONS['scythe_t' + t] = () => TOOL.scythe(t); ICONS['watering_can_t' + t] = () => TOOL.wateringCan(t);
+}
+for (let t = 0; t < 7; t++) ICONS['sword_t' + t] = () => TOOL.sword(t);
+for (const id of ['wooden_rod', 'fiberglass_rod', 'coral_rod', 'moonlit_rod', 'golden_rod']) ICONS['rod_' + id] = () => TOOL.rod(id);
 
 // Seed packets and produce for every crop.
 for (const c of Object.values(CROPS)) {

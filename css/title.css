@@ -114,3 +114,11 @@
 /* Menus opened from the title (e.g. Friends) sit above it. */
 #app.on-title #sheet-layer { z-index: 35; }
 #app.on-title .sheet { top: calc(14px + var(--safe-top)); }
+
+/* PC / big screens: larger menu buttons so the title doesn't feel empty */
+@media (orientation: landscape) and (min-width: 900px) and (min-height: 600px) {
+  .title-menu { gap: clamp(12px, 1.6vh, 18px); margin-right: 4vw; }
+  .btn.title-btn { min-width: clamp(230px, 17vw, 340px); min-height: clamp(58px, 7.2vh, 80px); font-size: clamp(1.2rem, 2.4vh, 1.6rem); padding: 6px 22px; gap: 10px; }
+  .btn.title-btn .px-icon { width: 28px; height: 28px; }
+  .title-foot { font-size: 0.9rem; }
+}

@@ -31,7 +31,7 @@ function collectInteractables(game, rangeBoost = 1, only = null) {
     if (!w.inBoundsPx(x, y + 4)) return;
     if (game.canUse && !game.canUse(it)) return;
     const d = Math.hypot(p.x - x, p.y - 4 - y);
-    if (d < range * rangeBoost) { it.d = d; found.push(it); }
+    if (d < range * rangeBoost) { it.d = d; it.ax = x; it.ay = y; found.push(it); }
   };
   for (const s of w.spots) {
     if (s.hidden && !game.revealedSpots.has(s.id)) continue;

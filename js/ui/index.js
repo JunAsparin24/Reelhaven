@@ -297,7 +297,7 @@ export class UI {
     if (this.game.build.active && name !== 'build') this.closeBuild();
     const ctx = { game: this.game, ui: this, opts };
     openSheet(name, panel.title, body => panel.render(body, ctx), {
-      wide: panel.wide, iconName: panel.icon,
+      wide: panel.wide, iconName: panel.icon, center: panel.center,
       onClose: () => { this.syncNav(null); panel.onClose?.(ctx); },
     });
     this.syncNav(name);
